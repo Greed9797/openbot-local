@@ -227,7 +227,14 @@ services:
       MANAGED_AGENT_AG_UI_URL: http://agent-codex:4202/ag-ui
       OPENBOT_SINGLE_USER: ${OPENBOT_SINGLE_USER:-}
       TRUSTED_ORIGINS: ${TRUSTED_ORIGINS:-http://localhost:3001}
-      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3001}
+      # Empty, not a default. These two are half of the sign-in contract, and the server refuses to
+      # boot when they are set with no identity provider behind them — which is exactly what a
+      # helpful-looking default here produced. They come from .env or they do not come at all.
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      INITIAL_ADMIN_EMAILS: ${INITIAL_ADMIN_EMAILS:-}
       TENANT_PACKAGE_DIR: ${TENANT_PACKAGE_DIR:-/app/examples/fintech}
     depends_on:
       postgres:
