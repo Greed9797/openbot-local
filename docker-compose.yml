@@ -196,6 +196,51 @@ services:
       timeout: 5s
       retries: 5
 
+  # The product itself: the React app, the API, and the browser the Bots drive, in the one image the
+  # root Dockerfile builds. Upstream runs these with `scripts/start.sh`, which is a development
+  # topology — nothing restarts it and nothing brings it back after a reboot. A deployment that is
+  # meant to stay up needs it here, beside everything else it depends on.
+  openbot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Long-lived: comes back after a crash and after the host reboots. This deployment is
+    # meant to stay up.
+    restart: unless-stopped
+    ports:
+      # Loopback. Reached over an SSH tunnel, or by a reverse proxy on this host that terminates TLS.
+      # Published on any interface it would be an administrator console on the open internet, which
+      # with OPENBOT_SINGLE_USER is exactly as bad as it sounds.
+      - "127.0.0.1:${OPENBOT_PORT:-3001}:3001"
+    environment:
+      # The database is the compose one, reached by service name rather than through the host's
+      # loopback mapping.
+      DATABASE_URL: postgres://openbot:openbot@postgres:5432/openbot
+      EMBEDDED_POSTGRES: "off"
+      RUNTIME_MODE: ${RUNTIME_MODE:-local}
+      COPILOTKIT_TELEMETRY_DISABLED: ${COPILOTKIT_TELEMETRY_DISABLED:-true}
+      DO_NOT_TRACK: ${DO_NOT_TRACK:-1}
+      KEY_ENCRYPTION_KEY: ${KEY_ENCRYPTION_KEY}
+      MANAGED_AGENT_TOKEN: ${MANAGED_AGENT_TOKEN}
+      AGENT_TOOL_TOKEN: ${AGENT_TOOL_TOKEN:-}
+      # Service name, not localhost: inside this container localhost is this container.
+      MANAGED_AGENT_AG_UI_URL: http://agent-codex:4202/ag-ui
+      OPENBOT_SINGLE_USER: ${OPENBOT_SINGLE_USER:-}
+      TRUSTED_ORIGINS: ${TRUSTED_ORIGINS:-http://localhost:3001}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3001}
+      TENANT_PACKAGE_DIR: ${TENANT_PACKAGE_DIR:-/app/examples/fintech}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      agent-codex:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "bun -e \"const r = await fetch('http://localhost:3001/health'); process.exit(r.ok ? 0 : 1)\""]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
   # The Bot whose model is the Codex CLI, driven by the ChatGPT subscription signed in on this host.
   # No API key: see agent-codex/src/index.ts for why a subprocess is the only way a subscription can
   # drive a deployment.
