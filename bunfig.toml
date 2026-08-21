@@ -1,4 +1,5 @@
 [test]
-# See server/scripts/test-preload.ts: makes the module graph deterministic so a test file cannot fail to
-# import depending on the order the suite happened to be walked.
-preload = ["./server/scripts/test-preload.ts"]
+# See server/scripts/preload.ts: makes the module graph deterministic so a test file cannot fail to
+# import depending on the order the suite happened to be walked. The API server preloads the same
+# file from its own start-up command, for the same reason.
+preload = ["./server/scripts/preload.ts"]

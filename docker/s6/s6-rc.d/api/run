@@ -2,4 +2,8 @@
 # The API, and the app it serves. Started after the browser so a Bot's first action does not race a
 # computer that is still coming up.
 cd /app/server
-exec s6-setuidgid pwuser /usr/local/bin/bun src/index.ts
+# --preload, because @modelcontextprotocol/sdk requires `eventsource` from CommonJS and eventsource
+# ships as ESM only. Bun permits that only once the module has been evaluated as ESM by something
+# earlier in the process, so without this the server dies on boot with "require() async module ... is
+# unsupported" and s6 restarts it forever. See server/scripts/preload.ts.
+exec s6-setuidgid pwuser /usr/local/bin/bun --preload ./scripts/preload.ts src/index.ts
