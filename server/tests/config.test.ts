@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { configuredAuthProviders, loadConfig } from "../src/config";
 
-// Intelligence is part of the MINIMUM contract, so it belongs in the base environment every other
-// case builds on. Leaving it out of the base would make most of this file assert the behaviour of a
-// deployment that is not allowed to exist.
+// The base is a `local` deployment, because that is what this product now is by default: no vendor
+// account and no licence token in the minimum contract. Intelligence is opted into by name, so the
+// cases that exercise it add RUNTIME_MODE and its four values on top of this.
 const baseEnvironment = {
   DATABASE_URL: "postgres://openbot:openbot@localhost:5432/openbot",
   KEY_ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
@@ -12,12 +12,17 @@ const baseEnvironment = {
   BETTER_AUTH_SECRET: "a-long-enough-local-development-auth-secret",
   BETTER_AUTH_URL: "http://localhost:3001",
   INITIAL_ADMIN_EMAILS: "admin@openbot.test",
+  MANAGED_AGENT_AG_UI_URL: " http://localhost:4200/ag-ui ",
+  MANAGED_AGENT_TOKEN: "managed-agent-token",
+};
+
+/** The four values Intelligence mode requires, plus the switch that asks for it. */
+const intelligenceEnvironment = {
+  RUNTIME_MODE: "intelligence",
   INTELLIGENCE_API_URL: "http://localhost:7100",
   INTELLIGENCE_GATEWAY_WS_URL: "ws://localhost:7103",
   INTELLIGENCE_API_KEY: "tenant-api-key",
   COPILOTKIT_LICENSE_TOKEN: "license-token",
-  MANAGED_AGENT_AG_UI_URL: " http://localhost:4200/ag-ui ",
-  MANAGED_AGENT_TOKEN: "managed-agent-token",
 };
 
 /**
@@ -37,8 +42,21 @@ const {
 } = baseEnvironment;
 
 describe("deployment configuration", () => {
-  test("resolves the Intelligence runtime, which is the only runtime", () => {
+  test("defaults to the local runtime, which needs no vendor account", () => {
     const config = loadConfig(baseEnvironment);
+
+    expect(config.runtime).toEqual({ mode: "local", durableHistory: true });
+    expect(config.managedAgentAgUiUrl).toEqual(
+      new URL("http://localhost:4200/ag-ui"),
+    );
+    expect(config.tenantPackageDirectory).toBe("../examples/fintech");
+  });
+
+  test("resolves the Intelligence runtime when it is asked for by name", () => {
+    const config = loadConfig({
+      ...baseEnvironment,
+      ...intelligenceEnvironment,
+    });
 
     expect(config.runtime).toEqual({
       mode: "intelligence",
@@ -50,20 +68,18 @@ describe("deployment configuration", () => {
         licenseToken: "license-token",
       },
     });
-    expect(config.managedAgentAgUiUrl).toEqual(
-      new URL("http://localhost:4200/ag-ui"),
-    );
-    expect(config.tenantPackageDirectory).toBe("../examples/fintech");
+  });
+
+  test("refuses a runtime mode it does not have", () => {
+    expect(() =>
+      loadConfig({ ...baseEnvironment, RUNTIME_MODE: "hosted" }),
+    ).toThrow('RUNTIME_MODE must be "local" or "intelligence", not "hosted".');
   });
 
   test("allows deployment without an authentication provider, when asked to", () => {
     const config = loadConfig({
       DATABASE_URL: baseEnvironment.DATABASE_URL,
       KEY_ENCRYPTION_KEY: baseEnvironment.KEY_ENCRYPTION_KEY,
-      INTELLIGENCE_API_URL: baseEnvironment.INTELLIGENCE_API_URL,
-      INTELLIGENCE_GATEWAY_WS_URL: baseEnvironment.INTELLIGENCE_GATEWAY_WS_URL,
-      INTELLIGENCE_API_KEY: baseEnvironment.INTELLIGENCE_API_KEY,
-      COPILOTKIT_LICENSE_TOKEN: baseEnvironment.COPILOTKIT_LICENSE_TOKEN,
       MANAGED_AGENT_AG_UI_URL: baseEnvironment.MANAGED_AGENT_AG_UI_URL,
       MANAGED_AGENT_TOKEN: baseEnvironment.MANAGED_AGENT_TOKEN,
       // Explicit, because no provider means every visitor is the administrator and a deployment has
@@ -74,17 +90,19 @@ describe("deployment configuration", () => {
     expect(config.auth).toBeUndefined();
   });
 
-  // The product does not have a mode without Intelligence, so each of these is a refusal to boot
-  // rather than a degraded capability. Named individually because a deployment that sets three of
-  // four is the likeliest real mistake, and the message has to say which one is missing.
+  // Only in Intelligence mode. A partial set is the more dangerous shape than none at all: it means
+  // somebody asked for Intelligence and got it wrong. Named individually because a deployment that
+  // sets three of four is the likeliest real mistake, and the message has to say which one is
+  // missing.
   test.each([
     "INTELLIGENCE_API_URL",
     "INTELLIGENCE_GATEWAY_WS_URL",
     "INTELLIGENCE_API_KEY",
     "COPILOTKIT_LICENSE_TOKEN",
-  ])("refuses to start when %s is missing", (name) => {
+  ])("refuses to start when %s is missing from Intelligence mode", (name) => {
     const environment: Record<string, string | undefined> = {
       ...baseEnvironment,
+      ...intelligenceEnvironment,
     };
     delete environment[name];
 
@@ -93,15 +111,16 @@ describe("deployment configuration", () => {
     );
   });
 
-  test("refuses to start when Intelligence is absent entirely, rather than degrading", () => {
-    expect(() =>
-      loadConfig({
-        DATABASE_URL: baseEnvironment.DATABASE_URL,
-        KEY_ENCRYPTION_KEY: baseEnvironment.KEY_ENCRYPTION_KEY,
-        MANAGED_AGENT_AG_UI_URL: baseEnvironment.MANAGED_AGENT_AG_UI_URL,
-        MANAGED_AGENT_TOKEN: baseEnvironment.MANAGED_AGENT_TOKEN,
-      }),
-    ).toThrow("CopilotKit Intelligence is required and is not configured");
+  test("starts with no Intelligence configuration at all, rather than refusing", () => {
+    const config = loadConfig({
+      DATABASE_URL: baseEnvironment.DATABASE_URL,
+      KEY_ENCRYPTION_KEY: baseEnvironment.KEY_ENCRYPTION_KEY,
+      MANAGED_AGENT_AG_UI_URL: baseEnvironment.MANAGED_AGENT_AG_UI_URL,
+      MANAGED_AGENT_TOKEN: baseEnvironment.MANAGED_AGENT_TOKEN,
+      OPENBOT_SINGLE_USER: "true",
+    });
+
+    expect(config.runtime.mode).toBe("local");
   });
 
   test("rejects incomplete OAuth client configuration", () => {

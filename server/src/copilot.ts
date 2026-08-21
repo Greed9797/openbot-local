@@ -1,5 +1,8 @@
 import { AbstractAgent, HttpAgent } from "@ag-ui/client";
-import type { BuiltInAgentConfiguration } from "@copilotkit/runtime/v2";
+import type {
+  AgentRunner,
+  BuiltInAgentConfiguration,
+} from "@copilotkit/runtime/v2";
 import {
   BuiltInAgent,
   CopilotKitIntelligence,
@@ -13,17 +16,18 @@ import { z } from "zod";
 import type { GrantedTool } from "./plugins/tools";
 
 /**
- * The CopilotKit runtime, always in Intelligence mode.
+ * The CopilotKit runtime, in whichever mode this deployment configured.
  *
  * Package-declared built-in Bots run as CopilotKit `BuiltInAgent` instances. External Bots are
  * reached over AG-UI as `HttpAgent` instances, so anything that speaks the protocol remains a Bot
  * with no framework adapter here: LangGraph, Pydantic-AI, CrewAI, Mastra, ADK, or a hand-written
  * server.
  *
- * There is no SSE branch. Intelligence is a requirement of the product, not a tier: it owns
- * durable threads, memory and learning, and a deployment without it silently forgets every
- * conversation. config.ts refuses to boot without the full contract, so by the time this runs the
- * settings are present and this file has one mode.
+ * Two modes, decided in config.ts and visible here only as the presence or absence of
+ * `intelligence`. `local` runs the SSE runtime with no vendor account, no licence token and nothing
+ * leaving this machine; durable threads come from the runner it is handed, which writes to this
+ * deployment's own PostgreSQL. `intelligence` is CopilotKit's hosted runtime, which additionally
+ * owns memory and learning. What a Bot is and how it is reached is identical in both.
  */
 
 /** Resolve the signed-in person for a request. Threads and memory are scoped to whoever this returns. */
@@ -481,40 +485,58 @@ export function mountCopilotRuntime(
   stallGuard: StallGuard,
   loadToolsForActor?: (actorId: string) => LoadToolsForBot,
   signRunForActor?: (actorId: string) => SignRun,
+  /**
+   * Where thread history lives in `local` mode. Ignored in `intelligence` mode, where CopilotKit
+   * holds it. Omitted, the SSE runtime falls back to its own in-process store, which is correct for
+   * a test and wrong for a deployment: the history would not survive a restart.
+   */
+  runner?: AgentRunner,
   basePath = "/api/copilotkit",
 ) {
   const { intelligence } = config.runtime;
 
-  const runtime = new CopilotRuntime({
-    // `mode` is inferred from the presence of `intelligence`; passing it is a type error.
-    //
-    // identifyUser is NOT optional in practice. Threads and memory are scoped to the user it
-    // returns, so omitting it puts every person in the deployment in the same thread space and one
-    // person's conversations become another's.
-    identifyUser,
-    intelligence: new CopilotKitIntelligence({
-      apiUrl: intelligence.apiUrl,
-      wsUrl: intelligence.gatewayWsUrl,
-      apiKey: intelligence.apiKey,
-    }),
-    licenseToken: intelligence.licenseToken,
-    // Carried on the events the runtime already sends, so OpenBot's traffic is separable from any
-    // other deployment's. Adds no events of its own.
-    ...(config.accessibility
-      ? { telemetryProperties: { accessibility_title: "OpenBot" } }
-      : {}),
-    // `identifyUser` is the Intelligence projection of the same person `identifyActor` returns:
-    // one resolver decides both whose threads these are and whose coworkers exist.
-    agents: createRequestAgents(
-      identifyActor,
-      loadAgents,
-      model,
-      resolveModelApiKey,
-      stallGuard,
-      loadToolsForActor,
-      signRunForActor,
-    ) as never,
-  });
+  // `identifyUser` is NOT optional in practice, in either mode. Threads are scoped to the user it
+  // returns, so omitting it puts every person in the deployment in the same thread space and one
+  // person's conversations become another's. It is also the projection of the same person
+  // `identifyActor` returns: one resolver decides both whose threads these are and whose coworkers
+  // exist.
+  const agents = createRequestAgents(
+    identifyActor,
+    loadAgents,
+    model,
+    resolveModelApiKey,
+    stallGuard,
+    loadToolsForActor,
+    signRunForActor,
+  ) as never;
+
+  /*
+   * Which runtime, and therefore what leaves this machine.
+   *
+   * `mode` is inferred from the presence of `intelligence`; passing it is a type error. Passing no
+   * `intelligence` is what selects the SSE runtime, which holds no vendor account and needs no
+   * licence token, and `runner` is where this deployment's own thread history is plugged in.
+   * `telemetryProperties` is attached only on the Intelligence path: on the local path there is no
+   * telemetry to attribute, and naming a deployment to a vendor it is not talking to would be the
+   * one outbound detail this mode exists to remove.
+   */
+  const runtime = intelligence
+    ? new CopilotRuntime({
+        identifyUser,
+        intelligence: new CopilotKitIntelligence({
+          apiUrl: intelligence.apiUrl,
+          wsUrl: intelligence.gatewayWsUrl,
+          apiKey: intelligence.apiKey,
+        }),
+        licenseToken: intelligence.licenseToken,
+        // Carried on the events the runtime already sends, so OpenBot's traffic is separable from
+        // any other deployment's. Adds no events of its own.
+        ...(config.accessibility
+          ? { telemetryProperties: { accessibility_title: "OpenBot" } }
+          : {}),
+        agents,
+      })
+    : new CopilotRuntime({ identifyUser, runner, agents });
 
   return createCopilotHonoHandler({ runtime, basePath });
 }

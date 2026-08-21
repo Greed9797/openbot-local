@@ -37,6 +37,7 @@ import {
   type IdentifyUser,
   mountCopilotRuntime,
 } from "./copilot";
+import { DurableAgentRunner } from "./copilot-runner";
 import {
   createCredentialAdminService,
   createCredentialStore,
@@ -327,6 +328,23 @@ const stallGuard = createStallGuard({
   auditStore: bootAuditStore,
 });
 
+/**
+ * Thread history for the local runtime.
+ *
+ * Built and warmed before the runtime is mounted, because the first request may ask for a thread's
+ * messages and the read is synchronous: whatever is going to answer it has to already be in memory.
+ * In `intelligence` mode this stays undefined and CopilotKit holds the threads instead.
+ */
+const threadHistoryRunner =
+  config.runtime.mode === "local"
+    ? await (async () => {
+        const runner = new DurableAgentRunner(database);
+        const restored = await runner.preload();
+        console.log(`Local thread history: ${restored} thread(s) restored.`);
+        return runner;
+      })()
+    : undefined;
+
 const app = createApp(
   config,
   auth,
@@ -378,6 +396,8 @@ const app = createApp(
      */
     (actorId) => (botId, runId) =>
       mintRunAssertion({ botId, actorId, runId }, config.keyEncryptionKey),
+    // Where thread history lives. Undefined in `intelligence` mode, where CopilotKit holds it.
+    threadHistoryRunner,
   ),
   // The only path to an acting call.
   computerGateway,

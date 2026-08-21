@@ -466,3 +466,32 @@ export const intelligenceChannelMappings = pgTable(
     uniqueIndex("intelligence_channel_mappings_thread_idx").on(table.threadId),
   ],
 );
+
+/**
+ * Thread history for the local runtime.
+ *
+ * In `intelligence` mode CopilotKit holds threads and this table stays empty. In `local` mode the
+ * SSE runtime keeps history in process memory, which a restart erases, so the durable runner writes
+ * the message snapshot of every finished run here and reads it back at boot. One row per thread:
+ * the snapshot is already cumulative, so there is nothing to append to and nothing to compact.
+ *
+ * `messages` is wrapped in an object rather than stored as a bare array because the jsonb column
+ * type in ./json.ts is declared over `Record<string, unknown>`.
+ */
+export const localThreadHistory = pgTable(
+  "local_thread_history",
+  {
+    threadId: text("thread_id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    /*
+     * Who the thread belongs to. Nullable because the runner is handed a thread id and an agent by
+     * the runtime and is not in a position to assert an owner; the channel mapping above is what
+     * actually scopes a thread to a person, and this column is for operators reading the table.
+     */
+    userId: text("user_id"),
+    messages: jsonb("messages").notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [index("local_thread_history_updated_at_idx").on(table.updatedAt)],
+);

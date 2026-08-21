@@ -1,11 +1,22 @@
 import { describe, expect, test } from "bun:test";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
-import { testEnvironment } from "./support/environment";
+import {
+  intelligenceEnvironment,
+  testEnvironment,
+} from "./support/environment";
 
 const app = createApp(
   loadConfig({
     ...testEnvironment(),
+  }),
+);
+
+/** The same deployment with Intelligence turned on, which is where its credentials exist to leak. */
+const intelligenceApp = createApp(
+  loadConfig({
+    ...testEnvironment(),
+    ...intelligenceEnvironment(),
   }),
 );
 
@@ -19,12 +30,12 @@ describe("health endpoint", () => {
 });
 
 describe("runtime capabilities", () => {
-  test("reports the Intelligence runtime without exposing configuration secrets", async () => {
+  test("reports the local runtime, which is the default", async () => {
     const response = await app.request("http://openbot.local/api/capabilities");
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
-      mode: "intelligence",
+      mode: "local",
       durableHistory: true,
       // Names only. The sign-in screen reads this to know which buttons to draw.
       authProviders: ["google"],
@@ -37,7 +48,9 @@ describe("runtime capabilities", () => {
   // The runtime object holds the Intelligence API key and licence token. This endpoint has no
   // authentication, so a projection bug here publishes deployment secrets to anyone who asks.
   test("never serves the Intelligence credentials", async () => {
-    const response = await app.request("http://openbot.local/api/capabilities");
+    const response = await intelligenceApp.request(
+      "http://openbot.local/api/capabilities",
+    );
     const body = await response.text();
     const parsed = (await new Response(body).json()) as Record<string, unknown>;
 

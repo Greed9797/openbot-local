@@ -1,17 +1,26 @@
 /**
- * What the runtime can do. There is exactly one answer because CopilotKit Intelligence is required
- * for durable threads and memory. Configuration the product cannot function without belongs at the
- * boot boundary.
+ * What the runtime can do. Two answers, and the default is the one that keeps every byte on this
+ * deployment: `local` runs the CopilotKit SSE runtime with no vendor account, no licence token and
+ * no outbound call, and durable threads come from this deployment's own PostgreSQL. `intelligence`
+ * is the upstream contract, kept so a deployment that wants CopilotKit's hosted threads and memory
+ * can still ask for it. Configuration the product cannot function without belongs at the boot
+ * boundary.
  */
 import { singleUserEnabled } from "./auth/dev-actor";
 import type { ActionPolicy } from "./computer/policy";
 import { parseActionPolicy } from "./computer/policy-store";
 
-export type RuntimeCapabilities = {
-  mode: "intelligence";
-  durableHistory: true;
-  intelligence: IntelligenceSettings;
-};
+export type RuntimeCapabilities =
+  | {
+      mode: "local";
+      durableHistory: true;
+      intelligence?: undefined;
+    }
+  | {
+      mode: "intelligence";
+      durableHistory: true;
+      intelligence: IntelligenceSettings;
+    };
 
 /** The Intelligence contract. Every field is required; see runtimeCapabilities. */
 export type IntelligenceSettings = {
@@ -370,13 +379,27 @@ function oktaAuth(
 }
 
 /**
- * Resolve the Intelligence contract, or refuse to start.
+ * Resolve which runtime this deployment runs, or refuse to start.
  *
- * All four values are required together. A partial set is the more dangerous shape than none at all:
- * it means somebody intended to configure Intelligence and got it wrong, so failing on the partial
- * set alone (as this did) let a completely unconfigured deployment through as if that were a choice.
+ * `local` is the default and needs nothing: the SSE runtime holds no vendor account, and threads are
+ * this deployment's own rows. `intelligence` has to be asked for by name, and then all four values
+ * are required together. A partial set is the more dangerous shape than none at all: it means
+ * somebody intended to configure Intelligence and got it wrong, so failing on the partial set alone
+ * let a completely unconfigured deployment through as if that were a choice.
  */
 function runtimeCapabilities(environment: Environment): RuntimeCapabilities {
+  const requested = (optional(environment, "RUNTIME_MODE") ?? "local").trim();
+
+  if (requested !== "local" && requested !== "intelligence") {
+    throw new Error(
+      `RUNTIME_MODE must be "local" or "intelligence", not "${requested}".`,
+    );
+  }
+
+  if (requested === "local") {
+    return { mode: "local", durableHistory: true };
+  }
+
   const settings = {
     apiUrl: url(environment, "INTELLIGENCE_API_URL"),
     gatewayWsUrl: url(environment, "INTELLIGENCE_GATEWAY_WS_URL"),
