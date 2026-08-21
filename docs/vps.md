@@ -52,16 +52,36 @@ cp .env.example .env
 
 Then, in `.env`:
 
-1. `KEY_ENCRYPTION_KEY` — `openssl rand -base64 32`. The one in the example is public.
-2. `MANAGED_AGENT_TOKEN` — `openssl rand -base64 32`.
-3. **Delete `OPENBOT_SINGLE_USER=true`** and configure Google, Microsoft or Okta. Left in, every
-   request that reaches the port is an administrator.
-4. `BETTER_AUTH_URL` and `TRUSTED_ORIGINS` — your real hostname, not localhost.
-5. Leave `RUNTIME_MODE=local` and `MANAGED_AGENT_AG_UI_URL=http://localhost:4202/ag-ui` alone.
+1. `KEY_ENCRYPTION_KEY`, `MANAGED_AGENT_TOKEN`, `COMPUTER_TOKEN`, `SUPERVISOR_TOKEN`, `AGENT_TOOL_TOKEN`
+   — one `openssl rand -base64 32` each. The `KEY_ENCRYPTION_KEY` in the example is public.
+2. `POSTGRES_PORT=127.0.0.1:55432` and the matching `DATABASE_URL`. The mapping in the compose file
+   is `"${POSTGRES_PORT}:5432"`, so naming an interface here is what keeps the database off the open
+   internet — the bare default publishes it on every one.
+3. Leave `RUNTIME_MODE=local`.
 
 ```sh
-docker compose up -d
+docker compose up -d postgres agent-codex openbot
 ```
+
+Three services, not the whole file. `openbot` is the one image the root Dockerfile builds: the app,
+the API and the browser the Bots drive. `agent-bot`, `agent-langgraph`, `agent-computer`, the
+supervisor and SPIRE are alternatives to what that image already contains, and starting them as well
+is how you end up with two of everything.
+
+Expect the `openbot` image to take a while and land at about 7 GB; most of it is the Playwright base.
+
+## Reaching it
+
+Nothing is published on a public interface — `docker compose ps` should show every port bound to
+`127.0.0.1`. Reach it over an SSH tunnel:
+
+```sh
+ssh -N -L 3011:127.0.0.1:3001 root@your-vps
+# then open http://127.0.0.1:3011
+```
+
+To serve it on a hostname instead, put a reverse proxy on the host that terminates TLS in front of
+`127.0.0.1:3001`, and configure an identity provider first — see below.
 
 ## Sign Codex in
 
@@ -69,17 +89,23 @@ The Bot has no API key. It authenticates from `CODEX_HOME` inside the `agent-cod
 is the `codex-state` volume, and it is put there once:
 
 ```sh
-# on a machine where you can open a browser
-codex login
-# then, on the VPS, with the access token from that session
+# from a machine that is already signed in
+scp ~/.codex/auth.json root@your-vps:/tmp/codex-auth.json
+ssh root@your-vps
+cd /opt/openbot-local
+docker compose cp /tmp/codex-auth.json agent-codex:/state/codex-home/auth.json
+docker compose exec -u root agent-codex sh -c 'chown bun:bun /state/codex-home/auth.json && chmod 600 /state/codex-home/auth.json'
+shred -u /tmp/codex-auth.json
+```
+
+Or, with an access token rather than the file:
+
+```sh
 docker compose exec agent-codex sh -c 'printenv CODEX_ACCESS_TOKEN | codex login --with-access-token'
 ```
 
-Or copy an already signed-in `auth.json` into the volume:
-
-```sh
-docker compose cp ~/.codex/auth.json agent-codex:/state/codex-home/auth.json
-```
+That file lets anything holding it act as the ChatGPT account it belongs to. It lives in the
+`codex-state` volume, which means every backup of that volume carries it too.
 
 Confirm it took:
 
