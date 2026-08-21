@@ -233,6 +233,9 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
       let failure: string | null = null;
 
       try {
+        // The image creates all three so the volume inherits them; this is the belt to that pair of
+        // braces, for a deployment that mounts a host directory over one of them instead.
+        await mkdir(CODEX_HOME, { recursive: true });
         await mkdir(STATE_DIR, { recursive: true });
         await mkdir(WORKSPACE, { recursive: true });
 

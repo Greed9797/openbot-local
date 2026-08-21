@@ -26,6 +26,17 @@ RUN cd agent-codex && bun install
 COPY --chown=bun:bun shared ./shared
 COPY --chown=bun:bun agent-codex/src ./agent-codex/src
 
+# Created here, in the image, rather than left to the volume.
+#
+# Docker seeds an empty named volume from whatever the image has at that path, ownership included, so
+# creating and chowning these before the volume exists is what makes them writable by `bun` at run
+# time. A volume mounted over an empty path is owned by root and this process is not, which showed up
+# as `CODEX_HOME points to "/state/codex-home", but that path does not exist` on first boot.
+USER root
+RUN mkdir -p /state/codex-home /state/threads /workspace \
+  && chown -R bun:bun /state /workspace
+USER bun
+
 # Both are volumes in compose. /state holds the credential and the thread map, /workspace is the only
 # place the sandbox may write.
 ENV PORT=4202 \
