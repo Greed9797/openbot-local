@@ -291,16 +291,23 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
       /*
        * Um sinal de vida a cada vinte segundos, enquanto o turno corre.
        *
-       * Comentário SSE — uma linha começando com `:` — que todo cliente ignora por especificação, e
-       * que existe só para haver bytes trafegando. O `idleTimeout` do Bun tem teto de 255 segundos, e
-       * um turno do Codex que precise pensar, rodar comandos e passar pela revisão automática de
-       * aprovação passa disso com folga: a conexão morria com ECONNRESET no meio do trabalho, e o que
-       * a pessoa via era a conversa parar sem erro nenhum.
+       * Um evento AG-UI, e não um comentário SSE. Comentário é engolido pelo runtime — que consome
+       * este fluxo e reemite o próprio para o navegador —, então os bytes paravam aqui e a conexão
+       * que morria era a de fora. `CUSTOM` atravessa e não escreve nada no transcript.
+       *
+       * O `idleTimeout` do Bun tem teto de 255 segundos, e um turno do Codex que precise pensar, rodar
+       * comandos e passar pela revisão automática de aprovação passa disso com folga: a conexão
+       * morria com ECONNRESET no meio do trabalho, e o que a pessoa via era a conversa parar sem erro
+       * nenhum.
        */
       const heartbeat = setInterval(() => {
         if (closed) return;
         try {
-          controller.enqueue(utf8.encode(": aguardando\n\n"));
+          send({
+            type: "CUSTOM",
+            name: "codex.working",
+            value: { since: input.runId },
+          } as BaseEvent);
         } catch {
           /* O consumidor foi embora. O `finally` abaixo é quem encerra. */
         }
