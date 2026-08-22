@@ -66,6 +66,13 @@ vez de um critério automático que finge decidir.
 Se a resposta está **certa** continua fora do alcance disto. Uma bateria que se declara verde sozinha
 é a mesma armadilha da tela que dizia "Configurado" sem nunca ter falado com o Google.
 
+## Não dê deploy no meio
+
+A bateria anota o estado do serviço no início e no fim, e avisa se ele reiniciou. Um `docker compose
+up -d` durante a corrida derruba os turnos daquela janela — eles voltam sem ferramenta nenhuma, com
+o aviso de "nada foi aberto", e parecem uma regressão do produto. Aconteceu aqui e quase virou
+conclusão errada.
+
 ## Como ler uma rodada
 
 Uma tarefa que fala de um endereço e sai com `ações=0` é uma resposta inventada, mesmo que o texto
