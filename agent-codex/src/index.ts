@@ -432,6 +432,23 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
           );
         }
 
+        /*
+         * O tamanho, e nunca o valor.
+         *
+         * A declaração assinada é o que faz o servidor MCP subir: sem ela ele sai no boot e o Codex
+         * simplesmente não oferece ferramenta nenhuma, sem erro em lugar nenhum — o Bot responde de
+         * memória e a resposta sai igualzinha a uma que foi lida. Uma linha por turno dizendo se ela
+         * chegou é a diferença entre ver isso acontecer e ficar adivinhando; o valor fica de fora
+         * porque é uma credencial de curta duração, e log é para sempre.
+         */
+        console.log(
+          `turno ${input.runId}: declaração de execução ${
+            runAssertionOf(input).length > 0
+              ? `presente (${runAssertionOf(input).length} caracteres)`
+              : "AUSENTE — o Bot vai ficar sem ferramentas"
+          }`,
+        );
+
         child = Bun.spawn(
           [
             CODEX_BIN,
