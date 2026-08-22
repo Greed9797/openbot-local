@@ -2,6 +2,7 @@ import { serve } from "bun";
 import type { Page } from "playwright";
 import { parseAriaSnapshot, type SnapshotElement } from "./aria-snapshot";
 import { isOpenPath, matchesToken, offeredToken } from "./authorisation";
+import { fetchPage } from "./lightpanda";
 import {
   type Control,
   ControlError,
@@ -812,6 +813,38 @@ serve<StreamData>({
     // opening a page were the only way to change what is on screen. It is not: the Bot presses
     // "Submit order", the page becomes a confirmation, and it has no way to find out what the
     // confirmation said. "I clicked the button" is not an answer to what happened.
+    /**
+     * Ler uma página sem abri-la no computador do Bot.
+     *
+     * Serve pelo Lightpanda, não pelo Chromium. É para o caso em que a resposta é o texto e mais
+     * nada: nenhuma sessão é usada, nada muda no computador que a pessoa está assistindo, e não
+     * custa um navegador inteiro para responder "o que diz esta página".
+     *
+     * Não substitui `/navigate`. Uma página que exige estar logado, ou que a pessoa precise ver
+     * acontecer, é Chromium — este motor não tem sessão nem pixels.
+     */
+    if (url.pathname === "/fetch" && request.method === "POST") {
+      const body = (await request.json().catch(() => null)) as {
+        url?: string;
+      } | null;
+      if (typeof body?.url !== "string" || !body.url.trim()) {
+        return json({ error: "Um endereço é obrigatório." }, 400);
+      }
+      try {
+        return json(await fetchPage(body.url.trim()));
+      } catch (error) {
+        return json(
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : "A página não pôde ser lida.",
+          },
+          502,
+        );
+      }
+    }
+
     if (url.pathname === "/read" && request.method === "GET") {
       try {
         const target = await currentPage(botId);

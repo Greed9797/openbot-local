@@ -42,6 +42,7 @@ import type {
   ClickInput,
   ComputerStatus,
   ControlState,
+  FetchResult,
   HumanInput,
   HumanInputResult,
   KeyInput,
@@ -121,6 +122,8 @@ export interface ComputerGateway {
     actor: ActionActor,
     url: string,
   ): Promise<NavigateResult>;
+  /** Ler uma página pelo motor sem pixels, sem tocar o computador do Bot. */
+  fetch(botId: string, actor: ActionActor, url: string): Promise<FetchResult>;
   click(
     botId: string,
     actor: ActionActor,
@@ -642,6 +645,20 @@ export function createComputerGateway(
       );
     },
 
+    /**
+     * Ler uma página sem abri-la no computador, servida pelo Lightpanda.
+     *
+     * Governada como qualquer outra: mesma decisão de política, mesma linha de auditoria, mesmo
+     * `targetUrl` sobre o qual uma regra pode falar. O motor ser outro não é motivo para a ação
+     * escapar do gateway — se fosse, "leia rápido" viraria o caminho para alcançar o que uma regra
+     * proíbe alcançar devagar.
+     */
+    fetch(botId: string, actor: ActionActor, url: string) {
+      return govern("computer_fetch", botId, actor, { targetUrl: url }, () =>
+        post<FetchResult>(botId, "/fetch", { url }),
+      );
+    },
+
     click(
       botId: string,
       actor: ActionActor,
@@ -836,6 +853,12 @@ function intentOf(
     case "computer_type":
       return "type";
     case "computer_navigate":
+    /*
+     * A mesma intenção da navegação, para que uma regra escrita sobre `navigate` valha para os dois
+     * motores. Uma intenção própria significaria escrever toda regra de destino duas vezes, e a
+     * segunda seria a esquecida.
+     */
+    case "computer_fetch":
       return "navigate";
     case "computer_read":
     case "computer_snapshot":

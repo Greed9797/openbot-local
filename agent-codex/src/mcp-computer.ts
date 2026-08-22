@@ -78,6 +78,14 @@ const tools: Tool[] = [
       computer("navigate", { method: "POST", body: { url: args.url } }),
   },
   {
+    name: "ler_url_rapido",
+    description:
+      "Lê uma página só pelo texto, sem abrir no navegador que a pessoa vê. Devolve o texto e os links. Use quando a resposta for o conteúdo e mais nada — é muito mais rápido. Para algo que exija estar logado, ou que a pessoa precise ver acontecer, use abrir_pagina.",
+    inputSchema: object({ url: text("O endereço a ler") }, ["url"]),
+    call: (args) =>
+      computer("fetch", { method: "POST", body: { url: args.url } }),
+  },
+  {
     name: "ler_pagina",
     description:
       "Lê o texto da página aberta agora, sem abrir nada. Use depois de abrir ou de clicar, para saber o que está na tela.",

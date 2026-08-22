@@ -17,15 +17,16 @@ import {
 import { type PolicyStore, parseActionPolicy } from "./policy-store";
 
 /**
- * The Bot computer's surface, behind the same session guard as every other API route.
+ * The Bot computer's surface.
  *
- * The computer has token authentication but no user/session identity. These server routes require a
- * session guard because `COMPUTER_TOKEN` proves the caller is an internal service, not which user is
- * asking to drive the browser.
+ * Two ways in, and both end in the same place. A person reaches it with a session; a Bot running its
+ * own loop reaches it with the two credentials in {@link AgentCallAuthoriser}. `COMPUTER_TOKEN`
+ * authenticates neither — it proves the caller is an internal service, not who is asking.
  *
  * Every computer call goes through the gateway. That is the governance seam: each acting route in
  * this file passes through a policy decision and audit row before it reaches the computer.
  */
+
 /**
  * How a Bot proves it is calling for a run this deployment started.
  *
@@ -51,16 +52,6 @@ export function createComputerRoutes(
 ) {
   const routes = new Hono<{ Variables: AppVariables }>();
 
-  /**
-   * Every route under a Bot id, in one place.
-   *
-   * The Bot travels in the path, so each route would otherwise have to remember to ask, and the one
-   * that forgot would be the whole surface. Reads are gated as well as actions: a screenshot of
-   * somebody's Bot is whatever page it is signed into.
-   *
-   * The answer is the same for a Bot that does not exist and one belonging to somebody else, so this
-   * cannot be used to find out which Bots a deployment has.
-   */
   /**
    * A Bot driving its own computer, rather than a person driving it from a browser.
    *
@@ -125,6 +116,16 @@ export function createComputerRoutes(
     return requireUser(context, next);
   });
 
+  /**
+   * Every route under a Bot id, in one place.
+   *
+   * The Bot travels in the path, so each route would otherwise have to remember to ask, and the one
+   * that forgot would be the whole surface. Reads are gated as well as actions: a screenshot of
+   * somebody's Bot is whatever page it is signed into.
+   *
+   * The answer is the same for a Bot that does not exist and one belonging to somebody else, so this
+   * cannot be used to find out which Bots a deployment has.
+   */
   routes.use("/:botId/*", async (context, next) => {
     const botId = context.req.param("botId");
     /*
@@ -188,6 +189,43 @@ export function createComputerRoutes(
       // A refusal is the rules working, not a fault, so it is a 403 with the reason a person reads.
       // Collapsing it into the same 5xx as an unreachable computer would send somebody looking for
       // an outage that is not happening.
+      if (error instanceof NavigationRefusedError) {
+        return context.json({ error: error.message }, 403);
+      }
+      return context.json({ error: describe(error) }, statusFor(error));
+    }
+  });
+
+  /**
+   * Ler uma página sem abrir nada no computador do Bot.
+   *
+   * Mesma forma da navegação: o endereço é obrigatório, e a recusa da política volta com a regra que
+   * a causou, para o Bot poder dizer o que foi barrado em vez de tentar de novo.
+   */
+  routes.post("/:botId/fetch", async (context) => {
+    const body = (await context.req.json().catch(() => null)) as {
+      url?: string;
+    } | null;
+    if (typeof body?.url !== "string" || !body.url.trim()) {
+      return context.json({ error: "A web address is required." }, 400);
+    }
+    try {
+      return context.json(
+        await gateway.fetch(
+          botOf(context),
+          {
+            id: context.var.actor.id,
+            ...(context.var.actor.email === DEV_ACTOR_EMAIL
+              ? {}
+              : { userId: context.var.actor.id }),
+          },
+          body.url.trim(),
+        ),
+      );
+    } catch (error) {
+      if (error instanceof ActionRefusedError) {
+        return context.json({ error: error.message, rule: error.rule }, 403);
+      }
       if (error instanceof NavigationRefusedError) {
         return context.json({ error: error.message }, 403);
       }

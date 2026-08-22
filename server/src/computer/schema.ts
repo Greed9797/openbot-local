@@ -18,6 +18,7 @@
  */
 export const COMPUTER_TOOLS = [
   "computer_navigate",
+  "computer_fetch",
   "computer_screenshot",
   "computer_read",
   "computer_snapshot",
@@ -48,6 +49,11 @@ export const COMPUTER_ACTING_TOOLS = [
   // about an attempt to reach the cloud metadata endpoint, the single most security-relevant thing a
   // Bot can try, while ticking a radio button is recorded. Governing it puts both in the trail.
   "computer_navigate",
+  /*
+   * Ler pelo motor sem pixels alcança a mesma internet que abrir uma página alcança. Fora daqui,
+   * "leia rápido" seria o caminho para chegar ao que uma regra proíbe chegar devagar.
+   */
+  "computer_fetch",
   "computer_click",
   "computer_type",
   "computer_key",
@@ -103,6 +109,20 @@ export type ScreenshotResult = {
 
 /** The current page as text, without opening anything. Same shape as a navigation, minus the trip. */
 export type ReadResult = Omit<NavigateResult, "elapsedMs">;
+
+/**
+ * O resultado de ler uma página pelo motor sem pixels.
+ *
+ * Separado de {@link ReadResult} porque não descreve o computador do Bot: nada foi aberto lá, nada
+ * mudou lá, e a pessoa não viu nada acontecer. Traz os links porque sem tela eles são a única forma
+ * de o Bot saber para onde ir em seguida.
+ */
+export type FetchResult = {
+  url: string;
+  title: string;
+  text: string;
+  links: { text: string; href: string }[];
+};
 
 /**
  * One thing on the page a Bot can act on.

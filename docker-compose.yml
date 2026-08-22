@@ -236,10 +236,14 @@ services:
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
       INITIAL_ADMIN_EMAILS: ${INITIAL_ADMIN_EMAILS:-}
       TENANT_PACKAGE_DIR: ${TENANT_PACKAGE_DIR:-/app/examples/fintech}
+      # Onde o motor sem pixels atende. Ausente, a ação fetch responde que não pôde ser alcançado.
+      LIGHTPANDA_CDP_URL: ${LIGHTPANDA_CDP_URL:-ws://lightpanda:9222}
     depends_on:
       postgres:
         condition: service_healthy
       agent-codex:
+        condition: service_started
+      lightpanda:
         condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "bun -e \"const r = await fetch('http://localhost:3001/health'); process.exit(r.ok ? 0 : 1)\""]
@@ -247,6 +251,34 @@ services:
       timeout: 10s
       retries: 10
       start_period: 60s
+
+  # O segundo motor de navegador: sem pixels, para as páginas que ninguém assiste.
+  #
+  # Não substitui o Chromium que vive na imagem `openbot`. O Lightpanda não tem motor gráfico —
+  # `Page.captureScreenshot` devolve um PNG de aviso e `Page.startScreencast` não existe —, então
+  # tudo que a pessoa vê acontecer continua sendo Chromium. Ele serve a ação `fetch`: ler uma página
+  # e devolver o texto, por uma fração da memória.
+  lightpanda:
+    build:
+      context: ./lightpanda
+      dockerfile: Dockerfile
+    # Long-lived: comes back after a crash and after the host reboots. This deployment is
+    # meant to stay up.
+    restart: unless-stopped
+    environment:
+      # O binário reporta uso ao projeto por padrão. Este deployment existe para não mandar nada a
+      # ninguém, e isto é a mesma decisão tomada para a telemetria do CopilotKit.
+      LIGHTPANDA_DISABLE_TELEMETRY: "true"
+      DO_NOT_TRACK: "1"
+    # Sem `ports`: só quem está na rede do compose alcança. Um CDP aberto é o controle do navegador.
+    expose:
+      - "9222"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:9222 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # The Bot whose model is the Codex CLI, driven by the ChatGPT subscription signed in on this host.
   # No API key: see agent-codex/src/index.ts for why a subprocess is the only way a subscription can
