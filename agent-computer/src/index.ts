@@ -2,7 +2,6 @@ import { serve } from "bun";
 import type { Page } from "playwright";
 import { parseAriaSnapshot, type SnapshotElement } from "./aria-snapshot";
 import { isOpenPath, matchesToken, offeredToken } from "./authorisation";
-import { fetchPage } from "./lightpanda";
 import {
   type Control,
   ControlError,
@@ -12,18 +11,24 @@ import {
   TAKE_CONTROL_FIRST,
 } from "./control";
 import { identity } from "./identity";
+import { fetchPage } from "./lightpanda";
 import { createProfiles, VIEWPORT } from "./profiles";
+import {
+  locateRef as locateRefIn,
+  resolveRef as resolveRefIn,
+  StaleSnapshotError,
+} from "./refs";
 import {
   type InputMessage,
   type Screencast,
   startScreencast,
 } from "./screencast";
+import { createShell } from "./shell";
 import {
   createWorkspace,
   WorkspaceFileError,
   WorkspacePathError,
 } from "./workspace";
-import { createShell } from "./shell";
 
 /**
  * The Bot's computer: one long-lived browser, reachable over HTTP.
@@ -108,7 +113,7 @@ const TEXT_EXTRACT_LIMIT = 6000;
  * new ref if an element's role or accessible name changed, so a recycled node cannot inherit an old one.
  */
 /** Per-Bot browser-control state. Profiles are isolated, but this process is not a security boundary. */
-type BotSession = {
+export type BotSession = {
   control: Control;
   /** This Bot's snapshot generation. See the note above on staleness. */
   snapshotId: number;
@@ -233,63 +238,6 @@ async function snapshotPage(
     title: await target.title(),
     ...parseAriaSnapshot(yaml),
   };
-}
-
-/**
- * Resolve a ref to a locator, refusing anything from a superseded snapshot.
- *
- * `aria-ref=` is a first-party Playwright selector engine, and it is the same one its MCP server uses.
- * The generation check here is the caller-facing half; see the note on `snapshotId` for why both exist.
- */
-function locateRef(
-  session: BotSession,
-  target: Page,
-  ref: string,
-  expectedSnapshotId: number | undefined,
-) {
-  if (
-    expectedSnapshotId !== undefined &&
-    expectedSnapshotId !== session.snapshotId
-  ) {
-    throw new StaleSnapshotError(
-      `That list of elements is out of date: it was taken for snapshot ${expectedSnapshotId} and the page is now at ${session.snapshotId}. Take a new snapshot and use the refs from it.`,
-    );
-  }
-  return target.locator(`aria-ref=${ref}`);
-}
-
-/**
- * The element, or a refusal that says what to do about it.
- *
- * A generation check is not an existence check. A ref from
- * the current snapshot that names nothing on the page, because a model invented it or because the
- * page moved on without a new snapshot being taken, passes `locateRef` and then simply waits. The
- * action times out, and the caller gets a generic failure carrying Playwright's internal call log
- * instead of the actionable answer: take a fresh snapshot.
- *
- * `count()` resolves immediately rather than waiting, so a ref that names nothing is refused in
- * milliseconds instead of holding the action open for the full timeout.
- */
-async function resolveRef(
-  session: BotSession,
-  target: Page,
-  ref: string,
-  expectedSnapshotId: number | undefined,
-) {
-  const locator = locateRef(session, target, ref, expectedSnapshotId);
-  if ((await locator.count()) === 0) {
-    throw new StaleSnapshotError(
-      `Nothing on this page has the ref ${ref}. Take a new snapshot and use the refs it returns.`,
-    );
-  }
-  return locator;
-}
-
-class StaleSnapshotError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "StaleSnapshotError";
-  }
 }
 
 function json(body: unknown, status = 200): Response {
@@ -536,7 +484,12 @@ serve<StreamData>({
         // new ref when an element's role or accessible name changes, so a recycled node cannot
         // inherit an old one. If the ref resolves, it is the field the Bot meant. If it does not,
         // nothing is typed, which is the outcome the generation check existed to guarantee.
-        const field = locateRef(session, target, pending.ref, undefined);
+        const field = locateRefIn(
+          session.snapshotId,
+          target,
+          pending.ref,
+          undefined,
+        );
         await field.click({ timeout: ACTION_TIMEOUT_MS });
         await field.fill(body.text, { timeout: ACTION_TIMEOUT_MS });
         const characters = body.text.length;
@@ -1046,7 +999,9 @@ async function performAction(
 
   if (action === "/click") {
     if (!ref) throw new Error("A click needs the ref of an element to click.");
-    await (await resolveRef(session, target, ref, expected)).click(acting);
+    await (await resolveRefIn(session.snapshotId, target, ref, expected)).click(
+      acting,
+    );
     return { action: "click", ref, url: target.url() };
   }
 
@@ -1055,7 +1010,7 @@ async function performAction(
     if (typeof body.text !== "string") {
       throw new Error("Typing needs the text to enter.");
     }
-    const field = await resolveRef(session, target, ref, expected);
+    const field = await resolveRefIn(session.snapshotId, target, ref, expected);
     // `fill` rather than keystrokes: it clears the field first, which is what "put this value in
     // this box" means. Typing into a field a previous attempt half-filled otherwise appends, and the
     // form ends up with "AlicAlice" in it.
@@ -1080,10 +1035,9 @@ async function performAction(
       throw new Error("A key press needs a key name, such as Enter or Tab.");
     }
     if (ref) {
-      await (await resolveRef(session, target, ref, expected)).press(
-        body.key,
-        acting,
-      );
+      await (
+        await resolveRefIn(session.snapshotId, target, ref, expected)
+      ).press(body.key, acting);
     } else {
       await target.keyboard.press(body.key);
     }
