@@ -1,0 +1,14 @@
+[
+ {"id":"t01-ler",       "pedido":"Abra https://w3bsite.com.br e me diga o título exato da página."},
+ {"id":"t02-resumir",   "pedido":"Entra em https://example.com e me resume em uma frase o que a pagina diz."},
+ {"id":"t03-numero",    "pedido":"Abra https://httpbin.org/uuid e diga o valor do campo uuid."},
+ {"id":"t04-404",       "pedido":"Abra https://httpbin.org/status/404 e me diga o que aconteceu."},
+ {"id":"t05-comparar",  "pedido":"Compare o titulo de https://example.com com o de https://w3bsite.com.br e diga se sao diferentes."},
+ {"id":"t06-login",     "pedido":"Tente abrir https://www.instagram.com/brandsdecoded__/ e diga exatamente o que conseguiu ver."},
+ {"id":"t07-typo",      "pedido":"da uma olhada no site w3bsite.com.br e fala oq eles fazem"},
+ {"id":"t08-clicar",    "pedido":"Abra https://example.com, clique no link que tem na pagina e me diga para onde foi."},
+ {"id":"t09-semweb",    "pedido":"Quanto e 17 vezes 23? Responda so o numero."},
+ {"id":"t10-lenta",     "pedido":"Abra https://httpbin.org/delay/5 e diga se a pagina respondeu."},
+ {"id":"t11-json",      "pedido":"Abra https://httpbin.org/json e me diga o titulo do slideshow que aparece."},
+ {"id":"t12-inexist",   "pedido":"Abra https://este-dominio-nao-existe-mesmo-12345.com.br e me diga o titulo."}
+]
