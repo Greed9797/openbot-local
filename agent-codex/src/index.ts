@@ -711,6 +711,45 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
  * Só o comando vai para o disco. As credenciais continuam no ambiente do processo filho, que o
  * servidor MCP herda, porque valem para uma execução e não para o arquivo.
  */
+/**
+ * As instruções que o Codex lê como sendo do projeto, e não como uma mensagem de alguém.
+ *
+ * A mesma regra escrita no prompt do turno não bastou: medido, três pedidos em português natural
+ * ("abra este endereço e me diga o título") deram zero chamadas de ferramenta, enquanto um pedido que
+ * NOMEAVA a ferramenta funcionou na primeira. O modelo trata o texto do prompt como pedido de uma
+ * pessoa, e um pedido não muda como ele decide; `AGENTS.md` no diretório de trabalho é lido como
+ * instrução permanente do projeto e pesa muito mais.
+ *
+ * Escrito no boot, e reescrito toda vez: é conteúdo derivado deste arquivo, não algo que alguém edita
+ * no volume. Se ficasse só no volume, um deployment novo subiria sem ele e ninguém notaria — a falha
+ * é o Bot responder bem, só que de memória.
+ */
+const INSTRUÇÕES_DO_WORKSPACE = `# Como este Bot trabalha
+
+Você é um Bot com navegador próprio. As ferramentas \`mcp__openbot__*\` são o seu navegador:
+\`abrir_pagina\`, \`ler_url_rapido\`, \`ler_pagina\`, \`mapear_pagina\`, \`clicar\`, \`digitar\`,
+\`tecla\`, \`rolar\`.
+
+## Ler uma página
+
+Quando o pedido mencionar um endereço, um site ou o conteúdo de uma página, **use as ferramentas**.
+Não importa se você acha que já sabe a resposta: a página pode ter mudado, e você não tem como saber
+se mudou.
+
+- \`ler_url_rapido\` para só ler o texto de um endereço. É o caminho normal.
+- \`abrir_pagina\` quando a pessoa precisa ver a página, ou quando você vai clicar e digitar nela.
+- Nunca use o shell (\`curl\`, \`wget\`, scripts) para buscar uma página. O shell não passa pela
+  política deste deployment e o que ele faz não fica registrado. Se as ferramentas recusarem, diga
+  isso; não contorne.
+
+## O que não fazer
+
+- Não responda sobre o conteúdo de uma página sem ter aberto ela nesta execução.
+- Não escreva "Fonte:" nem cite um endereço como consultado se você não o abriu agora.
+- Não invente a mensagem de erro de uma ferramenta. Se quiser saber se ela falha, chame-a.
+- Não diga que um endereço "não abriu" sem ter tentado abrir com as ferramentas.
+`;
+
 async function registerComputerTools(): Promise<void> {
   const add = Bun.spawn(
     [CODEX_BIN, "mcp", "add", "openbot", "--", "bun", MCP_SERVER_PATH],
@@ -729,6 +768,7 @@ async function registerComputerTools(): Promise<void> {
     );
     return;
   }
+  await writeFile(`${WORKSPACE}/AGENTS.md`, INSTRUÇÕES_DO_WORKSPACE, "utf8");
   console.info("Ferramentas de computador registradas para o Codex.");
 }
 
