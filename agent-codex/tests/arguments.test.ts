@@ -32,6 +32,41 @@ describe("codex arguments", () => {
   test("the sandbox is never handed the whole machine", () => {
     expect(codexArguments(null)).not.toContain("danger-full-access");
   });
+
+  /**
+   * `--approve-for-me` recusa conviver com `--sandbox`: já implica workspace-write, e passar os dois
+   * é erro de uso com exit 2, não um flag ignorado. Sem aprovação nenhuma, por outro lado, toda
+   * chamada de ferramenta MCP volta como "requires approval" e o turno termina explicando que não
+   * deu — que na tela é indistinguível da ferramenta não existir. Os dois lados dessa borda estão
+   * travados aqui porque nenhum deles falha de um jeito legível.
+   */
+  test("aprovando, não passa --sandbox junto", () => {
+    const args = codexArguments(null, { OPENBOT_RUN: "r" });
+
+    expect(args).toContain("--approve-for-me");
+    expect(args).not.toContain("--sandbox");
+  });
+
+  test("sem credenciais, mantém o sandbox e não aprova nada", () => {
+    const args = codexArguments(null);
+
+    expect(args).toContain("--sandbox");
+    expect(args).not.toContain("--approve-for-me");
+  });
+
+  test("um turno retomado também aprova, e o session id fica por último", () => {
+    const args = codexArguments("sessao-1", { OPENBOT_RUN: "r" });
+
+    expect(args).toContain("--approve-for-me");
+    expect(args).not.toContain("--sandbox");
+    expect(args.slice(-2)).toEqual(["sessao-1", "-"]);
+  });
+
+  test("as credenciais viram env do servidor MCP, com as aspas do TOML", () => {
+    expect(codexArguments(null, { OPENBOT_RUN: "abc" })).toContain(
+      'mcp_servers.openbot.env.OPENBOT_RUN="abc"',
+    );
+  });
 });
 
 describe("turn prompt", () => {

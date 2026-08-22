@@ -221,8 +221,7 @@ export function codexArguments(
    * A aprovação do Codex pergunta se o operador local consente, e neste desenho o operador local é
    * um processo sem ninguém na frente.
    */
-  if (Object.keys(credentials ?? {}).length > 0)
-    options.push("--approve-for-me");
+  const approving = Object.keys(credentials ?? {}).length > 0;
 
   /*
    * `resume` takes a smaller set of flags than `exec` does: it accepts neither `--sandbox` nor `-C`,
@@ -231,9 +230,29 @@ export function codexArguments(
    * every second turn failed until this was split. The first turn is therefore the only place those
    * two are set, and every later turn inherits them from the session.
    */
-  return session
-    ? ["exec", "resume", ...options, session, "-"]
-    : ["exec", ...options, "--sandbox", SANDBOX, "-C", WORKSPACE, "-"];
+  /*
+   * `--approve-for-me` recusa conviver com `--sandbox`: ele já implica workspace-write, e passar os
+   * dois é erro de uso, não um flag ignorado. Também não existe em `resume`, que herda o sandbox da
+   * sessão — a mesma assimetria que já derrubava todo segundo turno.
+   *
+   * Quando o Bot dirige o computador, portanto, quem escolhe o sandbox é a flag de aprovação. Um
+   * deployment que peça `read-only` fica sem as ferramentas em vez de ganhar um sandbox mais frouxo
+   * do que pediu.
+   */
+  if (session) {
+    return [
+      "exec",
+      "resume",
+      ...options,
+      ...(approving ? ["--approve-for-me"] : []),
+      session,
+      "-",
+    ];
+  }
+  if (approving && SANDBOX === "workspace-write") {
+    return ["exec", ...options, "--approve-for-me", "-C", WORKSPACE, "-"];
+  }
+  return ["exec", ...options, "--sandbox", SANDBOX, "-C", WORKSPACE, "-"];
 }
 
 type CodexItem = {
