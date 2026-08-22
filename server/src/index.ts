@@ -476,6 +476,15 @@ const asChannelSocket = (ws: { data: SocketData }) =>
 
 serve<SocketData>({
   port,
+  /*
+   * O teto do Bun, e não o padrão dele.
+   *
+   * O padrão é dez segundos de silêncio, e um Bot que pensa antes de falar fica calado mais que isso
+   * o tempo todo: o fluxo SSE morria no meio da resposta com ECONNRESET, sem uma linha de log dos
+   * dois lados, e o que a pessoa via era a conversa parar. 255 é o máximo que o Bun aceita; passar
+   * disso exige o Bot mandar sinal de vida, que é o que agent-codex faz com um evento CUSTOM.
+   */
+  idleTimeout: 255,
   async fetch(request, server) {
     const url = new URL(request.url);
     const streamBotId = streamPathBotId(url.pathname);
