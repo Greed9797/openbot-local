@@ -1,8 +1,8 @@
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { BaseEvent, RunAgentInput } from "@ag-ui/core";
 import { EventEncoder } from "@ag-ui/encoder";
 import { serve } from "bun";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { hasManagedAgentToken } from "../../shared/agent-authorisation";
 
 /**
@@ -70,6 +70,15 @@ const MCP_SERVER_PATH =
  * Bot que anuncia sete ferramentas e falha em todas é pior do que um que não as anuncia.
  */
 const COMPUTER_TOOLS = Boolean(process.env.OPENBOT_AGENT_TOKEN?.trim());
+
+/**
+ * Quantas trocas anteriores vão no prompt quando não há sessão para retomar.
+ *
+ * ponytail: uma janela fixa, não um resumo. Resumir exigiria outra chamada de modelo por turno para
+ * economizar tokens numa conversa que quase nunca é longa. Se as conversas aqui virarem longas, é
+ * aqui que entra um resumo.
+ */
+const HISTORY_TURNS = 6;
 
 const MODEL = process.env.CODEX_MODEL?.trim() || "";
 const EFFORT = process.env.CODEX_EFFORT?.trim() || "";
@@ -161,7 +170,29 @@ export function turnPrompt(input: RunAgentInput, resuming: boolean): string {
     .map((message) => String(message.content ?? "").trim())
     .filter((text) => text.length > 0);
 
-  return [...standing, userText].filter(Boolean).join("\n\n");
+  /*
+   * Sem sessão para retomar, a conversa vai no prompt.
+   *
+   * Só as últimas trocas, e não a thread inteira: uma conversa longa recontada por completo a cada
+   * turno cresce sem limite e o custo é da assinatura de alguém.
+   */
+  const history = messages
+    .filter(
+      (message) => message.role === "user" || message.role === "assistant",
+    )
+    .slice(-HISTORY_TURNS * 2, -1)
+    .map((message) => {
+      const who = message.role === "user" ? "Pessoa" : "Você";
+      return `${who}: ${String(message.content ?? "").trim()}`;
+    })
+    .filter((line) => line.length > 8);
+
+  const recap =
+    history.length > 0
+      ? `Conversa até aqui:\n${history.join("\n")}\n\nAgora responda à última mensagem.`
+      : "";
+
+  return [...standing, recap, userText].filter(Boolean).join("\n\n");
 }
 
 /**
@@ -239,15 +270,22 @@ export function codexArguments(
    * deployment que peça `read-only` fica sem as ferramentas em vez de ganhar um sandbox mais frouxo
    * do que pediu.
    */
-  if (session) {
-    return [
-      "exec",
-      "resume",
-      ...options,
-      ...(approving ? ["--approve-for-me"] : []),
-      session,
-      "-",
-    ];
+  /*
+   * Com ferramentas, nunca retoma.
+   *
+   * `--approve-for-me` é a única forma de o Codex aprovar uma chamada MCP num `exec` não
+   * interativo, e ela existe só no `exec` — nem `resume` nem `fork` a aceitam, e passar mesmo assim
+   * é erro de uso com exit 2. Sem ela, toda chamada volta "requires approval". Medido também que
+   * não há equivalente em config: `auto_review.enabled`, `always_allow_tools`, `trusted` e
+   * `approval_policy="on-failure"` continuam pedindo aprovação.
+   *
+   * Então continuidade e ferramentas não cabem juntas no CLI de hoje, e as ferramentas ganham: um
+   * Bot que abre páginas e esquece a conversa anterior é útil, um que lembra e não consegue abrir
+   * nada não é. O que a sessão guardava volta pelo prompt, e o que ele fez em /workspace continua lá,
+   * porque aquilo é um volume.
+   */
+  if (session && !approving) {
+    return ["exec", "resume", ...options, session, "-"];
   }
   if (approving && SANDBOX === "workspace-write") {
     return ["exec", ...options, "--approve-for-me", "-C", WORKSPACE, "-"];
@@ -349,7 +387,13 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
         await mkdir(STATE_DIR, { recursive: true });
         await mkdir(WORKSPACE, { recursive: true });
 
-        const session = await readSession(input.threadId);
+        const stored = await readSession(input.threadId);
+        /*
+         * Retomar e usar ferramentas são exclusivos — ver codexArguments. As duas decisões têm de
+         * ser a mesma: um prompt que assume sessão retomada manda só a última mensagem, e num `exec`
+         * novo isso é o Bot respondendo sem saber do que se falava.
+         */
+        const session = COMPUTER_TOOLS ? null : stored;
         const prompt = turnPrompt(input, session !== null);
 
         if (prompt.length === 0) {

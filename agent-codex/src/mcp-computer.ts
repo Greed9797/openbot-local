@@ -313,4 +313,4 @@ if (import.meta.main) {
   }
 }
 
-export { tools, handle };
+export { handle, tools };

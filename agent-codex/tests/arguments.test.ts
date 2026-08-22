@@ -54,12 +54,18 @@ describe("codex arguments", () => {
     expect(args).not.toContain("--approve-for-me");
   });
 
-  test("um turno retomado também aprova, e o session id fica por último", () => {
+  /**
+   * O outro lado da mesma borda, e o que quebrou em produção: `--approve-for-me` só existe no
+   * `exec`. Passar num `resume` é exit 2 com usage error, e o sintoma é o primeiro turno funcionar
+   * e o segundo morrer. Não há como aprovar e retomar ao mesmo tempo, então quem tem ferramenta
+   * abre sessão nova — o histórico volta pelo prompt.
+   */
+  test("aprovando, nunca retoma — mesmo com sessão guardada", () => {
     const args = codexArguments("sessao-1", { OPENBOT_RUN: "r" });
 
+    expect(args).not.toContain("resume");
+    expect(args).not.toContain("sessao-1");
     expect(args).toContain("--approve-for-me");
-    expect(args).not.toContain("--sandbox");
-    expect(args.slice(-2)).toEqual(["sessao-1", "-"]);
   });
 
   test("as credenciais viram env do servidor MCP, com as aspas do TOML", () => {
@@ -91,5 +97,20 @@ describe("turn prompt", () => {
     // Codex is holding the rest itself. Replaying it would bill the subscription for a transcript
     // the model already remembers writing.
     expect(prompt).toBe("second question");
+  });
+
+  /**
+   * Sem retomada não existe sessão guardando o que já foi dito, então o prompt é a única memória.
+   * Um turno que manda só a última pergunta responde "olá, em que posso ajudar?" a alguém que está
+   * no meio de uma conversa.
+   */
+  test("um turno novo releva o que já foi dito antes da pergunta", () => {
+    const prompt = turnPrompt(input, false);
+
+    expect(prompt).toContain("first question");
+    expect(prompt).toContain("first answer");
+    expect(prompt.indexOf("first answer")).toBeLessThan(
+      prompt.indexOf("second question"),
+    );
   });
 });
