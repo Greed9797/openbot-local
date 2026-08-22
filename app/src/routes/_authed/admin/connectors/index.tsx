@@ -20,7 +20,15 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { connectorListQueryOptions } from "@/lib/connectors/queries";
 
-export const Route = createFileRoute("/_authed/admin/connectors")({
+/*
+ * `connectors/index.tsx`, e NÃO `connectors.tsx` ao lado da pasta.
+ *
+ * Um arquivo com o mesmo nome da pasta vira o layout das rotas de dentro dela, e sem um `<Outlet />`
+ * esse layout renderiza a si mesmo para sempre: abrir /admin/connectors/google-drive mostrava esta
+ * lista de novo, com o botão "Conectar" apontando para a URL em que a pessoa já estava. Não havia
+ * erro em lugar nenhum — a tela simplesmente não existia, e vincular o Drive era impossível.
+ */
+export const Route = createFileRoute("/_authed/admin/connectors/")({
   component: ConnectorsPage,
 });
 

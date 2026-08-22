@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { LiveScreen } from "./live-screen";
-import { ComputerPlaceholder } from "./placeholder";
 import {
+  type ControlState,
   readControl,
   releaseControl,
   supplySecret,
   takeControl,
-  type ControlState,
 } from "@/lib/computers/control";
 import { readScreenshot, type Screenshot } from "@/lib/computers/screen";
+import { LiveScreen } from "./live-screen";
+import { ComputerPlaceholder } from "./placeholder";
 
 /** Explicit blank-browser URLs use placeholder artwork; missing URL fields are treated as real pages. */
 function isBlankBrowser(shot: Screenshot): boolean {

@@ -44,32 +44,32 @@ const GROUPS: {
   }[];
 }[] = [
   {
-    label: "What Bots can reach",
+    label: "O que os Bots alcançam",
     items: [
       {
-        title: "Connectors",
+        title: "Conectores",
         icon: IconPlugConnected,
         linkOptions: { to: "/admin/connectors" },
       },
       {
-        title: "Credentials",
+        title: "Credenciais",
         icon: IconKey,
         linkOptions: { to: "/admin/credentials" },
       },
       {
-        title: "Boundaries",
+        title: "Limites",
         icon: IconShieldCheck,
         linkOptions: { to: "/admin/boundaries" },
       },
       {
-        title: "Computers",
+        title: "Computadores",
         icon: IconDeviceDesktop,
         linkOptions: { to: "/admin/computers" },
       },
     ],
   },
   {
-    label: "What Bots can do",
+    label: "O que os Bots fazem",
     items: [
       {
         title: "Plugins",
@@ -77,7 +77,7 @@ const GROUPS: {
         linkOptions: { to: "/admin/plugins" },
       },
       {
-        title: "UI Components",
+        title: "Componentes de interface",
         icon: IconLayoutGrid,
         linkOptions: { to: "/admin/components" },
       },
@@ -89,25 +89,25 @@ const GROUPS: {
     ],
   },
   {
-    label: "Who can get in",
+    label: "Quem pode entrar",
     items: [
       {
-        title: "People",
+        title: "Pessoas",
         icon: IconUsers,
         linkOptions: { to: "/admin/people" },
       },
       {
-        title: "Identity providers",
+        title: "Provedores de identidade",
         icon: IconBuildingBank,
         linkOptions: { to: "/admin/identity-providers" },
       },
     ],
   },
   {
-    label: "What happened",
+    label: "O que aconteceu",
     items: [
       {
-        title: "Audit",
+        title: "Auditoria",
         icon: IconListDetails,
         linkOptions: { to: "/admin/audit" },
       },
@@ -159,7 +159,7 @@ export function AdminSidebar({
                     activeProps={{ className: "bg-foreground/5" }}
                     {...props}
                   >
-                    Overview
+                    Visão geral
                   </Link>
                 )}
               />
