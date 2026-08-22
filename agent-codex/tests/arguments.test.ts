@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { codexArguments, turnPrompt } from "../src/index";
+import {
+  avisoDeNaoLeitura,
+  codexArguments,
+  perguntaDoTurno,
+  turnPrompt,
+} from "../src/index";
 
 /**
  * `exec` and `exec resume` do not take the same flags.
@@ -144,5 +149,48 @@ describe("a regra de ler antes de afirmar", () => {
     expect(turnPrompt(input, true, true)).toBe(
       "Abra example.com e diga o título.",
     );
+  });
+});
+
+describe("dizer quando a resposta não foi lida", () => {
+  /**
+   * A medição que motivou isto: pedir três vezes o valor de https://httpbin.org/uuid — que muda a
+   * cada leitura — devolveu o MESMO valor nas três, sem uma única chamada de ferramenta registrada.
+   * O Bot não abriu nada e inventou, e a resposta saiu com a mesma cara de uma que foi lida.
+   */
+  test("pergunta com endereço e nenhuma ferramenta usada ganha o aviso", () => {
+    const aviso = avisoDeNaoLeitura("Abra https://httpbin.org/uuid", false);
+
+    expect(aviso).toContain("Nenhuma página foi aberta");
+  });
+
+  test("se a ferramenta foi usada, não há o que avisar", () => {
+    expect(avisoDeNaoLeitura("Abra https://httpbin.org/uuid", true)).toBe("");
+  });
+
+  /**
+   * Sem endereço não há promessa de leitura a checar. "Quanto é 2+2" respondido de cabeça é a
+   * resposta certa, e um aviso ali seria ruído em toda conversa que não fala de páginas.
+   */
+  test("pergunta sem endereço nenhum não ganha aviso", () => {
+    expect(avisoDeNaoLeitura("Resuma o que conversamos ontem", false)).toBe("");
+  });
+
+  test("um domínio escrito sem http também conta como endereço", () => {
+    expect(avisoDeNaoLeitura("o que tem em exemplo.com.br?", false)).toContain(
+      "Nenhuma página",
+    );
+  });
+
+  test("a última pergunta da conversa é a que vale", () => {
+    const input = {
+      messages: [
+        { id: "u1", role: "user", content: "primeira" },
+        { id: "a1", role: "assistant", content: "resposta" },
+        { id: "u2", role: "user", content: "abra https://exemplo.dev" },
+      ],
+    } as never;
+
+    expect(perguntaDoTurno(input)).toBe("abra https://exemplo.dev");
   });
 });

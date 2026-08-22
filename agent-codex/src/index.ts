@@ -161,6 +161,38 @@ const REGRA_DE_LEITURA = [
   "- Se as ferramentas não estiverem disponíveis ou recusarem, diga isso na resposta em vez de responder assim mesmo.",
 ].join("\n");
 
+/** Um endereço de página no que a pessoa escreveu. */
+const ENDEREÇO =
+  /\bhttps?:\/\/\S+|\b[\w-]+\.(com|com\.br|org|net|io|dev|gov|edu)\b/i;
+
+/**
+ * O aviso que separa uma resposta lida de uma lembrada.
+ *
+ * Medido: pedir três vezes o valor de https://httpbin.org/uuid — que muda a cada leitura — devolveu
+ * o MESMO valor nas três, e nenhuma chamada de ferramenta foi registrada. O Bot não abriu nada e
+ * inventou. Antes disso, o mesmo pedido sobre uma página conhecida devolveu o título certo com
+ * "Fonte:" e um link, também sem abrir: a resposta lembrada sai idêntica à lida, e é justamente por
+ * isso que quem lê não tem como se defender dela.
+ *
+ * A regra no prompt ajudou e não resolveu — o modelo é quem decide chamar a ferramenta. Isto não
+ * tenta decidir por ele: apenas conta o que aconteceu no turno e diz. Um aviso honesto vale mais que
+ * uma tentativa de convencimento que funciona em dois turnos de três.
+ */
+export function perguntaDoTurno(input: RunAgentInput): string {
+  const ultima = [...(input.messages ?? [])]
+    .reverse()
+    .find((message) => message.role === "user");
+  return String(ultima?.content ?? "");
+}
+
+export function avisoDeNaoLeitura(
+  pergunta: string,
+  usouFerramenta: boolean,
+): string {
+  if (usouFerramenta || !ENDEREÇO.test(pergunta)) return "";
+  return "\n\n---\n_Nenhuma página foi aberta neste turno: a resposta acima vem do que o modelo já sabia, não do endereço citado._";
+}
+
 /**
  * What to say to Codex this turn.
  *
@@ -385,6 +417,7 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
       let textOpen = false;
       /** True once Codex has actually said something, which decides what a silent turn reports. */
       let answered = false;
+      let usouFerramenta = false;
       /** Recoverable problems Codex reported mid-turn. Shown only if nothing else was. */
       const notices: string[] = [];
       const openText = () => {
@@ -549,6 +582,15 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
             if (event.type !== "item.completed" || !event.item) continue;
             const item = event.item;
 
+            /*
+             * O Codex reporta uma chamada MCP como um item próprio. Contá-las é a única forma que
+             * este processo tem de saber se a resposta que vem a seguir foi lida de uma página ou
+             * lembrada — as duas chegam como o mesmo `agent_message`.
+             */
+            if (item.type === "mcp_tool_call") {
+              usouFerramenta = true;
+            }
+
             if (item.type === "agent_message" && item.text) {
               answered = true;
               say(item.text);
@@ -609,6 +651,13 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
               ? `Codex finished the turn without answering. It reported: ${notices.join(" ")}`
               : "Codex finished the turn without saying anything.",
           );
+        } else {
+          // Depois da resposta, e só quando a pergunta citava um endereço. Ver `avisoDeNaoLeitura`.
+          const aviso = avisoDeNaoLeitura(
+            perguntaDoTurno(input),
+            usouFerramenta,
+          );
+          if (aviso) say(aviso);
         }
       } catch (error) {
         failure =
