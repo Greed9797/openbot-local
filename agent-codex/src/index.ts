@@ -987,13 +987,26 @@ if (import.meta.main) {
          * inventadas, que não são.
          */
         const pronto = COMPUTER_TOOLS ? ferramentasProntas : null;
+        /*
+         * `null` conta como não-pronto, e não como "provavelmente ok".
+         *
+         * `null` é o probe de boot ainda rodando. Responder 200 ali faz o serviço se declarar pronto
+         * antes de saber se tem navegador — e um deploy que confere logo depois de subir pega
+         * exatamente essa janela. Enquanto não souber, o serviço não está pronto: é o que o
+         * `start_period` do healthcheck existe para tolerar.
+         */
+        const doente = COMPUTER_TOOLS && pronto !== true;
         return Response.json(
           {
-            status: pronto === false ? "sem ferramentas" : "ok",
+            status: doente
+              ? pronto === null
+                ? "conferindo as ferramentas"
+                : "sem ferramentas"
+              : "ok",
             model: MODEL || "codex default",
             ferramentas: pronto,
           },
-          { status: pronto === false ? 503 : 200 },
+          { status: doente ? 503 : 200 },
         );
       }
 
