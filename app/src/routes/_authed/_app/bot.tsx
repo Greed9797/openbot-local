@@ -1,7 +1,11 @@
-import { CopilotChat } from "@copilotkit/react-core/v2";
+import {
+  CopilotChat,
+  CopilotChatConfigurationProvider,
+} from "@copilotkit/react-core/v2";
 import { createFileRoute } from "@tanstack/react-router";
 import { useActiveBot } from "@/lib/copilot/active-bot";
 import { useBotThread } from "@/lib/copilot/bot-thread";
+import { RÓTULOS_DO_CHAT } from "@/lib/copilot/chat-labels";
 import { useStoppedTurn } from "@/lib/copilot/stopped-turn";
 
 export const Route = createFileRoute("/_authed/_app/bot")({
@@ -56,7 +60,18 @@ function RouteComponent() {
       <div className="min-h-0 flex-1">
         {/* Remount when switching Bots so chat state stays bound to the selected agent. */}
         {threadId ? (
-          <CopilotChat agentId={agentId} key={agentId} threadId={threadId} />
+          /*
+           * O provedor existe aqui só para os rótulos. O `CopilotChat` monta um por conta própria
+           * quando não encontra nenhum, e é o dele que traz os textos em inglês; montar este por
+           * fora é o caminho que a biblioteca oferece para trocá-los.
+           */
+          <CopilotChatConfigurationProvider
+            agentId={agentId}
+            labels={RÓTULOS_DO_CHAT}
+            threadId={threadId}
+          >
+            <CopilotChat agentId={agentId} key={agentId} threadId={threadId} />
+          </CopilotChatConfigurationProvider>
         ) : null}
       </div>
     </div>
