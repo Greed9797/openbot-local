@@ -224,7 +224,7 @@ export function NoticeCard({
 export const GALLERY: GalleryComponent[] = [
   {
     name: "showRecord",
-    title: "Record",
+    title: "Ficha",
     kind: "card",
     description:
       "Show one thing and its fields, an order, a person, a ticket. Use instead of describing a record in prose.",
@@ -235,33 +235,33 @@ export const GALLERY: GalleryComponent[] = [
       subtitle: "Northwind Traders",
       status: "Approved",
       fields: [
-        { label: "Amount", value: "$4,280.00" },
-        { label: "Raised", value: "12 March" },
-        { label: "Owner", value: "Priya Raman" },
+        { label: "Valor", value: "$4,280.00" },
+        { label: "Levantado", value: "12 March" },
+        { label: "Responsável", value: "Priya Raman" },
       ],
     },
     confirmation: "The record is now on screen for the person.",
   },
   {
     name: "showMetrics",
-    title: "Headline figures",
+    title: "Números principais",
     kind: "card",
     description:
       "Show up to six headline figures, each with an optional movement. Use for a summary somebody reads at a glance.",
     parameters: MetricsCardProps,
     Component: MetricsCard as GalleryComponent["Component"],
     preview: {
-      title: "This month",
+      title: "Este mês",
       metrics: [
         {
-          label: "Revenue",
+          label: "Receita",
           value: "$412k",
           change: "+12% on last month",
           changeTone: "positive",
         },
-        { label: "Open deals", value: "38" },
+        { label: "Negócios em aberto", value: "38" },
         {
-          label: "Churn",
+          label: "Cancelamento",
           value: "1.4%",
           change: "+0.3pt",
           changeTone: "caution",
@@ -272,14 +272,14 @@ export const GALLERY: GalleryComponent[] = [
   },
   {
     name: "showChecklist",
-    title: "Checklist",
+    title: "Lista de conferência",
     kind: "card",
     description:
       "Show a list of things and which are done. Reporting only, the person cannot tick these, so do not use it to ask for anything.",
     parameters: ChecklistCardProps,
     Component: ChecklistCard as GalleryComponent["Component"],
     preview: {
-      title: "Before the release",
+      title: "Antes do lançamento",
       items: [
         { text: "Migrations applied", done: true },
         { text: "Changelog written", done: true },
@@ -290,14 +290,14 @@ export const GALLERY: GalleryComponent[] = [
   },
   {
     name: "showNotice",
-    title: "Notice",
+    title: "Aviso",
     kind: "card",
     description:
       "Show a headline, a short explanation and optional supporting points. Use instead of writing several paragraphs of prose.",
     parameters: NoticeCardProps,
     Component: NoticeCard as GalleryComponent["Component"],
     preview: {
-      title: "Certificate expires in 30 days",
+      title: "O certificado vence em 30 dias",
       body: "The checkout certificate has an owner now, and this is the first of the new alerts.",
       tone: "caution",
       points: ["Owner: Platform", "Renews automatically once approved"],

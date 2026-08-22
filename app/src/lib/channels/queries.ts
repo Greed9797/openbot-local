@@ -37,7 +37,7 @@ export function channelListQueryOptions() {
     queryKey: channelKeys.list(),
     queryFn: async (): Promise<ChannelSummary[]> => {
       return client("/api/channels", "channels", {
-        fallback: "Could not load channels",
+        fallback: "Não foi possível carregar os canais",
       });
     },
   });
@@ -48,7 +48,7 @@ export function channelQueryOptions(channelId: string) {
     queryKey: channelKeys.detail(channelId),
     queryFn: async (): Promise<AgentChannel> => {
       return client(`/api/channels/${channelId}`, "channel", {
-        fallback: "Could not load this channel",
+        fallback: "Não foi possível carregar este canal",
       });
     },
   });

@@ -22,20 +22,20 @@ import { queryClient } from "@/query-client";
  */
 const PRESETS: { label: string; rule: string; cost?: string }[] = [
   {
-    label: "Never submit a form",
+    label: "Nunca enviar um formulário",
     // `key` exists only on keypress actions; guard it by tool name to keep other actions evaluable.
     rule: '(intent == "activate" && contains(element.name, "submit")) || (tool.name == "computer_key" && key == "Enter")',
-    cost: "Also stops the Bot pressing Enter for anything else, because a form submits from Enter in any of its fields.",
+    cost: "Também impede o Bot de apertar Enter para qualquer outra coisa, porque um formulário envia com Enter em qualquer campo dele.",
   },
   {
-    label: "Never type into a password field",
+    label: "Nunca digitar num campo de senha",
     rule: 'intent == "type" && contains(element.name, "password")',
-    cost: "A password box the page labels something else is not covered, the rule matches the label.",
+    cost: "Um campo de senha que a página rotula de outro jeito fica de fora — a regra casa com o rótulo.",
   },
   {
-    label: "Stay off social media",
+    label: "Ficar fora de redes sociais",
     rule: 'intent == "navigate" && (contains(page.host, "facebook.com") || contains(page.host, "x.com"))',
-    cost: "Only the two hosts named. A link that redirects there from somewhere else is allowed.",
+    cost: "Só os dois endereços nomeados. Um link que redireciona para lá a partir de outro lugar passa.",
   },
 ];
 
@@ -104,7 +104,7 @@ function BoundariesPage() {
       title="Limites"
     >
       <PageSection
-        description="Enforce stops the action. Record it and allow it writes the same row and lets the action through, which is how a rule is tried on real traffic before it starts refusing anybody."
+        description="Aplicar barra a ação. Registrar e permitir grava a mesma linha e deixa a ação passar, que é como uma regra é testada em tráfego real antes de começar a recusar alguém."
         title="Quando uma regra casa"
       >
         <div className="mt-2 flex gap-2">
@@ -227,7 +227,7 @@ function BoundariesPage() {
       </PageSection>
 
       <PageSection
-        description="The floor, applied to anything the deny list did not catch. It is not a formality: an empty list here permits nothing, so a deployment that clears this refuses every action rather than allowing every action."
+        description="O piso, aplicado a tudo que a lista de bloqueio não pegou. Não é formalidade: uma lista vazia aqui não permite nada, então um deployment que apagar isto recusa toda ação em vez de permitir toda ação."
         title="Fora isso, pode"
       >
         <ul className="mt-2 space-y-1">

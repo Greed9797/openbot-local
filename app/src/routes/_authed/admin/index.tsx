@@ -52,87 +52,89 @@ const SECTIONS: {
   }[];
 }[] = [
   {
-    title: "What Bots can reach",
-    description:
-      "Everything a Bot can touch outside this app, and the limits on it.",
+    title: "O que os Bots alcançam",
+    description: "Tudo que um Bot toca fora deste app, e os limites disso.",
     items: [
       {
-        title: "Connectors",
-        description: "The services Bots can read from, and who connected them.",
+        title: "Conectores",
+        description: "Os serviços de onde os Bots leem, e quem os conectou.",
         icon: IconPlugConnected,
         linkOptions: { to: "/admin/connectors" },
       },
       {
-        title: "Credentials",
-        description: "Keys and tokens held for this deployment.",
+        title: "Credenciais",
+        description: "Chaves e tokens guardados para este deployment.",
         icon: IconKey,
         linkOptions: { to: "/admin/credentials" },
       },
       {
-        title: "Boundaries",
-        description: "Rules that decide what a Bot may never do.",
+        title: "Limites",
+        description: "Regras que decidem o que um Bot nunca pode fazer.",
         icon: IconShieldCheck,
         linkOptions: { to: "/admin/boundaries" },
       },
       {
-        title: "Computers",
-        description: "The machines Bots run their tools on.",
+        title: "Computadores",
+        description: "As máquinas onde os Bots rodam as ferramentas deles.",
         icon: IconDeviceDesktop,
         linkOptions: { to: "/admin/computers" },
       },
     ],
   },
   {
-    title: "What Bots can do",
-    description: "Capabilities and interface pieces available across Bots.",
+    title: "O que os Bots fazem",
+    description:
+      "Capacidades e peças de interface disponíveis para todos os Bots.",
     items: [
       {
         title: "Plugins",
-        description: "Skills and tools installed for the whole workspace.",
+        description:
+          "Habilidades e ferramentas instaladas para o espaço inteiro.",
         icon: IconPuzzle,
         linkOptions: { to: "/admin/plugins" },
       },
       {
-        title: "UI Components",
-        description: "Custom pieces a Bot can draw in a conversation.",
+        title: "Componentes de interface",
+        description: "Peças próprias que um Bot desenha numa conversa.",
         icon: IconLayoutGrid,
         linkOptions: { to: "/admin/components" },
       },
       {
         title: "Playground",
-        description: "Write a component and watch it render as you type.",
+        description:
+          "Escreva um componente e veja ele aparecer enquanto digita.",
         icon: IconCode,
         linkOptions: { to: "/admin/playground" },
       },
     ],
   },
   {
-    title: "Who can get in",
+    title: "Quem pode entrar",
     description: "",
     items: [
       {
-        title: "People",
+        title: "Pessoas",
         description:
-          "Everybody who has signed in, who administers this deployment, and whose access has been removed.",
+          "Todo mundo que já entrou, quem administra este deployment, e de quem o acesso foi retirado.",
         icon: IconUsers,
         linkOptions: { to: "/admin/people" },
       },
       {
-        title: "Identity providers",
+        title: "Provedores de identidade",
         description:
-          "A company's own SAML or OpenID Connect provider, routed by email domain.",
+          "O provedor SAML ou OpenID Connect da própria empresa, roteado pelo domínio do e-mail.",
         icon: IconBuildingBank,
         linkOptions: { to: "/admin/identity-providers" },
       },
     ],
   },
   {
-    title: "What happened",
+    title: "O que aconteceu",
     description: "",
     items: [
       {
-        title: "Audit",
-        description: "Every action taken in this deployment, and by whom.",
+        title: "Auditoria",
+        description: "Toda ação tomada neste deployment, e por quem.",
         icon: IconListDetails,
         linkOptions: { to: "/admin/audit" },
       },
@@ -143,7 +145,7 @@ const SECTIONS: {
 function RouteComponent() {
   return (
     <PageShell
-      description="Settings that apply to everybody in this deployment. Anything here affects every person and every Bot, which is what separates it from your own preferences."
+      description="Configurações que valem para todo mundo neste deployment. Qualquer coisa daqui afeta cada pessoa e cada Bot, que é o que separa isto das suas próprias preferências."
       title="Admin"
     >
       {SECTIONS.map((section) => (

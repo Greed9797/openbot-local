@@ -8,7 +8,7 @@ export function activePackageQueryOptions() {
     queryKey: packageKeys.active,
     queryFn: async () => {
       const response = await client("/api/admin/package", {
-        fallback: "Could not load the active package",
+        fallback: "Não foi possível carregar o pacote ativo",
       });
       return response.json();
     },

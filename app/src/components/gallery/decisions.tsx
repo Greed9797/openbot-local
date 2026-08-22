@@ -248,7 +248,7 @@ function readChoice(result: string | undefined): string | undefined {
 export const GALLERY: GalleryComponent[] = [
   {
     name: "askApproval",
-    title: "Approval",
+    title: "Aprovação",
     kind: "decision",
     description:
       "Ask the person to approve or decline something, and WAIT for their answer. Use before doing anything you cannot undo, spending money, sending a message, changing a record. You are given their decision and any reason they typed.",
@@ -259,13 +259,13 @@ export const GALLERY: GalleryComponent[] = [
       // so its arguments arrive wrapped in the state of the decision it is waiting on.
       status: "executing",
       args: {
-        title: "Refund this order?",
+        title: "Estornar este pedido?",
         summary:
           "The customer was charged twice for the same order and the second charge has not settled.",
         details: [
-          { label: "Amount", value: "$128.40" },
-          { label: "Customer", value: "Northwind Traders" },
-          { label: "Order", value: "2043" },
+          { label: "Valor", value: "$128.40" },
+          { label: "Cliente", value: "Northwind Traders" },
+          { label: "Pedido", value: "2043" },
         ],
         approveLabel: "Refund",
       },
@@ -274,7 +274,7 @@ export const GALLERY: GalleryComponent[] = [
   },
   {
     name: "askChoice",
-    title: "Choice",
+    title: "Escolha",
     kind: "decision",
     description:
       "Ask the person to pick one of several options, and WAIT for their answer. Use when you cannot sensibly guess which one they meant. You are given the id of the option they chose.",
@@ -283,18 +283,18 @@ export const GALLERY: GalleryComponent[] = [
     preview: {
       status: "executing",
       args: {
-        title: "Which environment should this go to?",
+        title: "Para qual ambiente isto deve ir?",
         summary: "The build is green and nothing else is queued.",
         options: [
           {
             id: "staging",
-            label: "Staging",
-            description: "Safe, and reversible",
+            label: "Homologação",
+            description: "Seguro, e reversível",
           },
           {
             id: "production",
-            label: "Production",
-            description: "Live customers",
+            label: "Produção",
+            description: "Clientes ativos",
           },
         ],
       },

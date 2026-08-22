@@ -45,7 +45,7 @@ export function identityProviderListQueryOptions() {
     queryKey: identityProviderKeys.list(),
     queryFn: (): Promise<IdentityProvider[]> =>
       client("/api/admin/identity-providers", "providers", {
-        fallback: "Could not load identity providers",
+        fallback: "Não foi possível carregar os provedores de identidade",
       }),
   });
 }

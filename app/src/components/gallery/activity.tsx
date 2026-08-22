@@ -276,7 +276,7 @@ export const GALLERY: GalleryComponent[] = [
      * only means to show what the component looks like. Admin draws it as unpreviewable instead.
      */
     name: "showActivityReport",
-    title: "Activity report",
+    title: "Relatório de atividade",
     kind: "card",
     description:
       "Show what this deployment has actually been doing, read from its own records rather than from anything you know. Use for 'what have the Bots been up to' and 'what has been refused'. You choose the report and the period; the figures are read for you and you will not see them.",

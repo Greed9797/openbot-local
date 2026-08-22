@@ -346,7 +346,7 @@ function Catalogue({
                       id: event.target.value,
                     }))
                   }
-                  placeholder="name (lower-case)"
+                  placeholder="nome (minúsculas)"
                   value={custom.id}
                 />
               </Field>

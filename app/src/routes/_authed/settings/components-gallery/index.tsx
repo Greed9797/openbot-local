@@ -29,7 +29,7 @@ function RouteComponent() {
 
   return (
     <PageShell
-      description="The pieces a Bot can draw in a conversation instead of describing something in prose. Which of them any one Bot may use is an administrator's decision."
+      description="As peças que um Bot desenha numa conversa em vez de descrever algo em prosa. Quais delas cada Bot pode usar é decisão de um administrador."
       title="Galeria de componentes"
     >
       {components.isPending ? null : components.error ? (

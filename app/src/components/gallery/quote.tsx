@@ -24,14 +24,14 @@ type QuoteArgs = z.infer<typeof QuoteCardProps>;
 export function QuoteCard({ quote, attribution, context }: Partial<QuoteArgs>) {
   if (!quote) {
     return (
-      <GalleryFrame title="Quotation">
+      <GalleryFrame title="Citação">
         <p className="text-sm text-muted-foreground">Não há nada para citar.</p>
       </GalleryFrame>
     );
   }
 
   return (
-    <GalleryFrame caption={context} title="Quotation">
+    <GalleryFrame caption={context} title="Citação">
       <blockquote className="border-l-2 border-border pl-4">
         <p className="text-sm leading-relaxed">{quote}</p>
         {attribution ? (
@@ -47,7 +47,7 @@ export function QuoteCard({ quote, attribution, context }: Partial<QuoteArgs>) {
 export const GALLERY: GalleryComponent[] = [
   {
     name: "showQuote",
-    title: "Quotation",
+    title: "Citação",
     kind: "card",
     description:
       "Show a quotation with its attribution. Use when the exact words matter, something a person said, or a line from a document you were given.",

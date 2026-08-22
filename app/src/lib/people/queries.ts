@@ -37,7 +37,7 @@ export function peopleListQueryOptions() {
     queryKey: peopleKeys.list(),
     queryFn: (): Promise<Person[]> =>
       client("/api/admin/people", "people", {
-        fallback: "Could not load people",
+        fallback: "Não foi possível carregar as pessoas",
       }),
   });
 }

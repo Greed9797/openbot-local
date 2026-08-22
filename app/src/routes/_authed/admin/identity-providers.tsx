@@ -104,7 +104,7 @@ function IdentityProvidersPage() {
           Add a provider
         </Button>
       }
-      description="A company's own identity provider, by SAML or OpenID Connect. Somebody types their email address and the domain decides which one they are sent to."
+      description="O provedor de identidade da própria empresa, por SAML ou OpenID Connect. A pessoa digita o e-mail dela e o domínio decide para qual deles ela é mandada."
       title="Provedores de identidade"
     >
       <PageSection
@@ -230,7 +230,7 @@ function IdentityProvidersPage() {
               {draft.protocol === "saml" ? (
                 <>
                   <div className="space-y-1.5">
-                    <Label htmlFor="entryPoint">URL de sign-on</Label>
+                    <Label htmlFor="entryPoint">URL de entrada</Label>
                     <Input
                       id="entryPoint"
                       onChange={(event) =>

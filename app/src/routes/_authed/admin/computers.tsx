@@ -64,7 +64,7 @@ function ComputersPage() {
 
   return (
     <PageShell
-      description="Each Bot's browser and the profile it keeps. A profile is what makes a Bot still signed in tomorrow, and resetting one signs it out of everything."
+      description="O navegador de cada Bot e o perfil que ele guarda. O perfil é o que mantém um Bot logado amanhã, e zerar um desloga ele de tudo."
       title="Computers"
     >
       {problem ? (

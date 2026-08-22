@@ -13,7 +13,7 @@ export function createChannelMutationOptions(queryClient: QueryClient) {
       const response = await client("/api/channels", {
         method: "POST",
         body: { agentIds },
-        fallback: "Could not start a channel",
+        fallback: "Não foi possível começar um canal",
       });
       return ((await response.json()) as { channel: AgentChannel }).channel;
     },

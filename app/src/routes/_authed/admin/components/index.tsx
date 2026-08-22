@@ -26,7 +26,7 @@ function RouteComponent() {
 
   return (
     <PageShell
-      description="What each Bot may answer with. Every published component is available to every Bot; switch one off here and that Bot is never told about it. Each change and each refusal is a row in Audit."
+      description="Com o que cada Bot pode responder. Todo componente publicado fica disponível para todo Bot; desligue um aqui e aquele Bot nunca fica sabendo dele. Cada mudança e cada recusa vira uma linha na Auditoria."
       title="Componentes de interface"
     >
       {/*

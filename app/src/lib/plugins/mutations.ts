@@ -71,13 +71,13 @@ export function setPluginGrantMutationOptions(queryClient: QueryClient) {
             ref: variables.ref,
             agentId: variables.agentId,
           },
-          fallback: "That Agent could not be changed.",
+          fallback: "Não foi possível alterar esse Agente.",
         });
         return;
       }
       await client(
         `/api/plugins/grants?kind=${variables.kind}&ref=${encodeURIComponent(variables.ref)}&agentId=${encodeURIComponent(variables.agentId)}`,
-        { method: "DELETE", fallback: "That Agent could not be changed." },
+        { method: "DELETE", fallback: "Não foi possível alterar esse Agente." },
       );
     },
     onSuccess: () => invalidatePlugins(queryClient),
@@ -152,7 +152,7 @@ export function saveSkillMutationOptions(queryClient: QueryClient) {
          * The server refuses for reasons a form cannot check — a slug somebody else already owns is
          * the common one — and paraphrasing that would throw away the only part worth reading.
          */
-        fallback: "The skill could not be saved.",
+        fallback: "Não foi possível salvar a habilidade.",
       }),
     onSuccess: () => invalidatePlugins(queryClient),
   });

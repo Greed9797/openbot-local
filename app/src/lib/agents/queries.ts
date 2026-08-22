@@ -50,7 +50,7 @@ export function agentListQueryOptions(hidden = false) {
     queryKey: agentKeys.list(hidden),
     queryFn: (): Promise<AgentProfile[]> =>
       client(`/api/agents${hidden ? "?hidden=true" : ""}`, "agents", {
-        fallback: "Could not load coworkers",
+        fallback: "Não foi possível carregar os colegas",
       }),
   });
 }
@@ -60,7 +60,7 @@ export function agentQueryOptions(agentId: string) {
     queryKey: agentKeys.detail(agentId),
     queryFn: (): Promise<AgentProfile> =>
       client(`/api/agents/${agentId}`, "agent", {
-        fallback: "Could not load this coworker",
+        fallback: "Não foi possível carregar este colega",
       }),
   });
 }

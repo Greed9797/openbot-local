@@ -31,16 +31,19 @@ type AuditEvent = {
 };
 
 const FILTERS = [
-  { label: "Everything", search: "" },
-  { label: "Computer actions", search: "?eventType=computer.action_allowed" },
+  { label: "Tudo", search: "" },
   {
-    label: "Blocked",
+    label: "Ações no computador",
+    search: "?eventType=computer.action_allowed",
+  },
+  {
+    label: "Bloqueado",
     // Include every refusal family, not only browser policy refusals.
     search:
       "?eventType=computer.action_refused,mcp.call_rejected,component.refused,component.function_refused",
   },
   {
-    label: "Did not happen",
+    label: "Não aconteceu",
     // A stalled stream belongs here. It is the same complaint as an action that was allowed and then
     // did not take: nothing was refused, and nothing came of it either.
     search: "?eventType=computer.action_failed,agent.stream_stalled",

@@ -35,7 +35,9 @@ async function signInOptions(): Promise<SignInOptions> {
   // returns without a key quietly yields undefined: the screen would say no provider is configured
   // while the server was saying it has one.
   const body = (await (
-    await client("/api/capabilities", { fallback: "Could not load sign-in" })
+    await client("/api/capabilities", {
+      fallback: "Não foi possível carregar a entrada",
+    })
   ).json()) as { authProviders?: AuthProviderId[]; ssoConfigured?: boolean };
 
   return {
