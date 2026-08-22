@@ -521,6 +521,26 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
         await mkdir(STATE_DIR, { recursive: true });
         await mkdir(WORKSPACE, { recursive: true });
 
+        /*
+         * REESCRITO A CADA TURNO, e não uma vez no boot.
+         *
+         * O `/workspace` é o único lugar onde o Bot pode escrever, e ele escreve: pedido para
+         * limpar o diretório, apagou o `AGENTS.md` junto — as próprias instruções que o mandam usar
+         * o navegador. O efeito é uma degradação que parece envelhecimento do serviço: funciona
+         * logo depois do boot, e horas depois o mesmo pedido volta respondido de memória, sem nada
+         * no log dizendo o que mudou. Passei um bom tempo procurando isso em cache, plugins e
+         * orçamento de contexto antes de olhar se o arquivo ainda existia.
+         *
+         * Um `writeFile` por turno custa menos que qualquer forma de detectar que ele sumiu.
+         */
+        if (COMPUTER_TOOLS) {
+          await writeFile(
+            `${WORKSPACE}/AGENTS.md`,
+            INSTRUÇÕES_DO_WORKSPACE,
+            "utf8",
+          );
+        }
+
         // Só o primeiro turno chega a esperar; depois disto a promessa já resolveu.
         if (preparação) await preparação;
 
@@ -932,7 +952,6 @@ async function registerComputerTools(): Promise<void> {
     );
     return;
   }
-  await writeFile(`${WORKSPACE}/AGENTS.md`, INSTRUÇÕES_DO_WORKSPACE, "utf8");
   console.info("Ferramentas de computador registradas para o Codex.");
   await verificarFerramentas().catch((erro: unknown) => {
     // Reportado e seguido em frente: o probe é diagnóstico, e derrubar o Bot porque o diagnóstico
