@@ -181,6 +181,52 @@ const ENDEREÇO =
  * tenta decidir por ele: apenas conta o que aconteceu no turno e diz. Um aviso honesto vale mais que
  * uma tentativa de convencimento que funciona em dois turnos de três.
  */
+/** Os endereços que aparecem num texto, reduzidos ao host e sem `www.`. */
+export function hostsEm(texto: string): string[] {
+  const achados = texto.match(
+    /\bhttps?:\/\/[^\s)"'<>]+|\b[\w-]+\.(?:com\.br|com|org|net|io|dev|gov|edu)\b/gi,
+  );
+  if (!achados) return [];
+  return [
+    ...new Set(
+      achados.map((bruto) => {
+        const comEsquema = bruto.startsWith("http")
+          ? bruto
+          : `https://${bruto}`;
+        try {
+          return new URL(comEsquema).hostname
+            .replace(/^www\./, "")
+            .toLowerCase();
+        } catch {
+          return bruto.toLowerCase();
+        }
+      }),
+    ),
+  ];
+}
+
+/**
+ * O aviso de quando o Bot abriu página, mas não a que foi pedida.
+ *
+ * O aviso de "nenhuma página foi aberta" não alcança este caso — uma página FOI aberta, o contador
+ * de ações sobe, e a resposta sai com a confiança de quem leu. Foi exatamente assim que, perguntado
+ * pelo site da W3bsite, o Bot abriu um domínio parecido, caiu numa página de venda e respondeu o
+ * título dela.
+ *
+ * Conservador de propósito: só fala quando o pedido trazia endereço, o Bot abriu alguma coisa, e
+ * NENHUM dos endereços abertos bate com nenhum dos pedidos. Ter aberto ao menos um dos pedidos basta
+ * para calar — um Bot que abre a página certa e mais duas não errou nada.
+ */
+export function avisoDeOutraPagina(
+  pergunta: string,
+  abertos: string[],
+): string {
+  const pedidos = hostsEm(pergunta);
+  if (pedidos.length === 0 || abertos.length === 0) return "";
+  if (abertos.some((aberto) => pedidos.includes(aberto))) return "";
+  return `\n\n---\n_Atenção: o pedido falava de ${pedidos.join(", ")}, e o que foi aberto neste turno foi ${abertos.join(", ")}._`;
+}
+
 export function perguntaDoTurno(input: RunAgentInput): string {
   const ultima = [...(input.messages ?? [])]
     .reverse()
@@ -375,6 +421,8 @@ type CodexItem = {
   message?: string;
   command?: string;
   aggregated_output?: string;
+  /** Presente em `mcp_tool_call`. É daqui que sai a página que o Bot realmente pediu para abrir. */
+  arguments?: { url?: string };
 };
 
 type CodexEvent = {
@@ -431,6 +479,8 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
       /** True once Codex has actually said something, which decides what a silent turn reports. */
       let answered = false;
       let usouFerramenta = false;
+      /** Os hosts que o Bot mandou abrir, para comparar com os que a pessoa pediu. */
+      const abertos: string[] = [];
       /** Recoverable problems Codex reported mid-turn. Shown only if nothing else was. */
       const notices: string[] = [];
       const openText = () => {
@@ -605,6 +655,8 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
              */
             if (item.type === "mcp_tool_call") {
               usouFerramenta = true;
+              const alvo = item.arguments?.url;
+              if (alvo) abertos.push(...hostsEm(alvo));
             }
 
             if (item.type === "agent_message" && item.text) {

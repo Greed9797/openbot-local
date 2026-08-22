@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   avisoDeNaoLeitura,
+  avisoDeOutraPagina,
   codexArguments,
+  hostsEm,
   INSTRUÇÕES_DO_WORKSPACE,
   perguntaDoTurno,
   turnPrompt,
@@ -246,5 +248,48 @@ describe("as instruções que o Bot lê como do projeto", () => {
     ]) {
       expect(INSTRUÇÕES_DO_WORKSPACE).toContain(ferramenta);
     }
+  });
+});
+
+describe("abriu, mas não a página pedida", () => {
+  /**
+   * O aviso de "nenhuma página foi aberta" não alcança este caso: uma página FOI aberta, o contador
+   * de ações sobe, e a resposta sai com a confiança de quem leu. Foi assim que, perguntado pelo site
+   * da W3bsite, o Bot abriu um domínio parecido, caiu numa página de venda e respondeu o título dela.
+   */
+  test("avisa quando nada do que foi aberto bate com o que foi pedido", () => {
+    const aviso = avisoDeOutraPagina("Abra https://w3bsite.com.br", [
+      "w3bsite.com",
+    ]);
+
+    expect(aviso).toContain("w3bsite.com.br");
+    expect(aviso).toContain("w3bsite.com");
+  });
+
+  /** Abrir a página certa e mais duas não é erro nenhum. */
+  test("cala quando ao menos um dos endereços pedidos foi aberto", () => {
+    expect(
+      avisoDeOutraPagina("Abra https://example.com", [
+        "example.com",
+        "iana.org",
+      ]),
+    ).toBe("");
+  });
+
+  test("pedido sem endereço não tem o que comparar", () => {
+    expect(avisoDeOutraPagina("me resume a conversa", ["example.com"])).toBe(
+      "",
+    );
+  });
+
+  test("turno que não abriu nada é assunto do outro aviso", () => {
+    expect(avisoDeOutraPagina("Abra https://example.com", [])).toBe("");
+  });
+
+  test("www e maiúsculas não fazem dois hosts virarem diferentes", () => {
+    expect(hostsEm("Veja https://WWW.Example.com/x")).toEqual(["example.com"]);
+    expect(avisoDeOutraPagina("abra www.example.com", ["example.com"])).toBe(
+      "",
+    );
   });
 });
