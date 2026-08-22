@@ -35,7 +35,10 @@ export type DockerComputerConfig = {
   baseUrl: string;
   supervisorToken?: string;
   token?: string;
+  /** Se um Bot pode ser REGISTRADO num endereço interno. Ver a nota em `allowPrivateNavigation`. */
   allowPrivateHosts: boolean;
+  /** Se o NAVEGADOR do Bot pode entrar na rede deste deployment. Outra pergunta, outra variável. */
+  allowPrivateNavigation: boolean;
   policy?: ActionPolicy;
 };
 
@@ -43,7 +46,10 @@ export type SharedComputerConfig = {
   provider: "shared";
   baseUrl: string;
   token?: string;
+  /** Se um Bot pode ser REGISTRADO num endereço interno. Ver a nota em `allowPrivateNavigation`. */
   allowPrivateHosts: boolean;
+  /** Se o NAVEGADOR do Bot pode entrar na rede deste deployment. Outra pergunta, outra variável. */
+  allowPrivateNavigation: boolean;
   policy?: ActionPolicy;
 };
 
@@ -445,6 +451,18 @@ function computerConfig(environment: Environment): ComputerConfig | undefined {
 
   const allowPrivateHosts =
     optional(environment, "AGENT_COMPUTER_ALLOW_PRIVATE_HOSTS") === "true";
+  /**
+   * Se o navegador do Bot pode entrar na rede deste deployment.
+   *
+   * Variável própria, e desligada por padrão. Antes ela era a mesma de cima, e ali a resposta tem de
+   * ser "sim" — `AGENT_COMPUTER_ALLOW_PRIVATE_HOSTS` é o que permite REGISTRAR um Bot em
+   * `http://agent-codex:4202`, que é onde os Bots deste deployment moram. Uma variável respondendo
+   * duas perguntas fez a permissão necessária numa abrir a outra: o navegador do Bot lia
+   * `http://openbot:3001/api/admin/connectors`, a API que o governa, com privilégio de
+   * administrador num deployment de usuário único.
+   */
+  const allowPrivateNavigation =
+    optional(environment, "COMPUTER_ALLOW_PRIVATE_NAVIGATION") === "true";
   const policy = actionPolicy(environment);
 
   const supervisorUrl = url(environment, "COMPUTER_SUPERVISOR_URL");
@@ -454,6 +472,7 @@ function computerConfig(environment: Environment): ComputerConfig | undefined {
       provider: "docker",
       baseUrl: supervisorUrl,
       allowPrivateHosts,
+      allowPrivateNavigation,
       ...(supervisorToken ? { supervisorToken } : {}),
       ...(computerToken ? { token: computerToken } : {}),
       ...(policy ? { policy } : {}),
@@ -469,6 +488,7 @@ function computerConfig(environment: Environment): ComputerConfig | undefined {
     provider: "shared",
     baseUrl,
     allowPrivateHosts,
+    allowPrivateNavigation,
     ...(computerToken ? { token: computerToken } : {}),
     ...(policy ? { policy } : {}),
   };

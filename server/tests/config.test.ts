@@ -401,6 +401,7 @@ describe("deployment configuration", () => {
       supervisorToken: "supervisor-token",
       token: "computer-token",
       allowPrivateHosts: false,
+      allowPrivateNavigation: false,
     });
   });
 
@@ -417,6 +418,7 @@ describe("deployment configuration", () => {
       baseUrl: "http://localhost:4100",
       token: "computer-token",
       allowPrivateHosts: false,
+      allowPrivateNavigation: false,
     });
   });
 

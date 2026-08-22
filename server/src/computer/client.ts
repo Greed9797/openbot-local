@@ -57,7 +57,19 @@ export class StaleSnapshotError extends Error {
  */
 export type ComputerTransportOptions = {
   token?: string;
-  allowPrivateHosts?: boolean;
+  /**
+   * Se o Bot pode NAVEGAR para dentro da rede deste deployment.
+   *
+   * Separado de `AGENT_COMPUTER_ALLOW_PRIVATE_HOSTS`, que responde outra pergunta: se um Bot pode
+   * ser REGISTRADO num endereço interno — e a resposta ali é sim, porque `http://agent-codex:4202`
+   * é exatamente onde os Bots deste deployment moram. As duas viviam na mesma variável, então
+   * permitir o registro dos próprios Bots abria a rede interna para a navegação deles.
+   *
+   * O que isso valia na prática: `http://openbot:3001/api/admin/connectors` respondia ao navegador
+   * do Bot, e num deployment de usuário único toda chamada que alcança aquela porta é de
+   * administrador. Um Bot alcançando a API que o governa.
+   */
+  allowPrivateNavigation?: boolean;
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
 };
@@ -87,6 +99,8 @@ export interface ComputerTransport {
     botId: string,
     url: string,
   ): Promise<NavigateResult>;
+  /** Ler sem abrir. Passa pelo mesmo guarda de destino que `navigate`. */
+  fetchPage(baseUrl: string, botId: string, url: string): Promise<unknown>;
 }
 
 /**
@@ -184,18 +198,43 @@ export function createComputerTransport(
     botId: string,
     url: string,
   ): Promise<NavigateResult> {
+    return post<NavigateResult>(baseUrl, botId, "/navigate", {
+      url: aprovarDestino(url),
+    });
+  }
+
+  /**
+   * O mesmo guarda de `navigate`, e é o ponto: ler rápido é abrir uma página.
+   *
+   * `fetch` chegou depois, servido por outro motor, e passou direto — o gateway o governava pela
+   * política e pela auditoria, mas nada olhava PARA ONDE ele apontava. Medido: pedir
+   * `http://openbot:3001/api/admin/connectors` devolvia a resposta da própria API que governa este
+   * Bot, e num deployment de usuário único toda chamada que alcança aquela porta é de administrador.
+   *
+   * Um caminho de leitura sem o guarda do outro é o guarda inteiro contornado por quem escrever
+   * "leia" em vez de "abra".
+   */
+  async function fetchPage(
+    baseUrl: string,
+    botId: string,
+    url: string,
+  ): Promise<unknown> {
+    return post<unknown>(baseUrl, botId, "/fetch", {
+      url: aprovarDestino(url),
+    });
+  }
+
+  function aprovarDestino(url: string): string {
     const verdict = checkNavigationTarget(url, {
-      allowPrivateHosts: options.allowPrivateHosts,
+      allowPrivateHosts: options.allowPrivateNavigation,
     });
     if (!verdict.allowed) {
       throw new NavigationRefusedError(verdict.reason);
     }
-    return post<NavigateResult>(baseUrl, botId, "/navigate", {
-      url: verdict.url,
-    });
+    return verdict.url;
   }
 
-  return { call, post, navigate };
+  return { call, post, navigate, fetchPage };
 }
 
 /** Map agent-computer responses to errors that a caller can act on. */

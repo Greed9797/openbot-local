@@ -220,7 +220,16 @@ const computerGateway = computerProvider
       // when the snapshot was taken by another server. A Map here would be blank on every replica
       // but the one that snapshotted, and the boundary would decide with no element to look at.
       snapshots: createSnapshotStore(database),
-      allowPrivateHosts: config.computer?.allowPrivateHosts,
+      /*
+       * A variável PRÓPRIA da navegação, e não a do registro de agentes.
+       *
+       * `AGENT_COMPUTER_ALLOW_PRIVATE_HOSTS` responde se um Bot pode ser registrado num endereço
+       * interno — e a resposta é sim, porque é onde os Bots deste deployment moram. Enquanto as duas
+       * perguntas dividiram a mesma variável, permitir o registro abria a rede interna para a
+       * navegação: medido, o navegador do Bot lia `http://openbot:3001/api/admin/connectors`, que é
+       * a API que o governa, com privilégio de administrador num deployment de usuário único.
+       */
+      allowPrivateNavigation: config.computer?.allowPrivateNavigation,
       token: config.computer?.token,
     })
   : undefined;

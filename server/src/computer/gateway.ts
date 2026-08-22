@@ -94,8 +94,12 @@ export type ComputerGatewayOptions = {
   auditStore: AuditStore;
   /** Absent denies everything. See evaluateActionPolicy. */
   policy: () => ActionPolicy | undefined;
-  /** True on a laptop, where browsing private network addresses is required. */
-  allowPrivateHosts?: boolean;
+  /**
+   * Se o Bot pode navegar para dentro da rede deste deployment. Verdadeiro num laptop, onde navegar
+   * para endereços privados é o caso normal. Ver a nota em `ComputerTransportOptions`: isto NÃO é a
+   * mesma pergunta que registrar um Bot num endereço interno, e as duas viviam na mesma variável.
+   */
+  allowPrivateNavigation?: boolean;
   /** The secret that agent-computer requires on each request. */
   token?: string;
   /** An injectable fetch implementation for focused gateway tests. */
@@ -212,8 +216,8 @@ export function createComputerGateway(
   const { provider, auditStore } = options;
   const transport = createComputerTransport({
     ...(options.token ? { token: options.token } : {}),
-    ...(options.allowPrivateHosts !== undefined
-      ? { allowPrivateHosts: options.allowPrivateHosts }
+    ...(options.allowPrivateNavigation !== undefined
+      ? { allowPrivateNavigation: options.allowPrivateNavigation }
       : {}),
     ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
   });
@@ -654,8 +658,17 @@ export function createComputerGateway(
      * proíbe alcançar devagar.
      */
     fetch(botId: string, actor: ActionActor, url: string) {
-      return govern("computer_fetch", botId, actor, { targetUrl: url }, () =>
-        post<FetchResult>(botId, "/fetch", { url }),
+      return govern(
+        "computer_fetch",
+        botId,
+        actor,
+        { targetUrl: url },
+        async () =>
+          transport.fetchPage(
+            await locate(botId),
+            botId,
+            url,
+          ) as Promise<FetchResult>,
       );
     },
 

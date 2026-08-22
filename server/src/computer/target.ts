@@ -36,6 +36,23 @@ const INTERNAL_HOSTNAMES = new Set([
   "[::1]",
 ]);
 
+/**
+ * Um nome sem ponto é um vizinho de rede, não um site.
+ *
+ * `openbot`, `postgres`, `agent-codex`: é assim que os serviços de um mesmo compose se chamam, e
+ * nenhum deles é um IP privado nem está na lista de nomes internos — então os dois testes acima
+ * deixavam passar. Medido no deployment: o navegador do Bot abria
+ * `http://openbot:3001/api/admin/connectors` e lia a resposta da própria API que o governa, com
+ * privilégio de administrador num deployment de usuário único.
+ *
+ * Nenhum endereço público é assim. Um nome registrado tem ponto — `exemplo.com`, `localhost.` com o
+ * ponto final —, e um endereço numérico cai nos testes de IP. O que sobra sem ponto é a rede de
+ * dentro.
+ */
+function ehNomeDeServiço(hostname: string): boolean {
+  return !hostname.includes(".") && !hostname.includes(":");
+}
+
 export type TargetVerdict =
   | { allowed: true; url: string }
   | { allowed: false; reason: string };
@@ -141,7 +158,11 @@ export function checkNavigationTarget(
     return { allowed: true, url: url.toString() };
   }
 
-  if (INTERNAL_HOSTNAMES.has(hostname) || isPrivateIpv4(hostname)) {
+  if (
+    INTERNAL_HOSTNAMES.has(hostname) ||
+    isPrivateIpv4(hostname) ||
+    ehNomeDeServiço(hostname)
+  ) {
     return {
       allowed: false,
       reason:

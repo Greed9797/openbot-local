@@ -7,10 +7,10 @@ import {
 
 function clientWith(
   handler: (url: string, init?: RequestInit) => Promise<Response> | Response,
-  allowPrivateHosts = false,
+  allowPrivateNavigation = false,
 ) {
   const transport = createComputerTransport({
-    allowPrivateHosts,
+    allowPrivateNavigation,
     fetchImpl: ((url: string, init?: RequestInit) =>
       Promise.resolve(handler(url, init))) as unknown as typeof fetch,
   });
@@ -21,6 +21,7 @@ function clientWith(
     screenshot: () => transport.call(baseUrl, botId, "/screenshot"),
     click: (input: unknown, signal?: AbortSignal) =>
       transport.post(baseUrl, botId, "/click", input, signal),
+    fetchPage: (url: string) => transport.fetchPage(baseUrl, botId, url),
   };
 }
 
@@ -309,5 +310,49 @@ describe("the deadline a call is given", () => {
     await expect(
       transport.post("http://computer", "bot-1", "/exec", {}, undefined, 5_000),
     ).resolves.toBeDefined();
+  });
+});
+
+describe("ler rápido é abrir uma página", () => {
+  /**
+   * `fetch` chegou depois de `navigate`, servido por outro motor, e passava direto: o gateway o
+   * governava pela política e pela auditoria, mas nada olhava PARA ONDE ele apontava. Medido no
+   * deployment: pedir `http://openbot:3001/api/admin/connectors` devolvia a resposta da própria API
+   * que governa o Bot, e num deployment de usuário único toda chamada que alcança aquela porta é de
+   * administrador.
+   *
+   * Um caminho de leitura sem o guarda do outro é o guarda inteiro contornado por quem escrever
+   * "leia" em vez de "abra".
+   */
+  test("recusa a rede interna do deployment, como navigate faz", () => {
+    const client = clientWith(() => Response.json({}));
+
+    expect(
+      client.fetchPage("http://openbot:3001/api/admin/connectors"),
+    ).rejects.toBeInstanceOf(NavigationRefusedError);
+    expect(client.fetchPage("http://127.0.0.1:5432")).rejects.toBeInstanceOf(
+      NavigationRefusedError,
+    );
+  });
+
+  /** O endereço de metadados não é alcançável nem para quem optou pela rede interna. */
+  test("recusa o endereço de metadados mesmo com a rede interna liberada", () => {
+    const client = clientWith(() => Response.json({}), true);
+
+    expect(
+      client.fetchPage("http://169.254.169.254/latest/meta-data/"),
+    ).rejects.toBeInstanceOf(NavigationRefusedError);
+  });
+
+  test("uma página pública passa", async () => {
+    let pedido = "";
+    const client = clientWith((_url, init) => {
+      pedido = String((init?.body as string) ?? "");
+      return Response.json({ url: "https://example.com", title: "Example" });
+    });
+
+    await client.fetchPage("https://example.com");
+
+    expect(pedido).toContain("example.com");
   });
 });
