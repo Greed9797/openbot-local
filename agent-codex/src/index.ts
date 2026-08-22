@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { BaseEvent, RunAgentInput } from "@ag-ui/core";
 import { EventEncoder } from "@ag-ui/encoder";
@@ -750,7 +750,31 @@ se mudou.
 - Não diga que um endereço "não abriu" sem ter tentado abrir com as ferramentas.
 `;
 
+/**
+ * Tira do caminho o que a conta trouxe junto com a credencial.
+ *
+ * Entrar com uma assinatura do ChatGPT sincroniza para o `CODEX_HOME` as skills de sistema do CLI e
+ * o catálogo de plugins da conta — Canva, Clay, GitHub, Drive, HeyGen e mais uma dúzia, 47 MB. Nada
+ * disso serve a um Bot que dirige um navegador, e o custo não é só espaço: medido em bateria, o Bot
+ * gastou turno abrindo `/bin/sh` para ler o SKILL.md de um plugin antes de responder a uma pergunta
+ * sobre uma página, e a pessoa do outro lado viu isso no lugar da resposta.
+ *
+ * Apagado a cada boot em vez de uma vez: o CLI ressincroniza quando quer, e um deployment que
+ * dependesse de alguém ter limpado o volume à mão voltaria ao ruído sem ninguém entender por quê.
+ * Se um dia isto apagar algo necessário, o sintoma é ruidoso — uma ferramenta some — e não silencioso.
+ */
+async function limparBagagemDaConta(): Promise<void> {
+  for (const caminho of [
+    `${CODEX_HOME}/plugins/cache`,
+    `${CODEX_HOME}/skills/.system`,
+  ]) {
+    await rm(caminho, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 async function registerComputerTools(): Promise<void> {
+  await limparBagagemDaConta();
+
   const add = Bun.spawn(
     [CODEX_BIN, "mcp", "add", "openbot", "--", "bun", MCP_SERVER_PATH],
     { env: { ...process.env, CODEX_HOME }, stdout: "pipe", stderr: "pipe" },
