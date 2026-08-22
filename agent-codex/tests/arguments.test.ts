@@ -194,3 +194,24 @@ describe("dizer quando a resposta não foi lida", () => {
     expect(perguntaDoTurno(input)).toBe("abra https://exemplo.dev");
   });
 });
+
+describe("o caminho não governado fica fechado", () => {
+  /**
+   * A instrução no `AGENTS.md` pede que o Bot não busque página com `curl`, e ele obedece — medido.
+   * Mas obedecer é escolha, e a web alcançada por fora do gateway não passa pela política nem
+   * aparece no audit. Isto aqui é a trava, e ela não depende de o modelo concordar.
+   */
+  test("o shell do Bot não alcança a internet", () => {
+    const args = codexArguments(null);
+
+    expect(args).toContain("sandbox_workspace_write.network_access=false");
+    expect(args).not.toContain("sandbox_workspace_write.network_access=true");
+  });
+
+  /** Vale para o turno com ferramentas também, que é justamente o que teria motivo para burlar. */
+  test("vale igual quando as ferramentas estão ligadas", () => {
+    const args = codexArguments(null, { OPENBOT_RUN: "r" });
+
+    expect(args).toContain("sandbox_workspace_write.network_access=false");
+  });
+});

@@ -288,12 +288,22 @@ export function codexArguments(
     "--json",
     "--skip-git-repo-check",
     /*
-     * Without this the sandbox has no network, and a Bot that cannot fetch a page or reach an
-     * internal service is not much of a coworker. It is the second of the two settings that decide
-     * what this process can actually do; see the sandbox note above for the first.
+     * O SHELL DO BOT NÃO ALCANÇA A INTERNET, e isto é a trava, não a instrução.
+     *
+     * `AGENTS.md` pede que ele não busque página com `curl`, e medido, ele obedece — mas obedecer é
+     * escolha, e a web alcançada por fora do gateway não passa pela política nem aparece no audit.
+     * Um Bot que PODE contornar o registro contorna no dia em que o modelo achar que deve.
+     *
+     * Custa nada em capacidade: o servidor MCP roda FORA do sandbox, então as ferramentas continuam
+     * abrindo páginas — verificado listando e chamando com a rede desligada. O que some é só o
+     * caminho não governado.
+     *
+     * Efeito colateral medido: sem rede o modelo às vezes AFIRMA ter rodado o comando e inventa a
+     * saída ("Código HTTP: 200"). A trava impede o acesso, não a mentira sobre ele — por isso a
+     * resposta também conta o que foi executado de verdade.
      */
     "-c",
-    "sandbox_workspace_write.network_access=true",
+    "sandbox_workspace_write.network_access=false",
   ];
 
   if (MODEL) options.push("--model", MODEL);
@@ -783,6 +793,56 @@ async function limparBagagemDaConta(): Promise<void> {
   }
 }
 
+/**
+ * As ferramentas existem MESMO, ou só foram registradas?
+ *
+ * `codex mcp add` sair com zero prova que uma linha foi escrita num arquivo de configuração, e nada
+ * além disso. O servidor pode não subir — falta de variável, dependência quebrada, caminho errado —
+ * e o sintoma é o pior possível: o Codex simplesmente não oferece ferramenta nenhuma, sem erro em
+ * lugar nenhum, e o Bot responde de memória com a mesma cara de quem leu a página.
+ *
+ * Perdi meia hora atrás dessa diferença. O probe fala com o servidor pelo protocolo, do jeito que o
+ * Codex falaria, e diz no log quantas ferramentas ele de fato oferece.
+ */
+async function verificarFerramentas(): Promise<void> {
+  const servidor = Bun.spawn(["bun", MCP_SERVER_PATH], {
+    env: {
+      ...process.env,
+      // Valores de fachada: o servidor só precisa deles para não sair no boot. Nenhuma chamada é
+      // feita ao gateway aqui, então nada disto é usado para autorizar coisa nenhuma.
+      OPENBOT_AGENT_TOKEN: process.env.OPENBOT_AGENT_TOKEN?.trim() || "probe",
+      OPENBOT_RUN: "probe-de-boot",
+      OPENBOT_BOT_ID: "self",
+    },
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  const pedir = (id: number, method: string) =>
+    `${JSON.stringify({ jsonrpc: "2.0", id, method, params: method === "initialize" ? { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "boot", version: "1" } } : {} })}\n`;
+
+  servidor.stdin.write(pedir(1, "initialize"));
+  servidor.stdin.write(pedir(2, "tools/list"));
+  servidor.stdin.flush();
+
+  const prazo = setTimeout(() => servidor.kill(), 10_000);
+  const saida = await new Response(servidor.stdout).text();
+  clearTimeout(prazo);
+  servidor.kill();
+
+  const quantas = (saida.match(/"name":"[a-z_]+"/g) ?? []).length;
+  if (quantas === 0) {
+    console.warn(
+      `O servidor de ferramentas subiu sem oferecer nada. O Bot vai responder sem navegador. stderr: ${(
+        await new Response(servidor.stderr).text()
+      ).trim()}`,
+    );
+    return;
+  }
+  console.info(`Ferramentas de computador conferidas: ${quantas} disponíveis.`);
+}
+
 async function registerComputerTools(): Promise<void> {
   await limparBagagemDaConta();
 
@@ -805,6 +865,11 @@ async function registerComputerTools(): Promise<void> {
   }
   await writeFile(`${WORKSPACE}/AGENTS.md`, INSTRUÇÕES_DO_WORKSPACE, "utf8");
   console.info("Ferramentas de computador registradas para o Codex.");
+  await verificarFerramentas().catch((erro: unknown) => {
+    // Reportado e seguido em frente: o probe é diagnóstico, e derrubar o Bot porque o diagnóstico
+    // falhou trocaria "talvez sem ferramentas" por "sem Bot nenhum".
+    console.warn(`Não foi possível conferir as ferramentas: ${String(erro)}`);
+  });
 }
 
 if (import.meta.main) {
