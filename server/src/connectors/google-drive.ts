@@ -1,5 +1,6 @@
 import { createSign } from "node:crypto";
 import type { ConnectorAdapter, ConnectorChange } from "./contract";
+import { refreshAccessToken } from "./google-oauth";
 
 /**
  * O conector do Google Drive.
@@ -8,9 +9,11 @@ import type { ConnectorAdapter, ConnectorChange } from "./contract";
  * parava aí: nenhuma linha do produto chamava o Drive. A tela dizia conectado e nenhum documento
  * jamais chegava.
  *
- * Autentica como conta de serviço com delegação em todo o domínio. Não é OAuth de usuário de
- * propósito — não há navegador para consentir num deployment que roda sozinho, e o que a organização
- * quer conceder é "leia estas pastas", não "leia o Drive de quem clicou".
+ * Autentica de duas formas, e a escolha não é de estilo. Conta de serviço com delegação em todo o
+ * domínio é o caminho de uma organização: concede "leia estas pastas" uma vez, no Admin, sem depender
+ * de ninguém clicar. Ela exige um domínio, então numa conta @gmail.com não existe — e falha do pior
+ * jeito, com token válido e zero arquivos. Para essa, o caminho é OAuth, onde quem consente é a
+ * pessoa dona do Drive. Ver google-oauth.ts.
  *
  * O que ele NÃO faz: ranquear, resumir ou embutir. Ele traz o texto e quem procura é a busca do
  * PostgreSQL. Ver knowledge-search.ts para o porquê de não haver embeddings aqui.
@@ -47,12 +50,34 @@ export type ServiceAccount = {
   private_key: string;
 };
 
-export type DriveOptions = {
+/** Uma organização concedendo acesso a pastas suas. Exige um domínio com Admin Console. */
+export type ServiceAccountCredential = {
+  kind: "service-account";
   /** O JSON da conta de serviço, como veio do Google. */
   serviceAccount: ServiceAccount;
   /** Quem a conta de serviço personifica. Sem isto ela só vê o próprio Drive, que é vazio. */
   impersonationSubject: string;
-  /** As pastas de topo declaradas em knowledge.yaml. Vazio significa o Drive inteiro. */
+};
+
+/** Uma pessoa que consentiu no navegador. O único caminho para conta pessoal. */
+export type OAuthCredential = {
+  kind: "oauth";
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+};
+
+export type DriveCredential = ServiceAccountCredential | OAuthCredential;
+
+export type DriveOptions = {
+  credential: DriveCredential;
+  /**
+   * As pastas de topo a varrer, pelo nome. Vazio significa o Drive inteiro, que é o normal numa
+   * conta pessoal.
+   *
+   * Filhos diretos, não a árvore inteira: o Drive casa `'id' in parents` contra o pai imediato, e
+   * uma varredura recursiva custaria uma listagem por subpasta em toda passada completa.
+   */
   roots: string[];
   /** Trocável nos testes, para não falar com o Google. */
   fetch?: typeof globalThis.fetch;
@@ -140,14 +165,28 @@ export function createGoogleDriveAdapter(
     /* Trinta segundos de folga: um token que expira em trânsito volta como 401 sem explicação. */
     if (token && token.expiresAt - 30_000 > clock()) return token.value;
 
+    if (options.credential.kind === "oauth") {
+      const renewed = await refreshAccessToken(
+        options.credential,
+        options.credential.refreshToken,
+        call,
+      );
+      token = {
+        value: renewed.accessToken,
+        expiresAt: clock() + renewed.expiresInSeconds * 1000,
+      };
+      return token.value;
+    }
+
+    const account = options.credential;
     const response = await call(TOKEN_URL, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
         assertion: buildAssertion(
-          options.serviceAccount,
-          options.impersonationSubject,
+          account.serviceAccount,
+          account.impersonationSubject,
           clock(),
         ),
       }),

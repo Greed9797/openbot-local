@@ -7,6 +7,8 @@ export type ConnectorStatus = {
   name: string;
   roots: string[];
   configured: boolean;
+  /** De quem é a conta conectada. Ausente quando nada foi conectado ainda. */
+  account?: string | null;
 };
 
 export const connectorKeys = {

@@ -1,6 +1,6 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   AgentNotFoundError,
   createAgentProfileStore,
@@ -34,6 +34,20 @@ const store = createChannelStore(
   profileStore,
   createThreadIdentity("test-deployment"),
 );
+
+/**
+ * Agora, segundo o relógio que carimba `created_at`.
+ *
+ * A ordenação compara um instante que este processo escolhe (`at`) com um que o Postgres carimba
+ * (`created_at`). Se os dois relógios divergirem — e num container eles divergem —, um canal criado
+ * antes ganha carimbo depois, e o teste falha sem que a ordenação tenha errado nada. Ancorar os dois
+ * lados no mesmo relógio tira o relógio da equação e deixa só a regra sob teste.
+ */
+async function databaseNow(): Promise<Date> {
+  const [row] = (await database.execute(sql`select now() as at`)) as unknown as
+    | { at: Date | string }[];
+  return new Date(row?.at ?? Date.now());
+}
 
 const testPrefix = `channel-activity-${randomUUID()}`;
 const createdUserIds: string[] = [];
@@ -196,12 +210,11 @@ describe("channel activity", () => {
     const owner = await createUser();
     const agentId = await createAgent(owner);
     const used = await createChannel(owner, [agentId]);
+    // Um minuto atrás no relógio do banco, não no deste processo — ver `databaseNow`. A propriedade
+    // sob teste é a regra de ordenação, não qual das duas máquinas está adiantada.
     await store.recordActivity(owner, used.id, {
       agentId,
-      // A minute back, not `now`. The activity time comes from this process and `created_at` comes
-      // from Postgres, so two events written in the same instant are ordered by whichever clock is
-      // marginally ahead. The property under test is the ordering rule, not the tie-break.
-      at: new Date(Date.now() - 60_000),
+      at: new Date((await databaseNow()).getTime() - 60_000),
       text: "Said something a minute ago.",
     });
 
@@ -223,7 +236,7 @@ describe("channel activity", () => {
 
     await store.recordActivity(owner, busy.id, {
       agentId,
-      at: new Date(),
+      at: new Date((await databaseNow()).getTime() + 60_000),
       text: "Said something.",
     });
 

@@ -436,7 +436,6 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
         // Accumulated rather than emitted per chunk, because a tool call's arguments arrive in
         // fragments and AG-UI wants one call. The framework hands back assembled `tool_calls` on the
         // final message, which is precisely the plumbing agent-bot does by hand.
-        let finalMessage: AIMessage | null = null;
         /** Calls seen on the way past, so a result can be paired with the arguments it answered. */
         const pending = new Map<
           string,
@@ -470,7 +469,6 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
           if (event.event === "on_chat_model_end") {
             const output = event.data?.output as AIMessage | undefined;
             if (output) {
-              finalMessage = output;
               for (const call of output.tool_calls ?? []) {
                 pending.set(call.id ?? call.name, {
                   name: call.name,

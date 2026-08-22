@@ -131,8 +131,11 @@ describe("descobrir o que mudou", () => {
     });
 
     const adapter = createGoogleDriveAdapter({
-      serviceAccount: account,
-      impersonationSubject: "a@b.com",
+      credential: {
+        kind: "service-account",
+        serviceAccount: account,
+        impersonationSubject: "a@b.com",
+      },
       roots: [],
       fetch: drive.fetch,
     });
@@ -164,8 +167,11 @@ describe("descobrir o que mudou", () => {
     });
 
     const found = await createGoogleDriveAdapter({
-      serviceAccount: account,
-      impersonationSubject: "a@b.com",
+      credential: {
+        kind: "service-account",
+        serviceAccount: account,
+        impersonationSubject: "a@b.com",
+      },
       roots: [],
       fetch: drive.fetch,
     }).discover({ cursor: null, mode: "sync" });
@@ -192,8 +198,11 @@ describe("descobrir o que mudou", () => {
     });
 
     const found = await createGoogleDriveAdapter({
-      serviceAccount: account,
-      impersonationSubject: "a@b.com",
+      credential: {
+        kind: "service-account",
+        serviceAccount: account,
+        impersonationSubject: "a@b.com",
+      },
       roots: [],
       fetch: drive.fetch,
     }).discover({ cursor: "50", mode: "sync" });
@@ -218,8 +227,11 @@ describe("descobrir o que mudou", () => {
     }) as unknown as typeof globalThis.fetch;
 
     const adapter = createGoogleDriveAdapter({
-      serviceAccount: account,
-      impersonationSubject: "a@b.com",
+      credential: {
+        kind: "service-account",
+        serviceAccount: account,
+        impersonationSubject: "a@b.com",
+      },
       roots: [],
       fetch,
     });

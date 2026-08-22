@@ -1,5 +1,4 @@
 import { serve } from "bun";
-import { sql } from "drizzle-orm";
 import { mintRunAssertion } from "./agents/callback-token";
 import { createAgentProfileStore } from "./agents/profile-store";
 import { createRuntimeAgentLoader } from "./agents/runtime-agents";

@@ -633,6 +633,141 @@ export function createApp(
     },
   );
 
+  /**
+   * Começa o consentimento no navegador de quem está pedindo.
+   *
+   * O `redirectUri` vem do cliente porque é o endereço pelo qual ESTE navegador alcança o
+   * deployment, e num deployment em loopback atrás de um túnel esse endereço só o navegador conhece —
+   * o servidor se vê como 127.0.0.1:3001 e o Google recusaria o retorno. Não é uma abertura: o Google
+   * só aceita URIs que já estejam registradas no Console daquele client id, então um valor inventado
+   * aqui é recusado lá antes de qualquer coisa acontecer.
+   */
+  app.post(
+    "/api/admin/connectors/google-drive/oauth/start",
+    requireUser,
+    async (context) => {
+      const denied = requireAdmin(context);
+      if (denied) return denied;
+      if (!connectorService?.startGoogleDriveOAuth) {
+        return context.json(
+          { error: "A conexão com o Google Drive não está configurada." },
+          503,
+        );
+      }
+      const body = (await context.req.json().catch(() => null)) as {
+        clientId?: unknown;
+        clientSecret?: unknown;
+        redirectUri?: unknown;
+      } | null;
+      const clientId =
+        typeof body?.clientId === "string" ? body.clientId.trim() : "";
+      const clientSecret =
+        typeof body?.clientSecret === "string" ? body.clientSecret.trim() : "";
+      const redirectUri =
+        typeof body?.redirectUri === "string" ? body.redirectUri.trim() : "";
+      if (!clientId || !clientSecret || !redirectUri) {
+        return context.json(
+          { error: "Informe o client id, o client secret e a URL de retorno." },
+          400,
+        );
+      }
+      try {
+        return context.json(
+          await connectorService.startGoogleDriveOAuth({
+            clientId,
+            clientSecret,
+            redirectUri,
+            actorUserId: context.var.actor.id,
+          }),
+        );
+      } catch (error) {
+        return context.json({ error: messageOf(error) }, 502);
+      }
+    },
+  );
+
+  /**
+   * A volta do Google.
+   *
+   * Redireciona em vez de responder JSON porque quem chega aqui é o navegador da pessoa, atrás de um
+   * clique no consentimento — uma tela de JSON no meio do caminho é um beco sem saída. O que deu
+   * errado viaja na query da tela de destino, que sabe mostrá-lo.
+   */
+  app.get(
+    "/api/admin/connectors/google-drive/oauth/callback",
+    requireUser,
+    async (context) => {
+      const denied = requireAdmin(context);
+      if (denied) return denied;
+      const destination = "/admin/connectors/google-drive";
+
+      const refusal = context.req.query("error");
+      if (refusal) {
+        // A pessoa clicou em "cancelar", e isso não é uma falha a reportar como erro do sistema.
+        return context.redirect(
+          `${destination}?erro=${encodeURIComponent(refusal)}`,
+        );
+      }
+
+      const code = context.req.query("code") ?? "";
+      const state = context.req.query("state") ?? "";
+      if (!code || !state || !connectorService?.completeGoogleDriveOAuth) {
+        return context.redirect(
+          `${destination}?erro=${encodeURIComponent("A volta do Google veio incompleta.")}`,
+        );
+      }
+
+      try {
+        const { account } = await connectorService.completeGoogleDriveOAuth({
+          code,
+          state,
+          actorUserId: context.var.actor.id,
+        });
+        return context.redirect(
+          `${destination}?conectado=${encodeURIComponent(account)}`,
+        );
+      } catch (error) {
+        return context.redirect(
+          `${destination}?erro=${encodeURIComponent(messageOf(error))}`,
+        );
+      }
+    },
+  );
+
+  /** Quais pastas varrer. Lista vazia significa o Drive inteiro. */
+  app.patch(
+    "/api/admin/connectors/google-drive/roots",
+    requireUser,
+    async (context) => {
+      const denied = requireAdmin(context);
+      if (denied) return denied;
+      if (!connectorService?.setGoogleDriveRoots) {
+        return context.json(
+          { error: "A conexão com o Google Drive não está configurada." },
+          503,
+        );
+      }
+      const body = (await context.req.json().catch(() => null)) as {
+        roots?: unknown;
+      } | null;
+      if (
+        !Array.isArray(body?.roots) ||
+        body.roots.some((name) => typeof name !== "string")
+      ) {
+        return context.json({ error: "Envie uma lista de pastas." }, 400);
+      }
+      try {
+        return context.json({
+          connector: await connectorService.setGoogleDriveRoots(
+            body.roots as string[],
+          ),
+        });
+      } catch (error) {
+        return context.json({ error: messageOf(error) }, 400);
+      }
+    },
+  );
+
   app.post(
     "/api/admin/connectors/google-drive/setup",
     requireUser,
@@ -922,6 +1057,16 @@ export function createApp(
   }
 
   return app;
+}
+
+/**
+ * A mensagem que o Google devolveu, e não uma genérica.
+ *
+ * "redirect_uri_mismatch", "invalid_client" e "access_denied" mandam a pessoa a três lugares
+ * diferentes do Console, e "não foi possível conectar" manda aos três.
+ */
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : "A conexão falhou.";
 }
 
 function googleDriveSetupInput(value: unknown, actorUserId: string) {

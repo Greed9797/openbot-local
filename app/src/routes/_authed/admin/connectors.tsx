@@ -29,16 +29,17 @@ function ConnectorsPage() {
   return (
     <PageShell
       description="As integrações disponíveis são definidas pelas fontes de conhecimento deste deployment."
-      title="Connectors"
+      title="Conectores"
     >
-      <PageSection title="Available">
+      <PageSection title="Disponíveis">
         {connectors.isPending ? null : connectors.error ? (
           <p className="mt-4 text-destructive text-sm" role="alert">
-            Could not load connectors.
+            Não foi possível carregar os conectores.
           </p>
         ) : connectors.data?.length === 0 ? (
           <PageEmpty>
-            No connectors. They come from this deployment's knowledge sources.
+            Nenhum conector. Eles vêm das fontes de conhecimento deste
+            deployment.
           </PageEmpty>
         ) : (
           <PageRows>
@@ -55,8 +56,22 @@ function ConnectorsPage() {
                   <ItemContent>
                     <ItemTitle>{connector.name}</ItemTitle>
                     <ItemDescription>
-                      Roots: {connector.roots.join(", ")} ·{" "}
-                      {connector.configured ? "Configured" : "Not configured"}
+                      {/*
+                       * A conta conectada em vez de "Configurado", quando existe uma.
+                       *
+                       * "Configurado" só dizia que uma credencial fora guardada — apareceu do mesmo
+                       * jeito para uma chave que nunca tinha falado com o Google. O nome da conta só
+                       * pode estar aqui se o Google confirmou de quem ela é.
+                       */}
+                      {connector.account
+                        ? `Conectado como ${connector.account}`
+                        : connector.configured
+                          ? "Configurado"
+                          : "Não conectado"}
+                      {" · "}
+                      {connector.roots.length > 0
+                        ? `Pastas: ${connector.roots.join(", ")}`
+                        : "Drive inteiro"}
                     </ItemDescription>
                   </ItemContent>
                   <ItemActions>
@@ -66,12 +81,12 @@ function ConnectorsPage() {
                         size="sm"
                         variant="outline"
                       >
-                        Set up
+                        {connector.account ? "Gerenciar" : "Conectar"}
                       </Button>
                     ) : (
-                      // Said rather than left blank, which would read as a control yet to arrive.
+                      // Dito, em vez de deixado em branco, que se leria como um controle a caminho.
                       <span className="text-muted-foreground text-sm">
-                        No setup screen yet
+                        Sem tela de configuração ainda
                       </span>
                     )}
                   </ItemActions>
