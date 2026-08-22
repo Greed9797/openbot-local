@@ -243,6 +243,17 @@ lugar, o guarda de destino recusa a rede de dentro, uma página pública ainda a
 navegador quando pedem uma página — esta última contra `httpbin.org/uuid`, que muda a cada leitura,
 então uma resposta certa não pode ter vindo de memória.
 
+## Quando o Bot responde sem usar o navegador
+
+```bash
+bash tools/diagnosticar.sh
+```
+
+Junta num lugar os seis sinais que respondem essa pergunta, na ordem de probabilidade e não na de
+elegância. Custou horas descobrir essa ordem: já procurei em cache, plugins da conta, orçamento de
+contexto e assinatura de execução antes de olhar se o arquivo de instruções ainda existia — que era
+a causa.
+
 ## O que roda sozinho
 
 A degradação deste Bot é silenciosa: ele continua respondendo. O defeito mais caro daqui — apagar as
