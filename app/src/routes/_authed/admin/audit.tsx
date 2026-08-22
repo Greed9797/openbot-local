@@ -92,7 +92,7 @@ function AuditPage() {
 
         {events.isPending ? null : events.isError ? (
           <p className="mt-4 text-destructive text-sm" role="alert">
-            The audit trail could not be loaded.
+            Não foi possível carregar a trilha de auditoria.
           </p>
         ) : rows.length === 0 ? (
           <PageEmpty>Nenhum evento corresponde a este filtro ainda.</PageEmpty>

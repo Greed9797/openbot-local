@@ -130,8 +130,9 @@ function PlaygroundPage() {
         <div>
           <h1 className="font-bold text-2xl">Playground</h1>
           <p className="mt-1 max-w-prose text-pretty text-muted-foreground text-sm leading-relaxed">
-            Write a component here and publish it without a deployment. What you
-            edit is a draft; a conversation only ever draws what is published.
+            Escreva um componente aqui e publique sem precisar de um deploy. O
+            que você edita é um rascunho; uma conversa só desenha o que está
+            publicado.
           </p>
         </div>
         <div className="flex gap-2">
@@ -142,7 +143,7 @@ function PlaygroundPage() {
             type="button"
             variant="outline"
           >
-            Save draft
+            Salvar rascunho
           </Button>
           <Button
             /* `publish` saves first, since publishing acts on the stored draft, not the editors. */
@@ -213,8 +214,8 @@ function PlaygroundPage() {
             <div className="mb-2 text-sm font-medium">Preview</div>
             {sample === null ? (
               <p className="text-sm text-destructive">
-                The sample arguments are not valid JSON, so there is nothing to
-                draw with.
+                Os argumentos de exemplo não são um JSON válido, então não há
+                com o que desenhar.
               </p>
             ) : (
               <OpenGenerativeUIActivityRenderer
@@ -277,7 +278,7 @@ function PlaygroundPage() {
                         type="button"
                         variant="ghost"
                       >
-                        Delete
+                        Excluir
                       </Button>
                     </div>
                   </li>
@@ -285,9 +286,9 @@ function PlaygroundPage() {
               </ul>
             )}
             <p className="border-border border-t px-4 py-2 text-muted-foreground text-xs">
-              Publishing makes it available to every Bot. Switch it off for a
-              particular Bot on the Components page, the same as for a component
-              this build ships.
+              Publicar deixa o componente disponível para todo Bot. Desligue
+              para um Bot específico na página de Componentes, do mesmo jeito
+              que se faz com um componente que já vem neste build.
             </p>
           </div>
         </div>
@@ -305,15 +306,15 @@ function PlaygroundPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete {deleting}?</DialogTitle>
+            <DialogTitle>Excluir {deleting}?</DialogTitle>
             <DialogDescription>
-              It is removed from this deployment. Any Bot that could draw it no
-              longer can, and this cannot be undone.
+              Ele é removido deste deployment. Nenhum Bot que desenhava isto
+              consegue mais, e isto não tem volta.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button onClick={() => setDeleting(null)} size="sm" variant="ghost">
-              Cancel
+              Cancelar
             </Button>
             <Button
               onClick={() => {
@@ -327,7 +328,7 @@ function PlaygroundPage() {
               size="sm"
               variant="destructive"
             >
-              Delete it
+              Excluir
             </Button>
           </DialogFooter>
         </DialogContent>

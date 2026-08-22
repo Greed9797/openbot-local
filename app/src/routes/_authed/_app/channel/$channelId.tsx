@@ -271,7 +271,7 @@ function ChannelBody({
   if (hasError || !channel) {
     return (
       <p className="p-8 text-sm text-destructive" role="alert">
-        Could not load this channel.
+        Não foi possível carregar este canal.
       </p>
     );
   }
@@ -281,7 +281,7 @@ function ChannelBody({
   if (!runtimeAgentId) {
     return (
       <p className="p-8 text-sm text-muted-foreground">
-        This channel has more than one coworker, which is not supported yet.
+        Este canal tem mais de um colega, e isso ainda não é suportado.
       </p>
     );
   }

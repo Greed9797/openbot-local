@@ -85,11 +85,11 @@ function PeoplePage() {
         ) : null}
         {people.isPending ? null : people.error ? (
           <p className="mt-4 text-destructive text-sm" role="alert">
-            Could not load people.
+            Não foi possível carregar as pessoas.
           </p>
         ) : people.data?.length === 0 ? (
           <PageEmpty>
-            Nobody has signed in yet. People appear here once they do.
+            Ninguém entrou ainda. As pessoas aparecem aqui assim que entrarem.
           </PageEmpty>
         ) : (
           <PageRows>

@@ -161,7 +161,7 @@ function SignScreen() {
             </div>
           ) : options?.sso ? null : (
             <p className="text-center text-sm text-muted-foreground">
-              No sign-in provider is configured for this deployment.
+              Nenhum provedor de entrada está configurado para este deployment.
             </p>
           )}
           {/*

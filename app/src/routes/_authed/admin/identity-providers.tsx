@@ -118,7 +118,7 @@ function IdentityProvidersPage() {
         ) : null}
         {providers.isPending ? null : providers.error ? (
           <p className="mt-4 text-destructive text-sm" role="alert">
-            Could not load identity providers.
+            Não foi possível carregar os provedores de identidade.
           </p>
         ) : providers.data?.length === 0 ? (
           <PageEmpty>
@@ -148,7 +148,7 @@ function IdentityProvidersPage() {
                       variant="destructive"
                     >
                       <IconTrash />
-                      Remove
+                      Remover
                     </Button>
                   </ItemActions>
                 </Item>
@@ -307,7 +307,7 @@ function IdentityProvidersPage() {
                 type="button"
                 variant="outline"
               >
-                Cancel
+                Cancelar
               </Button>
               <Button disabled={register.isPending} size="sm" type="submit">
                 {register.isPending ? "Adding…" : "Add"}

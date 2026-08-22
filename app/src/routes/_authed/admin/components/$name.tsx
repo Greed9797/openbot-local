@@ -107,7 +107,7 @@ function RouteComponent() {
     return (
       <PageShell backButton={BACK} title="Components">
         <p className="mt-8 text-destructive text-sm" role="alert">
-          Could not load components.
+          Não foi possível carregar os componentes.
         </p>
       </PageShell>
     );
@@ -128,8 +128,8 @@ function RouteComponent() {
           <EmptyHeader>
             <EmptyTitle>{name}</EmptyTitle>
             <EmptyDescription className="text-pretty">
-              It may have been renamed, or this deployment may no longer ship
-              it.
+              Pode ter sido renomeado, ou este deployment pode não trazer mais
+              ele.
             </EmptyDescription>
           </EmptyHeader>
           <Button
@@ -137,7 +137,7 @@ function RouteComponent() {
             size="sm"
             variant="outline"
           >
-            Back to components
+            Voltar aos componentes
           </Button>
         </Empty>
       </PageShell>
@@ -327,7 +327,8 @@ function ComponentDetail({
                 <ItemContent>
                   <ItemTitle>Não existe nesta build</ItemTitle>
                   <ItemDescription>
-                    Nothing here can draw it, whatever else is set.
+                    Ninguém aqui pode desenhar isto, independente do que mais
+                    estiver ligado.
                   </ItemDescription>
                 </ItemContent>
               </Item>
@@ -429,8 +430,8 @@ function ComponentDetail({
           <DialogHeader>
             <DialogTitle>Descrição</DialogTitle>
             <DialogDescription>
-              What the model reads when deciding to call this. It changes
-              nothing until the component is published.
+              O que o modelo lê ao decidir chamar isto. Não muda nada enquanto o
+              componente não for publicado.
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="mt-4">
@@ -450,7 +451,7 @@ function ComponentDetail({
               size="sm"
               variant="ghost"
             >
-              Cancel
+              Cancelar
             </Button>
             <Button
               onClick={() => {
@@ -459,7 +460,7 @@ function ComponentDetail({
               }}
               size="sm"
             >
-              Save
+              Salvar
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -474,15 +475,15 @@ function ComponentDetail({
           <DialogHeader>
             <DialogTitle>Disponível para</DialogTitle>
             <DialogDescription>
-              Switch a Bot off and it is never told this component exists, so it
-              cannot ask for it and does not apologise for not having it. Each
-              change takes effect immediately.
+              Desligue um Bot e ele nunca fica sabendo que este componente
+              existe, então não pede por ele nem se desculpa por não o ter. Cada
+              mudança vale na hora.
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="mt-4">
             {bots.length === 0 ? (
               <p className="text-muted-foreground text-sm">
-                There are no Bots yet.
+                Ainda não há Bots.
               </p>
             ) : (
               <div className="flex flex-col">
@@ -526,11 +527,11 @@ function ComponentDetail({
           <DialogHeader>
             <DialogTitle>Pode ler</DialogTitle>
             <DialogDescription>
-              A separate grant from Available to, and not implied by it: that
-              one decides who may draw this, and this decides what it may go and
-              fetch in order to draw itself. Until one of these is on it shows
-              only what the Bot passes it, and every read it does make is a row
-              in Audit. Each change takes effect immediately.
+              Uma permissão separada de "Disponível para", e não implicada por
+              ela: aquela decide quem pode desenhar isto, e esta decide o que
+              isto pode ir buscar para se desenhar. Enquanto nenhuma estiver
+              ligada, ele mostra só o que o Bot passar, e toda leitura que ele
+              fizer vira uma linha na Auditoria. Cada mudança vale na hora.
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="mt-4">

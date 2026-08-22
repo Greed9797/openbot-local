@@ -93,12 +93,13 @@ function BoundariesPage() {
     <PageShell
       description={
         <>
-          What every Bot may and may not do with its computer. Rules are checked
-          on every action before it happens, and a refusal is recorded in{" "}
+          O que cada Bot pode e não pode fazer com o computador dele. As regras
+          são conferidas em toda ação antes de ela acontecer, e uma recusa fica
+          registrada na{" "}
           <Link className="underline" to="/admin/audit">
-            Audit
+            Auditoria
           </Link>{" "}
-          with the rule that refused it.
+          com a regra que a recusou.
         </>
       }
       title="Limites"
@@ -134,12 +135,12 @@ function BoundariesPage() {
       <PageSection
         description={
           <>
-            Checked first, and a match ends it: nothing below is consulted and
-            the Bot is told which rule refused it. Rules are CEL, and can ask
-            about <code>tool.name</code>, <code>intent</code>,{" "}
-            <code>bot.id</code>, <code>actor.id</code>, <code>page.url</code> e{" "}
-            <code>page.host</code>, o elemento sobre o qual se age, a{" "}
-            <code>key</code> pressionada, o arquivo tocado, o{" "}
+            Conferida primeiro, e um casamento encerra a questão: nada abaixo é
+            consultado e o Bot é avisado de qual regra recusou. As regras são
+            CEL, e podem perguntar por <code>tool.name</code>,{" "}
+            <code>intent</code>, <code>bot.id</code>, <code>actor.id</code>,{" "}
+            <code>page.url</code> e <code>page.host</code>, o elemento sobre o
+            qual se age, a <code>key</code> pressionada, o arquivo tocado, o{" "}
             <code>command</code> sendo executado, e <code>mcp.server</code>,{" "}
             <code>mcp.tool</code> e <code>mcp.effect</code> para uma chamada às
             ferramentas de outra pessoa. Uma regra que não pode ser avaliada
@@ -151,7 +152,7 @@ function BoundariesPage() {
       >
         {policy.deny.length === 0 ? (
           <p className="mt-2 text-sm text-muted-foreground">
-            No rules. Every action is allowed and recorded.
+            Nenhuma regra. Toda ação é permitida e registrada.
           </p>
         ) : (
           <ul className="mt-2 divide-y divide-border rounded-md border border-border">
@@ -174,7 +175,7 @@ function BoundariesPage() {
                   size="sm"
                   variant="ghost"
                 >
-                  Remove
+                  Remover
                 </Button>
               </li>
             ))}

@@ -362,7 +362,7 @@ export function ComputerView({
                       <strong className="font-medium">
                         Você está no controle.
                       </strong>{" "}
-                      Click and type on the page as you normally would.
+                      Clique e digite na página como você faria normalmente.
                       {control?.reason ? ` ${control.reason}` : null}
                     </>
                   ) : (

@@ -109,8 +109,9 @@ function SkillsPage() {
       <PageShell
         description={
           <>
-            A skill is a named instruction you invoke with <code>/</code> and a
-            Bot follows. Yours are yours alone, and go on the Bots you own.
+            Uma habilidade é uma instrução com nome que você invoca com{" "}
+            <code>/</code> e um Bot segue. As suas são só suas, e vão para os
+            Bots que são seus.
           </>
         }
         title="Habilidades do agente"
@@ -145,7 +146,7 @@ function SkillsPage() {
             <Empty className="mt-4 h-[180px] border border-dashed">
               <EmptyHeader>
                 <EmptyTitle className="text-muted-foreground">
-                  You don't have any skills yet.
+                  Você ainda não tem habilidades.
                 </EmptyTitle>
               </EmptyHeader>
             </Empty>

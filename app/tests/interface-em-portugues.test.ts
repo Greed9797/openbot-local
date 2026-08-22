@@ -63,8 +63,41 @@ const DENUNCIAM =
  * faz uma lista de classes do Tailwind (`flex items-center gap-2 text-sm`) parecer uma frase em
  * inglês, e a varredura afoga em ruído exatamente o que ela existe para achar.
  */
+/** Uma propriedade, um identificador solto, a continuação de uma expressão. Não é frase. */
+function ehCodigo(texto: string): boolean {
+  return (
+    /^[\w$.]+\s*[:,]/.test(texto) ||
+    /^[a-z_]+,?$/.test(texto) ||
+    texto.startsWith(":") ||
+    texto.startsWith(".")
+  );
+}
+
 function textosJsxDe(linha: string): string[] {
   const pedacos: string[] = [];
+
+  /*
+   * Uma linha que é só texto.
+   *
+   * Um parágrafo JSX quebrado em várias linhas tem linhas do meio sem uma tag sequer: a frase começa
+   * numa e termina noutra, e nenhuma delas casa com "algo depois de um `>`". Uma linha sem nenhuma
+   * pontuação de programa e com três palavras é texto que alguém lê, não código.
+   */
+  const inteira = linha.trim();
+  /*
+   * `!ehCodigo` porque nem toda linha sem tag é uma frase. Uma propriedade de objeto
+   * (`name: profile.name,`) e um identificador solto numa chamada quebrada em linhas (`disabled`,
+   * `failed,`) também não têm pontuação de programa nenhuma na própria linha, e passariam por aqui
+   * como se fossem texto que alguém lê.
+   */
+  if (
+    inteira.length > 3 &&
+    !/[=;(){}[\]"`|<>]/.test(inteira) &&
+    !ehCodigo(inteira)
+  ) {
+    pedacos.push(inteira.replace(/\s+/g, " "));
+  }
+
   for (const encontrado of linha.matchAll(/>([^<>{}]+)(?:<|$)/g)) {
     const texto = (encontrado[1] ?? "").replace(/\s+/g, " ").trim();
     /*
@@ -121,8 +154,22 @@ describe("a interface fala português", () => {
 
     for (const path of arquivosDaInterface(ROOT)) {
       const linhas = readFileSync(path, "utf8").split("\n");
+      /*
+       * Um comentário de bloco só é reconhecível linha a linha se alguém contar as aberturas e os
+       * fechamentos. A linha do meio de um comentário longo, sem `*` na margem, é indistinguível de
+       * um parágrafo — e comentário é para quem lê o código, não para quem usa a tela.
+       */
+      let dentroDeComentario = false;
       linhas.forEach((linha, indice) => {
-        if (/^\s*(\/\/|\*|\/\*)/.test(linha)) return;
+        const abre = linha.includes("/*");
+        const fecha = linha.includes("*/");
+        if (dentroDeComentario) {
+          if (fecha) dentroDeComentario = false;
+          return;
+        }
+        if (abre && !fecha) dentroDeComentario = true;
+        if (abre) return;
+        if (/^\s*(\/\/|\*)/.test(linha)) return;
         const candidatos = [
           ...[...linha.matchAll(ATRIBUTOS)].map((m) => m[2] as string),
           ...[...linha.matchAll(TEXTO_SOLTO)].map((m) => m[1] as string),

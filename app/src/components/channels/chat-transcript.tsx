@@ -174,7 +174,7 @@ function Queued({
               onClick={onRemove}
               type="button"
             >
-              Remove
+              Remover
             </button>
           ) : null}
         </MessageFooter>

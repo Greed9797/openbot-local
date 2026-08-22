@@ -36,14 +36,14 @@ function RouteComponent() {
        */}
       {components.isPending ? null : components.error ? (
         <p className="mt-12 text-destructive text-sm" role="alert">
-          Could not load components.
+          Não foi possível carregar os componentes.
         </p>
       ) : components.data?.length === 0 ? (
         <Empty className="mt-12 min-h-[30dvh] border border-dashed">
           <EmptyHeader>
             <EmptyTitle>Nenhum componente ainda</EmptyTitle>
             <EmptyDescription className="text-pretty">
-              Components that your Agents can use will be shown here.
+              Os componentes que os seus Agentes podem usar aparecem aqui.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>

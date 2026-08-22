@@ -21,8 +21,8 @@ export function NewSkill() {
       <header>
         <h1 className="text-2xl font-semibold">Nova habilidade</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Uma instrução com nome que você invoca com <code>/</code>. It goes on
-          the Bots you own, and nobody else sees it.
+          Uma instrução com nome que você invoca com <code>/</code>. Ela vai
+          para os Bots que são seus, e mais ninguém a vê.
         </p>
       </header>
 

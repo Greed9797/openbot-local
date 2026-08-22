@@ -78,7 +78,7 @@ function RouteComponent() {
     return (
       <PageShell backButton={BACK} title="Galeria de componentes">
         <p className="mt-8 text-destructive text-sm" role="alert">
-          Could not load components.
+          Não foi possível carregar os componentes.
         </p>
       </PageShell>
     );

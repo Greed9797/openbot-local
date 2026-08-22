@@ -143,7 +143,7 @@ function PluginsPage() {
         <div className="mt-6">
           {isPending ? null : isError || !data ? (
             <p className="mt-4 text-destructive text-sm" role="alert">
-              Plugins could not be loaded.
+              Não foi possível carregar os plugins.
             </p>
           ) : tab === "catalogue" ? (
             <Catalogue
@@ -329,9 +329,10 @@ function Catalogue({
           <DialogHeader>
             <DialogTitle>Adicionar um servidor por URL</DialogTitle>
             <DialogDescription>
-              For a server that is not in the catalogue. Nobody has reviewed it,
-              so every tool it offers is treated as one that changes something,
-              and the server is recorded as custom wherever it appears.
+              Para um servidor que não está no catálogo. Ninguém o revisou,
+              então toda ferramenta que ele oferece é tratada como uma que muda
+              alguma coisa, e o servidor aparece marcado como próprio em todo
+              lugar.
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="mt-4">
@@ -402,7 +403,7 @@ function Catalogue({
               size="sm"
               variant="ghost"
             >
-              Cancel
+              Cancelar
             </Button>
             <Button
               disabled={!(custom.id && custom.title && custom.url)}
@@ -500,7 +501,7 @@ function Yours({
                 type="button"
                 variant="ghost"
               >
-                Remove
+                Remover
               </Button>
             </div>
           </div>
@@ -603,10 +604,10 @@ function Skills({
           <DialogHeader>
             <DialogTitle>Escrever uma habilidade para o deployment</DialogTitle>
             <DialogDescription>
-              The slug is what a person types after a slash, and the
-              instructions are added to the run when they do. Everybody here can
-              use it, and you decide which Bots have it. People write their own
-              on the Skills page.
+              O slug é o que a pessoa digita depois de uma barra, e as
+              instruções entram na execução quando ela digita. Todo mundo aqui
+              pode usar, e você decide quais Bots a têm. Cada pessoa escreve as
+              próprias na página de Habilidades.
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="mt-4">
@@ -674,7 +675,7 @@ function Skills({
           </DialogBody>
           <DialogFooter className="mt-4">
             <Button onClick={() => setWriting(false)} size="sm" variant="ghost">
-              Cancel
+              Cancelar
             </Button>
             <Button
               disabled={!(draft.slug && draft.title && draft.instructions)}
@@ -724,7 +725,7 @@ function Skills({
                     type="button"
                     variant="ghost"
                   >
-                    Remove
+                    Remover
                   </Button>
                 </div>
                 {skill.summary ? (

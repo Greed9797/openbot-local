@@ -218,7 +218,7 @@ export function SkillFields({
         </form.Subscribe>
         {onCancel ? (
           <Button onClick={onCancel} type="button" variant="outline">
-            Cancel
+            Cancelar
           </Button>
         ) : null}
       </div>

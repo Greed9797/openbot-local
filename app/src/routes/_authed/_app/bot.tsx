@@ -33,7 +33,7 @@ function RouteComponent() {
       <header className="border-b px-6 py-3">
         <h1 className="text-lg font-semibold">Bot de navegador</h1>
         <p className="text-sm text-muted-foreground">
-          Ask it to open a page and watch it work.
+          Peça para ele abrir uma página e acompanhe o trabalho.
         </p>
       </header>
       {/*

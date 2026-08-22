@@ -82,7 +82,7 @@ function AgentsScreen() {
               <Empty className="border border-dashed h-[180px]">
                 <EmptyHeader>
                   <EmptyTitle className="text-muted-foreground">
-                    You don't have any agents created.
+                    Você ainda não criou nenhum agente.
                   </EmptyTitle>
                 </EmptyHeader>
               </Empty>

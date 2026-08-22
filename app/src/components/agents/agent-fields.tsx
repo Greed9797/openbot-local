@@ -217,9 +217,10 @@ export function AgentFields({
                   </p>
                 ) : (
                   <p className="text-muted-foreground text-sm">
-                    Leave empty to use the built-in Bot. Anything that speaks
-                    AG-UI works. This server dials your agent, so an agent on
-                    your own machine has to be reachable from here.
+                    Deixe vazio para usar o Bot embutido. Qualquer coisa que
+                    fale AG-UI serve. É este servidor que disca para o seu
+                    agente, então um agente na sua máquina precisa ser
+                    alcançável a partir daqui.
                   </p>
                 )}
               </Field>
@@ -275,7 +276,7 @@ export function AgentFields({
         </form.Subscribe>
         {onCancel ? (
           <Button onClick={onCancel} type="button" variant="outline">
-            Cancel
+            Cancelar
           </Button>
         ) : null}
       </div>

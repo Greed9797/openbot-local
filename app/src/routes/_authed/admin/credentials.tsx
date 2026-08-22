@@ -111,7 +111,8 @@ function CredentialsPage() {
             <DialogHeader>
               <DialogTitle>Adicionar credencial</DialogTitle>
               <DialogDescription>
-                Held for this deployment and never shown again once saved.
+                Guardadas para este deployment e nunca mostradas de novo depois
+                de salvas.
               </DialogDescription>
             </DialogHeader>
             <DialogBody className="mt-4">
@@ -139,7 +140,7 @@ function CredentialsPage() {
                             <SelectGroup>
                               <SelectItem value="model">Model</SelectItem>
                               <SelectItem value="connector">
-                                Connector
+                                Conector
                               </SelectItem>
                             </SelectGroup>
                           </SelectContent>
@@ -232,7 +233,7 @@ function CredentialsPage() {
               </FieldGroup>
               {createCredential.error ? (
                 <p className="text-destructive text-sm" role="alert">
-                  Could not save the credential. Try again.
+                  Não foi possível salvar a credencial. Tente de novo.
                 </p>
               ) : null}
             </DialogBody>
@@ -243,7 +244,7 @@ function CredentialsPage() {
                 type="button"
                 variant="ghost"
               >
-                Cancel
+                Cancelar
               </Button>
               <form.Subscribe
                 selector={(state) => [state.canSubmit, state.isSubmitting]}
@@ -270,7 +271,7 @@ function CredentialsPage() {
       <PageSection title="Credenciais configuradas">
         {credentials.isPending ? null : credentials.error ? (
           <p className="mt-4 text-destructive text-sm" role="alert">
-            Could not load credentials.
+            Não foi possível carregar as credenciais.
           </p>
         ) : credentials.data?.length === 0 ? (
           <PageEmpty>Nenhuma credencial configurada.</PageEmpty>

@@ -171,7 +171,7 @@ export function AgentProfile({ agentId }: { agentId: string }) {
               });
             }}
           >
-            Start channel
+            Começar canal
           </Button>
 
           <Button
@@ -233,7 +233,7 @@ export function AgentProfile({ agentId }: { agentId: string }) {
                 <div className="flex flex-col gap-2">
                   <p className="text-sm">
                     Delete <span className="font-medium">{profile.name}</span>?
-                    This cannot be undone.
+                    Isto não tem volta.
                   </p>
                   {/* Cancel remains closest to the original Delete button position. */}
                   <Button
@@ -241,7 +241,7 @@ export function AgentProfile({ agentId }: { agentId: string }) {
                     onClick={() => setConfirmingDeleteId(null)}
                     variant="outline"
                   >
-                    Cancel
+                    Cancelar
                   </Button>
                   <Button
                     className="w-full text-sm!"
@@ -261,7 +261,7 @@ export function AgentProfile({ agentId }: { agentId: string }) {
                   onClick={() => setConfirmingDeleteId(agentId)}
                   variant="destructive"
                 >
-                  Delete
+                  Excluir
                 </Button>
               )}
             </>

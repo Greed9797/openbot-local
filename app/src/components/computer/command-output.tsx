@@ -42,7 +42,7 @@ export function CommandOutput({
       )}
       {timedOut ? (
         <p className="text-destructive text-xs">
-          It ran too long and was stopped.
+          Demorou demais e foi interrompido.
         </p>
       ) : null}
       {failed ? (
