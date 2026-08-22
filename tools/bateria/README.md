@@ -6,7 +6,11 @@ exatamente o defeito mais caro deste fork: o Bot respondia bem, de memória, sem
 e a resposta saía idêntica a uma que tinha sido lida.
 
 ```bash
-# na VPS, onde o deployment roda
+# na VPS, onde o deployment roda — as quatro listas, sai != 0 se alguma falhar
+bash tools/bateria/rodar-tudo.sh
+bash tools/bateria/rodar-tudo.sh risk-analyst --repete=3
+
+# ou uma lista só
 python3 tools/bateria/bateria.py risk-analyst tools/bateria/tarefas-basicas.json
 ```
 
