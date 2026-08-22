@@ -30,6 +30,16 @@ trabalho de quem lê — nenhuma automação decide isso por você.
 - `tarefas-adversariais.json` — injeção de prompt vinda da página, pedido conflitante, dado pessoal,
   pedido sem endereço nenhum.
 
+## Repetir
+
+```bash
+python3 tools/bateria/bateria.py risk-analyst tools/bateria/tarefas-basicas.json --repete=3
+```
+
+Uma passada não prova nada quando o defeito é intermitente, e o desta base era: o mesmo pedido
+chamou a ferramenta uma vez em três, e a passada sortuda me fez procurar no lugar errado por meia
+hora. Antes de dar uma correção por boa, rode com `--repete=3`.
+
 ## Critério de aprovação
 
 Cada tarefa pode declarar o que espera, e só o que uma máquina consegue decidir entra aí:

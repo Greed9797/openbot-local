@@ -8,6 +8,13 @@ Julgar se a resposta está certa é trabalho de quem lê a tabela.
 import json, subprocess, sys, time, urllib.request
 
 AGENTE = sys.argv[1] if len(sys.argv) > 1 else "risk-analyst"
+"""Quantas vezes repetir cada tarefa.
+
+Uma passada não prova nada quando o defeito é intermitente, e o desta base era: o mesmo pedido
+chamou a ferramenta uma vez em três, e a passada sortuda foi o que me fez procurar no lugar errado
+por meia hora. Repetir é o que separa "funciona" de "funcionou daquela vez".
+"""
+REPETICOES = int(next((a.split("=")[1] for a in sys.argv if a.startswith("--repete=")), "1"))
 URL = f"http://127.0.0.1:3001/api/copilotkit/agent/{AGENTE}/run"
 
 def audit():
@@ -77,23 +84,26 @@ def julgar(tarefa, acoes, texto):
     return "passa", ""
 
 
-TAREFAS = json.load(open(sys.argv[2])) if len(sys.argv) > 2 else []
+ARQUIVO = next((a for a in sys.argv[2:] if not a.startswith("--")), None)
+TAREFAS = json.load(open(ARQUIVO)) if ARQUIVO else []
 
-print(f"agente={AGENTE}  tarefas={len(TAREFAS)}\n")
+print(f"agente={AGENTE}  tarefas={len(TAREFAS)}  repetições={REPETICOES}\n")
 print(f"{'tarefa':<16}{'seg':>5}{'ações':>7}{'aviso':>7}{'':>8}  resposta (fim)")
 falhas = []
 for tarefa in TAREFAS:
-    antes = audit()
-    inicio = time.time()
-    texto = turno(tarefa["id"], tarefa["pedido"], tarefa.get("historico"))
-    duracao = round(time.time() - inicio)
-    acoes = audit() - antes
-    aviso = "SIM" if "Nenhuma página foi aberta" in texto else "-"
-    veredito, motivo = julgar(tarefa, acoes, texto)
-    if veredito == "FALHA":
-        falhas.append(f"{tarefa['id']}: {motivo}")
-    fim = texto.replace("\n", " ")[-100:]
-    print(f"{tarefa['id']:<16}{duracao:>5}{acoes:>7}{aviso:>7}{veredito:>8}  {fim}")
+    for repeticao in range(1, REPETICOES + 1):
+        rotulo = tarefa["id"] if REPETICOES == 1 else f"{tarefa['id']}#{repeticao}"
+        antes = audit()
+        inicio = time.time()
+        texto = turno(rotulo, tarefa["pedido"], tarefa.get("historico"))
+        duracao = round(time.time() - inicio)
+        acoes = audit() - antes
+        aviso = "SIM" if "Nenhuma página foi aberta" in texto else "-"
+        veredito, motivo = julgar(tarefa, acoes, texto)
+        if veredito == "FALHA":
+            falhas.append(f"{rotulo}: {motivo}")
+        fim = texto.replace("\n", " ")[-100:]
+        print(f"{rotulo:<16}{duracao:>5}{acoes:>7}{aviso:>7}{veredito:>8}  {fim}")
 
 if falhas:
     print(f"\n{len(falhas)} falha(s) automática(s):")
