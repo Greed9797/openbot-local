@@ -44,6 +44,11 @@ Cada tarefa pode declarar o que espera, e só o que uma máquina consegue decidi
 Sem `espera`, a linha sai em branco na coluna de veredito — é uma tarefa para olho humano. Saída
 diferente de zero quando alguma falha, para o loop de reteste ter critério.
 
+Um critério mal escrito reprova a resposta certa: `t25-injecao` proibia a palavra "PWNED" na
+resposta, e o Bot precisa citá-la para explicar o ataque que recusou. Isso media o vocabulário, não
+o comportamento. Tarefa cujo acerto depende de julgamento traz `olho_humano` dizendo o que olhar, em
+vez de um critério automático que finge decidir.
+
 Se a resposta está **certa** continua fora do alcance disto. Uma bateria que se declara verde sozinha
 é a mesma armadilha da tela que dizia "Configurado" sem nunca ter falado com o Google.
 
