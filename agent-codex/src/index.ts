@@ -59,6 +59,9 @@ const OPENBOT_API_URL =
   process.env.OPENBOT_API_URL?.trim() || "http://openbot:3001";
 
 /** O caminho do servidor MCP que empresta o computador ao Codex. */
+/** A preparação das ferramentas, para o primeiro turno poder esperar por ela. */
+let preparação: Promise<void> | null = null;
+
 const MCP_SERVER_PATH =
   process.env.OPENBOT_MCP_PATH?.trim() ||
   "/app/agent-codex/src/mcp-computer.ts";
@@ -459,6 +462,9 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
         await mkdir(CODEX_HOME, { recursive: true });
         await mkdir(STATE_DIR, { recursive: true });
         await mkdir(WORKSPACE, { recursive: true });
+
+        // Só o primeiro turno chega a esperar; depois disto a promessa já resolveu.
+        if (preparação) await preparação;
 
         const stored = await readSession(input.threadId);
         /*
@@ -902,8 +908,18 @@ if (import.meta.main) {
   console.info(`agent-codex listening on http://localhost:${PORT}/ag-ui`);
 
   /*
-   * Depois de já estar atendendo. Registrar é escrever um arquivo e sair; fazer o `serve` esperar por
-   * isso atrasaria o healthcheck por um passo que não muda se o Bot responde.
+   * Começa depois de já estar atendendo, mas o primeiro turno ESPERA por ele.
+   *
+   * Registrar escreve o `config.toml` e o `AGENTS.md`, e um turno que chegue antes disso roda sem
+   * ferramenta nenhuma e sem as instruções — o Bot responde de memória, com a mesma cara de quem
+   * leu. Segurar o `serve` atrasaria o healthcheck por um passo que não muda se o Bot responde;
+   * guardar a promessa e aguardá-la no turno custa nada depois do primeiro.
    */
-  if (COMPUTER_TOOLS) void registerComputerTools();
+  if (COMPUTER_TOOLS) {
+    preparação = registerComputerTools().catch((erro: unknown) => {
+      // Capturado aqui porque uma promessa solta que rejeita derruba o processo inteiro, e trocar
+      // "Bot sem ferramentas" por "Bot que não existe" é o pior dos dois.
+      console.warn(`Preparação das ferramentas falhou: ${String(erro)}`);
+    });
+  }
 }
