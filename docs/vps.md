@@ -226,6 +226,23 @@ Quatro coisas que essa ponte exigiu, e que falham de formas ilegíveis:
 - Registrar por `-c` na linha de comando **não funciona**: o Codex aceita a flag e ignora. O caminho
   que grava onde ele lê é `codex mcp add`.
 
+## Subir uma mudança
+
+```bash
+bash tools/deploy.sh                 # tudo
+bash tools/deploy.sh agent-codex     # um serviço
+```
+
+Faz o build, sobe, espera ficar saudável e roda `tools/smoke-deployment.sh`. Sai diferente de zero
+se o smoke reprovar, porque `docker compose up -d` sair com zero não diz nada sobre capacidade: um
+Bot sem ferramentas inicia, atende e conversa. Todo defeito sério deste fork foi descoberto horas
+depois do deploy que o introduziu, por alguém olhando uma resposta estranha.
+
+O smoke pergunta cinco coisas em menos de um minuto: as ferramentas subiram, as instruções estão no
+lugar, o guarda de destino recusa a rede de dentro, uma página pública ainda abre, e o Bot usa o
+navegador quando pedem uma página — esta última contra `httpbin.org/uuid`, que muda a cada leitura,
+então uma resposta certa não pode ter vindo de memória.
+
 ## O Bot usa mesmo as ferramentas?
 
 Esta é a pergunta que a suíte de testes não responde, e foi o defeito mais caro deste fork: o Bot
