@@ -278,6 +278,24 @@ services:
       # ninguém, e isto é a mesma decisão tomada para a telemetria do CopilotKit.
       LIGHTPANDA_DISABLE_TELEMETRY: "true"
       DO_NOT_TRACK: "1"
+    # O nome pelo qual ele é chamado nesta rede.
+    #
+    # Sem isto o upgrade WebSocket é recusado com "Expected 101 status code": o CDP valida o Host que
+    # recebe — é a mesma proteção contra DNS rebinding que o Chrome faz —, e um bind em 0.0.0.0
+    # anuncia loopback, então "lightpanda:9222" não constava. Pela porta publicada funcionava; pelo
+    # nome do serviço, não, que é justamente como o resto do stack o chama.
+    command:
+      - lightpanda
+      - serve
+      - --host
+      - 0.0.0.0
+      - --port
+      - "9222"
+      - --advertise-host
+      - lightpanda
+      - --obey-robots
+      - --log-level
+      - warn
     # Sem `ports`: só quem está na rede do compose alcança. Um CDP aberto é o controle do navegador.
     expose:
       - "9222"
