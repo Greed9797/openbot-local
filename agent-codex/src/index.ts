@@ -178,7 +178,19 @@ function runAssertionOf(input: RunAgentInput): string {
   return typeof props?.openbotRun === "string" ? props.openbotRun : "";
 }
 
-export function codexArguments(session: string | null): string[] {
+export function codexArguments(
+  session: string | null,
+  /**
+   * As credenciais desta execução, entregues ao servidor MCP.
+   *
+   * Vão como override por invocação e não no config.toml porque a declaração vale para um turno só,
+   * e porque dois turnos ao mesmo tempo reescrevendo o mesmo arquivo se atropelariam. O Codex NÃO
+   * repassa o próprio ambiente ao servidor MCP — descoberto com RUST_LOG, onde a única pista era o
+   * servidor saindo com "exige OPENBOT_AGENT_TOKEN"; sem `env` aqui ele não sobe e o modelo responde
+   * que a ferramenta não está instalada.
+   */
+  credentials?: Record<string, string>,
+): string[] {
   const options = [
     "--json",
     "--skip-git-repo-check",
@@ -193,6 +205,11 @@ export function codexArguments(session: string | null): string[] {
 
   if (MODEL) options.push("--model", MODEL);
   if (EFFORT) options.push("-c", `model_reasoning_effort="${EFFORT}"`);
+
+  for (const [key, value] of Object.entries(credentials ?? {})) {
+    /* TOML: as aspas do valor são parte da sintaxe, e um valor sem elas é lido como literal cru. */
+    options.push("-c", `mcp_servers.openbot.env.${key}="${value}"`);
+  }
 
   /*
    * `resume` takes a smaller set of flags than `exec` does: it accepts neither `--sandbox` nor `-C`,
@@ -284,29 +301,46 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
           );
         }
 
-        child = Bun.spawn([CODEX_BIN, ...codexArguments(session)], {
-          stdin: new TextEncoder().encode(prompt),
-          stdout: "pipe",
-          stderr: "pipe",
-          env: {
-            ...process.env,
-            CODEX_HOME,
-            /*
-             * Lidas pelo servidor MCP, não por este processo. Ficam no ambiente do filho e não em
-             * disco, porque valem para esta execução e mais nenhuma.
-             */
-            OPENBOT_API_URL,
-            OPENBOT_RUN: runAssertionOf(input),
-            /*
-             * `self`, e não um id.
-             *
-             * Este processo não sabe qual Bot está executando, e não precisa saber: a declaração diz,
-             * e foi este deployment que a assinou. Mandar um id daqui só criaria a chance de mandar o
-             * errado, que seria um Bot pedindo o computador de outro.
-             */
-            OPENBOT_BOT_ID: "self",
+        child = Bun.spawn(
+          [
+            CODEX_BIN,
+            ...codexArguments(
+              session,
+              COMPUTER_TOOLS
+                ? {
+                    OPENBOT_AGENT_TOKEN:
+                      process.env.OPENBOT_AGENT_TOKEN?.trim() ?? "",
+                    OPENBOT_API_URL,
+                    OPENBOT_RUN: runAssertionOf(input),
+                    OPENBOT_BOT_ID: "self",
+                  }
+                : undefined,
+            ),
+          ],
+          {
+            stdin: new TextEncoder().encode(prompt),
+            stdout: "pipe",
+            stderr: "pipe",
+            env: {
+              ...process.env,
+              CODEX_HOME,
+              /*
+               * Lidas pelo servidor MCP, não por este processo. Ficam no ambiente do filho e não em
+               * disco, porque valem para esta execução e mais nenhuma.
+               */
+              OPENBOT_API_URL,
+              OPENBOT_RUN: runAssertionOf(input),
+              /*
+               * `self`, e não um id.
+               *
+               * Este processo não sabe qual Bot está executando, e não precisa saber: a declaração diz,
+               * e foi este deployment que a assinou. Mandar um id daqui só criaria a chance de mandar o
+               * errado, que seria um Bot pedindo o computador de outro.
+               */
+              OPENBOT_BOT_ID: "self",
+            },
           },
-        });
+        );
 
         timer = setTimeout(() => {
           timedOut = true;
