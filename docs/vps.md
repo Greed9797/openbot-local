@@ -150,6 +150,50 @@ contra DNS rebinding: com bind em curinga o único aceito é `127.0.0.1:9222`, e
 serviço volta "Expected 101 status code". E a telemetria dele vem ligada de fábrica —
 `LIGHTPANDA_DISABLE_TELEMETRY=true` está no compose pela mesma razão que a do CopilotKit.
 
+## Conectar o Google Drive
+
+Duas formas, e a escolha não é de gosto — é de tipo de conta.
+
+**Conta pessoal (@gmail.com): OAuth, e só.** Conta de serviço com delegação em todo o domínio
+pressupõe um domínio; numa conta pessoal não existe Admin Console onde autorizar o client id. O
+Google aceita a chave, devolve um token válido *para a própria conta de serviço*, e a sincronização
+termina com sucesso e zero arquivos. É a falha mais cara deste conector porque nada nela parece
+falha.
+
+No Google Cloud, uma vez:
+
+1. Crie um projeto e ative a **Google Drive API**.
+2. Em *APIs e serviços → Tela de permissão OAuth*, publique o app (ou adicione a própria conta em
+   *Usuários de teste* — em modo Teste o refresh token expira em 7 dias).
+3. Em *Credenciais → Criar credenciais → ID do cliente OAuth*, tipo **Aplicativo da Web**.
+4. Em *URIs de redirecionamento autorizados*, cole exatamente o endereço que a tela
+   `/admin/connectors/google-drive` mostra. Ele depende da porta do seu túnel — com
+   `ssh -N -L 3011:127.0.0.1:3001` é
+   `http://localhost:3011/api/admin/connectors/google-drive/oauth/callback`. O Google abre exceção
+   ao HTTPS obrigatório para `localhost` e `127.0.0.1`, mas não trata os dois como sinônimos: use o
+   mesmo nome pelo qual você abre a página.
+5. Cole client id e secret na tela e clique em **Conectar com o Google**.
+
+Trocar a porta do túnel invalida o URI registrado (`redirect_uri_mismatch`). Registre as duas se for
+alternar.
+
+**Workspace com domínio próprio:** conta de serviço continua sendo melhor — concede as pastas uma
+vez, no Admin, e não morre quando quem clicou sair da empresa.
+
+Depois de conectar, o botão **Sincronizar agora** devolve a contagem de documentos. Essa contagem é
+a única resposta honesta a "funcionou?" — a tela dizer "conectado" não é. Pastas em branco significam
+o Drive inteiro; nomear pastas lê os arquivos diretamente dentro delas, sem descer nas subpastas.
+
+Armadilhas medidas aqui:
+
+- Sem `prompt=consent` o Google só emite refresh token na **primeira** concessão. Reconectar uma
+  conta que já autorizou o app volta com um access token de uma hora e nada mais, e a sincronização
+  para no dia seguinte. Se acontecer, remova o acesso em `myaccount.google.com/permissions`.
+- A conexão só é gravada depois que o Google confirma de quem é a conta. Antes disto, `/setup`
+  aceitava qualquer objeto JSON e a tela dizia "Configured" sem nunca ter falado com o Google.
+- As pastas do `knowledge.yaml` (`Policies`, `Compliance`) são do pacote de exemplo e não existem no
+  Drive de ninguém. Herdá-las na conexão produzia a sincronização de sucesso com zero documentos.
+
 ## What the Codex Bot can and cannot do
 
 It runs `codex exec` in `/workspace` with `--sandbox workspace-write` and network access. Inside that
