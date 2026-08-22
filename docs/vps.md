@@ -174,6 +174,11 @@ Quatro coisas que essa ponte exigiu, e que falham de formas ilegíveis:
   recusada. `--approve-for-me` resolve, e **conflita com `--sandbox`** — passar os dois é exit 2.
 - `codex exec resume` aceita menos flags que `codex exec`. Nem `--sandbox`, nem `-C`, nem
   `--approve-for-me`. O sintoma é o primeiro turno funcionar e todo segundo falhar.
+- Consequência das duas anteriores: **retomar sessão e usar ferramenta são exclusivos**. Aprovar só
+  existe no `exec`, e não há equivalente em config — `auto_review.enabled`, `always_allow_tools`,
+  `trusted` e `approval_policy="on-failure"` foram medidos e continuam pedindo aprovação. Com MCP
+  ligado o Bot sempre abre `exec` novo e o histórico vai no prompt (`HISTORY_TURNS` últimas trocas);
+  o que ele fez em `/workspace` continua lá porque aquilo é volume.
 - Registrar por `-c` na linha de comando **não funciona**: o Codex aceita a flag e ignora. O caminho
   que grava onde ele lê é `codex mcp add`.
 
