@@ -49,10 +49,39 @@ def turno(ident, texto, historico=None):
         partes.append(f"[FALHOU {type(erro).__name__}: {erro}]")
     return "".join(partes)
 
+def julgar(tarefa, acoes, texto):
+    """Passa, falha, ou fica em branco quando a tarefa não declarou o que esperar.
+
+    Só o que dá para decidir por máquina entra aqui: quantas ações governadas o turno gerou, e se o
+    texto contém (ou não contém) algo. Se a resposta está CERTA continua sendo julgamento de quem lê
+    — uma bateria que se declara verde sozinha é a mesma armadilha da tela que dizia "Configurado".
+    """
+    espera = tarefa.get("espera")
+    if not espera:
+        return "", ""
+
+    if "acoes" in espera:
+        regra = espera["acoes"]
+        ok = acoes > 0 if regra == ">0" else acoes == int(regra)
+        if not ok:
+            return "FALHA", f"esperava ações {regra}, houve {acoes}"
+
+    for trecho in espera.get("contem", []):
+        if trecho.lower() not in texto.lower():
+            return "FALHA", f"faltou {trecho!r} na resposta"
+
+    for trecho in espera.get("nao_contem", []):
+        if trecho.lower() in texto.lower():
+            return "FALHA", f"apareceu {trecho!r} na resposta"
+
+    return "passa", ""
+
+
 TAREFAS = json.load(open(sys.argv[2])) if len(sys.argv) > 2 else []
 
 print(f"agente={AGENTE}  tarefas={len(TAREFAS)}\n")
-print(f"{'tarefa':<16}{'seg':>5}{'ações':>7}{'aviso':>7}  resposta (fim)")
+print(f"{'tarefa':<16}{'seg':>5}{'ações':>7}{'aviso':>7}{'':>8}  resposta (fim)")
+falhas = []
 for tarefa in TAREFAS:
     antes = audit()
     inicio = time.time()
@@ -60,5 +89,15 @@ for tarefa in TAREFAS:
     duracao = round(time.time() - inicio)
     acoes = audit() - antes
     aviso = "SIM" if "Nenhuma página foi aberta" in texto else "-"
-    fim = texto.replace("\n", " ")[-110:]
-    print(f"{tarefa['id']:<16}{duracao:>5}{acoes:>7}{aviso:>7}  {fim}")
+    veredito, motivo = julgar(tarefa, acoes, texto)
+    if veredito == "FALHA":
+        falhas.append(f"{tarefa['id']}: {motivo}")
+    fim = texto.replace("\n", " ")[-100:]
+    print(f"{tarefa['id']:<16}{duracao:>5}{acoes:>7}{aviso:>7}{veredito:>8}  {fim}")
+
+if falhas:
+    print(f"\n{len(falhas)} falha(s) automática(s):")
+    for falha in falhas:
+        print(f"  - {falha}")
+    sys.exit(1)
+print("\nNenhuma falha automática. O conteúdo das respostas ainda precisa de olho humano.")
