@@ -195,22 +195,6 @@ export function codexArguments(session: string | null): string[] {
   if (EFFORT) options.push("-c", `model_reasoning_effort="${EFFORT}"`);
 
   /*
-   * O computador do Bot, como servidor MCP.
-   *
-   * Registrado por `-c` em vez de ficar no config.toml porque as credenciais mudam a cada execução:
-   * o processo herda o token e a declaração pelo ambiente, e escrevê-los num arquivo os deixaria em
-   * disco entre um turno e outro. Ver mcp-computer.ts.
-   */
-  if (COMPUTER_TOOLS) {
-    options.push(
-      "-c",
-      `mcp_servers.openbot.command="${CODEX_BIN === "codex" ? "bun" : CODEX_BIN}"`,
-      "-c",
-      `mcp_servers.openbot.args=["${MCP_SERVER_PATH}"]`,
-    );
-  }
-
-  /*
    * `resume` takes a smaller set of flags than `exec` does: it accepts neither `--sandbox` nor `-C`,
    * because a resumed session already carries the sandbox policy and working root it was started
    * with. Passing them anyway is not ignored, it is a usage error that exits 2 — which is exactly how
@@ -484,6 +468,38 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
  * Guarded so importing this file does not bind a port. The pure helpers above are unit-tested, and a
  * test run that started a real server would fight for the port with anything else running.
  */
+/**
+ * Registra o computador como servidor MCP no CODEX_HOME deste Bot.
+ *
+ * Uma vez, no boot, e não por execução. Tentei primeiro passar `-c mcp_servers.openbot.command=...`
+ * em cada turno; o Codex aceitava a flag sem reclamar e não oferecia ferramenta nenhuma ao modelo,
+ * que respondia "a ferramenta não está instalada nesta sessão" e seguia sem ela. `codex mcp add` é o
+ * caminho que grava no config.toml, que é de onde ele realmente lê.
+ *
+ * Só o comando vai para o disco. As credenciais continuam no ambiente do processo filho, que o
+ * servidor MCP herda, porque valem para uma execução e não para o arquivo.
+ */
+async function registerComputerTools(): Promise<void> {
+  const add = Bun.spawn(
+    [CODEX_BIN, "mcp", "add", "openbot", "--", "bun", MCP_SERVER_PATH],
+    { env: { ...process.env, CODEX_HOME }, stdout: "pipe", stderr: "pipe" },
+  );
+
+  if ((await add.exited) !== 0) {
+    /*
+     * Reportado e seguido em frente. Sem as ferramentas o Bot ainda conversa, e derrubar o processo
+     * trocaria "este Bot não abre páginas" por "este Bot não existe".
+     */
+    console.warn(
+      `Não foi possível registrar as ferramentas de computador: ${(
+        await new Response(add.stderr).text()
+      ).trim()}`,
+    );
+    return;
+  }
+  console.info("Ferramentas de computador registradas para o Codex.");
+}
+
 if (import.meta.main) {
   serve({
     port: PORT,
@@ -509,4 +525,10 @@ if (import.meta.main) {
   });
 
   console.info(`agent-codex listening on http://localhost:${PORT}/ag-ui`);
+
+  /*
+   * Depois de já estar atendendo. Registrar é escrever um arquivo e sair; fazer o `serve` esperar por
+   * isso atrasaria o healthcheck por um passo que não muda se o Bot responde.
+   */
+  if (COMPUTER_TOOLS) void registerComputerTools();
 }
