@@ -26,14 +26,10 @@ describe("the reason a turn ended", () => {
   test("says so plainly when nothing was reported, rather than inventing a cause", () => {
     // This is the one moment a person has no other way to find out what went wrong, so a guess here
     // would be worse than an admission.
-    expect(stoppedReason(undefined)).toBe(
-      "O Bot parou sem dizer por quê.",
-    );
+    expect(stoppedReason(undefined)).toBe("O Bot parou sem dizer por quê.");
     expect(stoppedReason("")).toBe("O Bot parou sem dizer por quê.");
     expect(stoppedReason("   ")).toBe("O Bot parou sem dizer por quê.");
-    expect(stoppedReason(new Error(""))).toBe(
-      "O Bot parou sem dizer por quê.",
-    );
+    expect(stoppedReason(new Error(""))).toBe("O Bot parou sem dizer por quê.");
     expect(stoppedReason({ message: "not a string or an Error" })).toBe(
       "O Bot parou sem dizer por quê.",
     );

@@ -627,6 +627,29 @@ export function createApp(
   // The Bot computer. Acting on a page needs the gateway and the policy it enforces, so both arrive
   // together or the routes are not mounted. An ungoverned computer is not a reduced feature. It is
   // the one shape of this feature that must not exist.
+  /**
+   * The same two credentials the tool callback checks, offered to the computer routes.
+   *
+   * One authoriser rather than two: a Bot that may spend its grants and a Bot that may drive its
+   * computer are the same Bot, proving the same things. Undefined when no agent store exists, and
+   * then the computer routes accept a session and nothing else.
+   */
+  const authoriseAgent = agentProfileStore
+    ? async (input: { presented: string; run: unknown }) => {
+        const verdict = await authoriseAgentCall({
+          presented: input.presented,
+          run: input.run,
+          encryptionKey: config.keyEncryptionKey,
+          legacyToken: config.agentToolToken ?? "",
+          lookup: async (hash) =>
+            (await agentProfileStore.agentForCallbackToken(hash)) ?? null,
+        });
+        return verdict.ok
+          ? { botId: verdict.botId, actorId: verdict.actorId }
+          : null;
+      }
+    : undefined;
+
   if (computerGateway && computerPolicy) {
     app.route(
       "/api/computers",
@@ -635,6 +658,7 @@ export function createApp(
         computerPolicy,
         requireUser,
         canUseBot,
+        authoriseAgent,
       ),
     );
   }

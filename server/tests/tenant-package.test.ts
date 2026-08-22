@@ -243,23 +243,37 @@ describe("tenant YAML validation", () => {
     expect(tenantPackage.stylesheet).toBeNull();
     expect(tenantPackage.themeCss).toBe("");
     expect(tenantPackage.checksum).toMatch(/^[a-f0-9]{64}$/);
+    /*
+     * Remoto, não `built_in`: um Bot embutido roda dentro do servidor e pede uma chave de API do
+     * modelo, e este deployment não tem nenhuma — o modelo é o Codex, alcançado como qualquer
+     * endpoint AG-UI. Se isto voltar a ser "built_in" num merge, o primeiro colega do pacote passa a
+     * responder "Model credential is not configured" e o produto parece quebrado na primeira
+     * pergunta.
+     */
     expect(tenantPackage.agents).toContainEqual({
       id: "general-assistant",
-      name: "General Assistant",
-      title: "Everyday Work",
+      name: "Assistente",
+      title: "Trabalho do dia a dia",
       roleDescription:
-        "Help with everyday work using clear, concise, and accurate answers.",
+        "Ajuda no trabalho do dia a dia com respostas claras, curtas e corretas.",
       avatarSeed: "general-assistant",
-      type: "built_in",
+      type: "remote_ag_ui",
+      /*
+       * A forma, não o valor: o endereço vem de MANAGED_AGENT_AG_UI_URL, que é diferente em cada
+       * deployment. Fixar o literal faria este teste falhar por causa de um .env, que não é o que
+       * ele está verificando.
+       */
       configuration: {
-        systemPrompt:
-          "You are a helpful general assistant. Give clear, concise, and accurate answers.",
+        endpoint: expect.stringContaining("/ag-ui"),
       },
     });
+    expect(
+      tenantPackage.agents.every((agent) => agent.type === "remote_ag_ui"),
+    ).toBe(true);
     expect(tenantPackage.channels).toContainEqual({
       id: "general-assistant",
-      name: "General Assistant",
-      description: "Ask for help with everyday work.",
+      name: "Assistente",
+      description: "Peça ajuda com o trabalho do dia a dia.",
       permittedAgents: ["general-assistant"],
       allowedGroups: ["all"],
     });

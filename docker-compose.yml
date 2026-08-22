@@ -269,6 +269,10 @@ services:
       # workspace-write or read-only. danger-full-access is refused by the service itself.
       CODEX_SANDBOX: ${CODEX_SANDBOX:-workspace-write}
       CODEX_TURN_TIMEOUT_MS: ${CODEX_TURN_TIMEOUT_MS:-900000}
+      # O que dá ao Codex o navegador do Bot. Presente, ele ganha as ferramentas de computador via
+      # MCP e cada uma passa pela política e pela auditoria; ausente, ele só conversa.
+      OPENBOT_AGENT_TOKEN: ${AGENT_TOOL_TOKEN:-}
+      OPENBOT_API_URL: ${OPENBOT_API_URL:-http://openbot:3001}
     volumes:
       # The credential and the AG-UI-thread-to-Codex-session map. Survives a rebuild; back it up and
       # you have backed up the Bot's sign-in.

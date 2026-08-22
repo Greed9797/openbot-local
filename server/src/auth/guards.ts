@@ -35,6 +35,16 @@ export type RoleRepository = {
 
 export type AppVariables = {
   actor: AuthenticatedActor;
+  /**
+   * Set when the caller is a Bot presenting a run assertion rather than a person with a session.
+   *
+   * Read by the computer routes to skip the session guard and the per-person Bot check, both of
+   * which ask a question that has no answer for a Bot: which signed-in person is this. The actor is
+   * still populated, from the assertion, because the audit row needs a name.
+   */
+  viaAgent?: boolean;
+  /** The Bot the run assertion named, so a route addressed as `self` knows whose computer it is. */
+  agentBotId?: string;
 };
 
 export function createRoleRepository(database: Database): RoleRepository {

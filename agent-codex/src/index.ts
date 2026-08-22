@@ -13,12 +13,13 @@ import { hasManagedAgentToken } from "../../shared/agent-authorisation";
  * signed in on this host. That is the only way a subscription can drive a deployment at all — there
  * is no base URL that accepts it — and it is why this file speaks a subprocess rather than an SDK.
  *
- * What it is NOT: a Bot whose tool calls go through OpenBot's gateway. Codex runs its own loop with
- * its own sandbox, so what it does to files and commands is governed by the sandbox flags below and
- * recorded by Codex, not by `/admin/boundaries` and not in `/admin/audit`. Tools that arrive in
- * `input.tools` are deliberately ignored rather than half-honoured. Routing Codex's work back
- * through the gateway means giving it an MCP server that calls `POST /api/agent-tools/call`; until
- * that exists, this Bot's autonomy is the sandbox's, and that is the honest description of it.
+ * O navegador do Bot chega ao Codex como um servidor MCP — ver mcp-computer.ts. Abrir uma página,
+ * mapear, clicar e digitar passam pelas rotas do deployment, então cada uma é julgada pela política
+ * de `/admin/boundaries` e vira linha em `/admin/audit`, e a pessoa vê a tela enquanto acontece.
+ *
+ * O que continua fora disso é o que o Codex faz no próprio sandbox: os comandos de shell e as
+ * escritas em `/workspace` são governados pelas flags de sandbox abaixo e registrados pelo Codex,
+ * não pelo gateway. Duas fronteiras, não uma, e vale saber qual é qual.
  */
 
 const PORT = Number.parseInt(process.env.PORT ?? "4202", 10);
@@ -48,6 +49,27 @@ const WORKSPACE = process.env.CODEX_WORKSPACE?.trim() || "/workspace";
 
 /** Where the AG-UI thread to Codex session mapping is kept, so a turn can continue the last one. */
 const STATE_DIR = process.env.CODEX_STATE_DIR?.trim() || "/state/threads";
+
+/**
+ * Onde o deployment atende, visto de dentro deste container.
+ *
+ * Nome de serviço, não localhost: aqui dentro localhost é este container.
+ */
+const OPENBOT_API_URL =
+  process.env.OPENBOT_API_URL?.trim() || "http://openbot:3001";
+
+/** O caminho do servidor MCP que empresta o computador ao Codex. */
+const MCP_SERVER_PATH =
+  process.env.OPENBOT_MCP_PATH?.trim() ||
+  "/app/agent-codex/src/mcp-computer.ts";
+
+/**
+ * Se o Codex pode dirigir o navegador do Bot.
+ *
+ * Ligado quando existe um token de agente para apresentar. Sem ele toda chamada seria recusada, e um
+ * Bot que anuncia sete ferramentas e falha em todas é pior do que um que não as anuncia.
+ */
+const COMPUTER_TOOLS = Boolean(process.env.OPENBOT_AGENT_TOKEN?.trim());
 
 const MODEL = process.env.CODEX_MODEL?.trim() || "";
 const EFFORT = process.env.CODEX_EFFORT?.trim() || "";
@@ -142,6 +164,20 @@ export function turnPrompt(input: RunAgentInput, resuming: boolean): string {
   return [...standing, userText].filter(Boolean).join("\n\n");
 }
 
+/**
+ * A declaração assinada de que execução é esta.
+ *
+ * Opaca aqui de propósito: este processo não consegue abrir e não tem por que. Ele a repassa ao
+ * servidor MCP, que a devolve ao deployment em cada chamada de ferramenta, e só quem assinou lê o
+ * Bot e a pessoa lá dentro. Já foi diferente — o Bot afirmava quem era pelo corpo do pedido —, e
+ * então qualquer um com o token podia gastar as concessões de outro Bot e escrever outro nome na
+ * auditoria.
+ */
+function runAssertionOf(input: RunAgentInput): string {
+  const props = input.forwardedProps as { openbotRun?: unknown } | undefined;
+  return typeof props?.openbotRun === "string" ? props.openbotRun : "";
+}
+
 export function codexArguments(session: string | null): string[] {
   const options = [
     "--json",
@@ -157,6 +193,22 @@ export function codexArguments(session: string | null): string[] {
 
   if (MODEL) options.push("--model", MODEL);
   if (EFFORT) options.push("-c", `model_reasoning_effort="${EFFORT}"`);
+
+  /*
+   * O computador do Bot, como servidor MCP.
+   *
+   * Registrado por `-c` em vez de ficar no config.toml porque as credenciais mudam a cada execução:
+   * o processo herda o token e a declaração pelo ambiente, e escrevê-los num arquivo os deixaria em
+   * disco entre um turno e outro. Ver mcp-computer.ts.
+   */
+  if (COMPUTER_TOOLS) {
+    options.push(
+      "-c",
+      `mcp_servers.openbot.command="${CODEX_BIN === "codex" ? "bun" : CODEX_BIN}"`,
+      "-c",
+      `mcp_servers.openbot.args=["${MCP_SERVER_PATH}"]`,
+    );
+  }
 
   /*
    * `resume` takes a smaller set of flags than `exec` does: it accepts neither `--sandbox` nor `-C`,
@@ -252,7 +304,24 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
           stdin: new TextEncoder().encode(prompt),
           stdout: "pipe",
           stderr: "pipe",
-          env: { ...process.env, CODEX_HOME },
+          env: {
+            ...process.env,
+            CODEX_HOME,
+            /*
+             * Lidas pelo servidor MCP, não por este processo. Ficam no ambiente do filho e não em
+             * disco, porque valem para esta execução e mais nenhuma.
+             */
+            OPENBOT_API_URL,
+            OPENBOT_RUN: runAssertionOf(input),
+            /*
+             * `self`, e não um id.
+             *
+             * Este processo não sabe qual Bot está executando, e não precisa saber: a declaração diz,
+             * e foi este deployment que a assinou. Mandar um id daqui só criaria a chance de mandar o
+             * errado, que seria um Bot pedindo o computador de outro.
+             */
+            OPENBOT_BOT_ID: "self",
+          },
         });
 
         timer = setTimeout(() => {

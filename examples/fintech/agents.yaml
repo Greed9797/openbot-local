@@ -1,27 +1,35 @@
-# An example tenant package. Every Bot here is reachable the moment the deployment starts, so the
-# surface never registers an endpoint that is unavailable by default.
+# Os colegas que este deployment traz prontos. Todos ficam alcançáveis no instante em que ele sobe,
+# então a interface nunca registra um endpoint que já nasce indisponível.
+#
+# Nenhum é `built-in`. Um Bot `built-in` roda dentro do servidor e pede uma chave de API do modelo:
+# sem OPENAI_API_KEY ele responde "Model credential is not configured" e o deployment inteiro parece
+# quebrado logo na primeira pergunta. Aqui o modelo é o Codex CLI, autenticado por assinatura, e a
+# única forma de alcançá-lo é como qualquer Bot de fora — um endpoint AG-UI no registro.
+#
+# Os três apontam para o mesmo endpoint de propósito. O que separa um colega do outro não é o
+# processo que responde, é a mensagem de papel permanente que o servidor manda junto em toda
+# execução: `role_description` abaixo é literalmente o que cada um sabe sobre o próprio trabalho.
 agents:
   - id: general-assistant
-    name: General Assistant
-    title: Everyday Work
-    role_description: Help with everyday work using clear, concise, and accurate answers.
+    name: Assistente
+    title: Trabalho do dia a dia
+    role_description: Ajuda no trabalho do dia a dia com respostas claras, curtas e corretas.
     avatar_seed: general-assistant
-    type: built-in
-    system_prompt: You are a helpful general assistant. Give clear, concise, and accurate answers.
+    type: remote-ag-ui
+    endpoint: ${MANAGED_AGENT_AG_UI_URL:-http://localhost:4202/ag-ui}
   - id: knowledge
-    name: Knowledge
-    title: Company Knowledge
-    role_description: Help answer company knowledge questions and cite sources when available.
+    name: Conhecimento
+    title: Conhecimento da empresa
+    role_description: >-
+      Responde perguntas sobre o conhecimento da empresa e cita as fontes quando existirem. Quando
+      nenhuma fonte estiver conectada, diz isso com todas as letras em vez de inventar uma citação.
     avatar_seed: knowledge
-    type: built-in
-    system_prompt: Answer from authorized company knowledge and cite your sources. When none is connected, say so plainly rather than inventing a citation.
-  # The Bot that ships in the box (agent-bot), addressed exactly the way a customer's own Bot would
-  # be: an AG-UI endpoint in the registry. Names in dollar-brace form are read from the environment,
-  # so the address belongs to the deployment. Replace it with your own service and nothing changes.
+    type: remote-ag-ui
+    endpoint: ${MANAGED_AGENT_AG_UI_URL:-http://localhost:4202/ag-ui}
   - id: risk-analyst
-    name: Risk Analyst
-    title: "Risk & Compliance"
-    role_description: Investigate policies, transaction monitoring, and control evidence.
+    name: Analista de risco
+    title: "Risco e conformidade"
+    role_description: Investiga políticas, monitoramento de transações e evidências de controle.
     avatar_seed: risk-analyst
     type: remote-ag-ui
-    endpoint: ${MANAGED_AGENT_AG_UI_URL:-http://localhost:4201/ag-ui}
+    endpoint: ${MANAGED_AGENT_AG_UI_URL:-http://localhost:4202/ag-ui}

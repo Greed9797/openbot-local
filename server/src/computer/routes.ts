@@ -26,6 +26,18 @@ import { type PolicyStore, parseActionPolicy } from "./policy-store";
  * Every computer call goes through the gateway. That is the governance seam: each acting route in
  * this file passes through a policy decision and audit row before it reaches the computer.
  */
+/**
+ * How a Bot proves it is calling for a run this deployment started.
+ *
+ * Returns the person the run is for, or null when the credentials do not hold up. Optional: a
+ * deployment that never registered an agent callback token has no Bot able to call these routes, and
+ * the session guard remains the only way in.
+ */
+export type AgentCallAuthoriser = (input: {
+  presented: string;
+  run: unknown;
+}) => Promise<{ botId: string; actorId: string } | null>;
+
 export function createComputerRoutes(
   gateway: ComputerGateway,
   policyStore: PolicyStore,
@@ -35,6 +47,7 @@ export function createComputerRoutes(
    * deployment cannot be wired up without an answer to it.
    */
   canUseBot: BotAccessCheck,
+  authoriseAgent?: AgentCallAuthoriser,
 ) {
   const routes = new Hono<{ Variables: AppVariables }>();
 
@@ -48,8 +61,78 @@ export function createComputerRoutes(
    * The answer is the same for a Bot that does not exist and one belonging to somebody else, so this
    * cannot be used to find out which Bots a deployment has.
    */
-  routes.use("/:botId/*", requireUser, async (context, next) => {
+  /**
+   * A Bot driving its own computer, rather than a person driving it from a browser.
+   *
+   * The surface has always run this loop client-side: the Bot asks for a tool, the run ends, and the
+   * page calls these routes with the person's session. A Bot whose model runs its own loop in its own
+   * process — the Codex Bot does — has no page and no session, and would otherwise be the one Bot
+   * that cannot touch a computer.
+   *
+   * It presents the same two credentials as the tool callback: its own token, which says which agent,
+   * and the run assertion this deployment signed, which says which Bot and which person. Neither is
+   * read from the path or the body, so holding the token is not enough to act as another Bot or to
+   * write somebody else's name into the trail. The Bot in the assertion has to be the Bot in the
+   * path, or this is a Bot reaching for a computer that is not its own.
+   *
+   * What it deliberately does NOT do is skip the gateway. Every route below still resolves the
+   * target, evaluates the policy and writes the audit row; this decides who is asking, not whether
+   * they may.
+   */
+  const asAgent: MiddlewareHandler<{ Variables: AppVariables }> = async (
+    context,
+    next,
+  ) => {
+    const presented = context.req.header("x-openbot-agent-token");
+    if (!presented || !authoriseAgent) return next();
+
+    const verdict = await authoriseAgent({
+      presented,
+      run: context.req.header("x-openbot-run"),
+    });
+    if (!verdict) {
+      return context.json({ error: "Not authorised." }, 401);
+    }
+    /*
+     * `self` é o caminho normal para um Bot.
+     *
+     * Ele não sabe o próprio id — a declaração sabe, e é ela que este deployment assinou. Fazer o Bot
+     * repetir um id que o servidor já tem só cria uma forma de errar: um id trocado seria um Bot
+     * pedindo o computador de outro. Um id explícito continua aceito, e tem de bater.
+     */
+    const asked = context.req.param("botId");
+    if (asked !== "self" && verdict.botId !== asked) {
+      return context.json({ error: "There is no such Bot." }, 404);
+    }
+    context.set("agentBotId", verdict.botId);
+
+    /*
+     * The audit row wants a person, and the assertion carries their id. The email is filled in with
+     * the id rather than looked up: this actor exists to be recorded, the id is what identifies the
+     * row, and a second query per tool call to prettify a field nothing reads would be waste.
+     */
+    context.set("actor", {
+      id: verdict.actorId,
+      email: verdict.actorId,
+      role: "user",
+    });
+    context.set("viaAgent", true);
+    await next();
+  };
+
+  routes.use("/:botId/*", asAgent, async (context, next) => {
+    if (context.get("viaAgent")) return next();
+    return requireUser(context, next);
+  });
+
+  routes.use("/:botId/*", async (context, next) => {
     const botId = context.req.param("botId");
+    /*
+     * Skipped for a Bot: `canUseBot` answers whether a *person* may drive that Bot, and the check
+     * that matters here already happened — the assertion named this Bot, and this deployment signed
+     * it for this run.
+     */
+    if (context.get("viaAgent")) return next();
     if (botId && !(await canUseBot(context.var.actor, botId))) {
       return context.json({ error: "There is no such Bot." }, 404);
     }
@@ -57,13 +140,13 @@ export function createComputerRoutes(
   });
 
   routes.get("/:botId/status", async (context) => {
-    const botId = context.req.param("botId");
+    const botId = botOf(context);
     return context.json(await gateway.status(botId));
   });
 
   routes.get("/:botId/screenshot", async (context) => {
     try {
-      return context.json(await gateway.screenshot(context.req.param("botId")));
+      return context.json(await gateway.screenshot(botOf(context)));
     } catch (error) {
       return context.json({ error: describe(error) }, statusFor(error));
     }
@@ -71,7 +154,7 @@ export function createComputerRoutes(
 
   routes.get("/:botId/read", async (context) => {
     try {
-      return context.json(await gateway.read(context.req.param("botId")));
+      return context.json(await gateway.read(botOf(context)));
     } catch (error) {
       return context.json({ error: describe(error) }, statusFor(error));
     }
@@ -88,7 +171,7 @@ export function createComputerRoutes(
     try {
       return context.json(
         await gateway.navigate(
-          context.req.param("botId") ?? "default",
+          botOf(context),
           {
             id: context.var.actor.id,
             ...(context.var.actor.email === DEV_ACTOR_EMAIL
@@ -114,7 +197,7 @@ export function createComputerRoutes(
 
   routes.post("/:botId/snapshot", async (context) => {
     try {
-      return context.json(await gateway.snapshot(context.req.param("botId")));
+      return context.json(await gateway.snapshot(botOf(context)));
     } catch (error) {
       return context.json({ error: describe(error) }, statusFor(error));
     }
@@ -186,7 +269,7 @@ export function createComputerRoutes(
    */
   routes.get("/:botId/control", async (context) => {
     try {
-      return context.json(await gateway.control(context.req.param("botId")));
+      return context.json(await gateway.control(botOf(context)));
     } catch (error) {
       return context.json({ error: describe(error) }, statusFor(error));
     }
@@ -305,7 +388,7 @@ export function createComputerRoutes(
     > | null;
     try {
       return context.json(
-        await gateway.humanInput(context.req.param("botId"), {
+        await gateway.humanInput(botOf(context), {
           kind,
           ...(body ?? {}),
         } as Parameters<typeof gateway.humanInput>[1]),
@@ -463,7 +546,7 @@ async function act(
   // Always present on these routes, which all declare `:botId`. The fallback exists because this
   // helper is typed against a generic context that cannot know that, and a thrown "undefined bot"
   // would be a worse outcome than naming the one shared computer.
-  const botId = context.req.param("botId") ?? "default";
+  const botId = botOf(context);
   const record = context.var.actor;
   const body = (await context.req.json().catch(() => null)) as Record<
     string,
@@ -523,6 +606,18 @@ function isBadRequest(value: unknown): value is BadRequest {
     "error" in value &&
     !("action" in value)
   );
+}
+
+/**
+ * Qual Bot esta chamada é sobre.
+ *
+ * `self` vira o Bot que a declaração nomeou; qualquer outra coisa é o que veio no caminho. Uma
+ * função só porque dez rotas fazem a mesma pergunta, e a que esquecesse seria a brecha.
+ */
+function botOf(context: Context<{ Variables: AppVariables }>): string {
+  const asked = context.req.param("botId");
+  if (asked === "self") return context.get("agentBotId") ?? "default";
+  return asked ?? "default";
 }
 
 function asRef(
