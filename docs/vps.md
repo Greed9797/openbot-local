@@ -130,6 +130,26 @@ Back up two things:
   signing Codex in again and every conversation starting over from Codex's side, even though the
   transcript in PostgreSQL survives.
 
+## O motor sem pixels
+
+O Lightpanda roda ao lado do Chromium, não no lugar dele. Serve a ação `fetch`: ler uma página e
+devolver o texto, por uma fração da memória. Tudo que a pessoa assiste continua sendo Chromium.
+
+Por que ele não pode ser o único navegador, medido contra o binário e não lido no README:
+
+| Método CDP | Resultado |
+| --- | --- |
+| `Page.navigate`, `Runtime.evaluate`, `DOM.getDocument`, `Input.*` | funcionam |
+| `Accessibility.getFullAXTree` | funciona |
+| `Page.captureScreenshot` | responde com sucesso e devolve um PNG de aviso, não a página |
+| `Page.startScreencast` | `UnknownMethod` |
+| `connectOverCDP` do Playwright | não completa o aperto de mão |
+
+Duas armadilhas que só aparecem no compose. O CDP valida o `Host` que recebe, como o Chrome faz
+contra DNS rebinding: com bind em curinga o único aceito é `127.0.0.1:9222`, e chamar pelo nome do
+serviço volta "Expected 101 status code". E a telemetria dele vem ligada de fábrica —
+`LIGHTPANDA_DISABLE_TELEMETRY=true` está no compose pela mesma razão que a do CopilotKit.
+
 ## What the Codex Bot can and cannot do
 
 It runs `codex exec` in `/workspace` with `--sandbox workspace-write` and network access. Inside that
@@ -137,18 +157,31 @@ directory it can read, write and run commands. `CODEX_SANDBOX=read-only` makes i
 answers questions. `danger-full-access` is refused by the service itself — a process taking
 instructions from a chat box does not get the whole machine.
 
-**Its actions are not in `/admin/audit`.** OpenBot's gateway governs tool calls it executes on a Bot's
-behalf; Codex runs its own loop, so its shell commands and file writes are governed by the sandbox and
-recorded by Codex. The transcript shows the commands as they run, which is visibility, not a record.
+**O navegador dele passa pelo gateway.** As ferramentas de computador chegam ao Codex como um servidor
+MCP (`agent-codex/src/mcp-computer.ts`) que chama as mesmas rotas `/api/computers/:botId/*` que a
+página chama: cada navegação, clique e digitada é julgada pela política e vira linha em
+`/admin/audit`. Era o buraco que a versão anterior deste documento registrava como aberto.
 
-Closing that gap means giving Codex an MCP server that forwards to
-`POST /api/agent-tools/call` with the `x-openbot-agent-token` header and the run assertion from
-`forwardedProps.openbotRun` — the pattern `agent-langgraph/src/index.ts` already uses. Until then,
-the sandbox is the boundary.
+**O shell dele não passa.** O que o Codex roda em `/workspace` é governado pelas flags de sandbox e
+registrado pelo Codex, não pelo gateway. Duas fronteiras, não uma.
+
+Quatro coisas que essa ponte exigiu, e que falham de formas ilegíveis:
+
+- O Codex **não repassa o próprio ambiente** ao servidor MCP. Sem `mcp_servers.openbot.env.*`, o
+  servidor sai no boot e o modelo responde que a ferramenta não está instalada. Só apareceu com
+  `RUST_LOG` ligado.
+- Chamada MCP **pede aprovação** e `codex exec` roda com política `never`, então toda chamada volta
+  recusada. `--approve-for-me` resolve, e **conflita com `--sandbox`** — passar os dois é exit 2.
+- `codex exec resume` aceita menos flags que `codex exec`. Nem `--sandbox`, nem `-C`, nem
+  `--approve-for-me`. O sintoma é o primeiro turno funcionar e todo segundo falhar.
+- Registrar por `-c` na linha de comando **não funciona**: o Codex aceita a flag e ignora. O caminho
+  que grava onde ele lê é `codex mcp add`.
 
 ## What was given up with Intelligence
 
-- **Memory.** Cross-thread recall was an Intelligence feature.
+- **Memory.** Cross-thread recall was an Intelligence feature. A busca nos documentos dos conectores
+  existe e é outra coisa: full-text do PostgreSQL sobre o que o Google Drive trouxe, alcançada pela
+  ferramenta `buscar_conhecimento`.
 - **Channels realtime.** The Intelligence WebSocket gateway is what synchronised a channel across
   several people live.
 - **Automatic thread names.** Threads keep the id they are given.
