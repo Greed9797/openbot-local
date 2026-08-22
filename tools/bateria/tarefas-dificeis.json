@@ -1,104 +1,100 @@
 [
- {
-  "id": "t13-form",
-  "pedido": "Abra https://httpbin.org/forms/post, mapeie a pagina e me diga quais campos existem no formulario.",
-  "espera": {
-   "acoes": ">0"
+  {
+    "id": "t13-form",
+    "pedido": "Abra https://httpbin.org/forms/post, mapeie a pagina e me diga quais campos existem no formulario.",
+    "espera": {
+      "acoes": ">0"
+    }
+  },
+  {
+    "id": "t14-preencher",
+    "pedido": "Abra https://httpbin.org/forms/post, escreva 'pizza teste' no campo de nome do cliente e me confirme o que digitou.",
+    "espera": {
+      "acoes": ">0"
+    }
+  },
+  {
+    "id": "t15-memoria",
+    "pedido": "E qual era mesmo o endereco que eu pedi antes? Responda so o dominio.",
+    "historico": [
+      {
+        "id": "u1",
+        "role": "user",
+        "content": "Abra https://w3bsite.com.br e diga o titulo."
+      },
+      {
+        "id": "a1",
+        "role": "assistant",
+        "content": "O titulo e Sites e lojas Shopify no ar agora — Portfolio W3bsite."
+      }
+    ],
+    "espera": {
+      "acoes": "0",
+      "contem": ["w3bsite"]
+    }
+  },
+  {
+    "id": "t16-naoexiste",
+    "pedido": "Abra https://example.com e me diga qual e o telefone de contato que aparece na pagina.",
+    "espera": {
+      "acoes": ">0"
+    }
+  },
+  {
+    "id": "t17-redirect",
+    "pedido": "Abra https://httpbin.org/redirect/2 e me diga em que endereco voce parou.",
+    "espera": {
+      "acoes": ">0"
+    }
+  },
+  {
+    "id": "t18-prior",
+    "pedido": "Abra https://www.google.com e me diga o titulo exato da pagina, sem chutar.",
+    "espera": {
+      "acoes": ">0"
+    }
+  },
+  {
+    "id": "t19-duas",
+    "pedido": "Abra https://example.com e depois https://dominio-que-nao-existe-9987.com e me diga o resultado de cada uma.",
+    "espera": {
+      "acoes": ">0"
+    }
+  },
+  {
+    "id": "t20-botao",
+    "pedido": "Abra https://example.com e clique no botao 'Comprar agora'. Me diga o que aconteceu.",
+    "espera": {
+      "acoes": ">0"
+    }
+  },
+  {
+    "id": "t21-grande",
+    "pedido": "Abra https://httpbin.org/html e me diga quantos paragrafos tem e qual e a primeira frase.",
+    "espera": {
+      "acoes": ">0"
+    }
+  },
+  {
+    "id": "t22-ambiguo",
+    "pedido": "da uma olhada la e me fala o que achou",
+    "espera": {
+      "acoes": "0",
+      "contem": ["?"]
+    }
+  },
+  {
+    "id": "t23-headers",
+    "pedido": "Abra https://httpbin.org/headers e me diga qual User-Agent o navegador esta enviando.",
+    "espera": {
+      "acoes": ">0"
+    }
+  },
+  {
+    "id": "t24-encad",
+    "pedido": "Abra https://example.com, clique em 'Learn more', e depois me diga o titulo da pagina onde voce chegou.",
+    "espera": {
+      "acoes": ">0"
+    }
   }
- },
- {
-  "id": "t14-preencher",
-  "pedido": "Abra https://httpbin.org/forms/post, escreva 'pizza teste' no campo de nome do cliente e me confirme o que digitou.",
-  "espera": {
-   "acoes": ">0"
-  }
- },
- {
-  "id": "t15-memoria",
-  "pedido": "E qual era mesmo o endereco que eu pedi antes? Responda so o dominio.",
-  "historico": [
-   {
-    "id": "u1",
-    "role": "user",
-    "content": "Abra https://w3bsite.com.br e diga o titulo."
-   },
-   {
-    "id": "a1",
-    "role": "assistant",
-    "content": "O titulo e Sites e lojas Shopify no ar agora — Portfolio W3bsite."
-   }
-  ],
-  "espera": {
-   "acoes": "0",
-   "contem": [
-    "w3bsite"
-   ]
-  }
- },
- {
-  "id": "t16-naoexiste",
-  "pedido": "Abra https://example.com e me diga qual e o telefone de contato que aparece na pagina.",
-  "espera": {
-   "acoes": ">0"
-  }
- },
- {
-  "id": "t17-redirect",
-  "pedido": "Abra https://httpbin.org/redirect/2 e me diga em que endereco voce parou.",
-  "espera": {
-   "acoes": ">0"
-  }
- },
- {
-  "id": "t18-prior",
-  "pedido": "Abra https://www.google.com e me diga o titulo exato da pagina, sem chutar.",
-  "espera": {
-   "acoes": ">0"
-  }
- },
- {
-  "id": "t19-duas",
-  "pedido": "Abra https://example.com e depois https://dominio-que-nao-existe-9987.com e me diga o resultado de cada uma.",
-  "espera": {
-   "acoes": ">0"
-  }
- },
- {
-  "id": "t20-botao",
-  "pedido": "Abra https://example.com e clique no botao 'Comprar agora'. Me diga o que aconteceu.",
-  "espera": {
-   "acoes": ">0"
-  }
- },
- {
-  "id": "t21-grande",
-  "pedido": "Abra https://httpbin.org/html e me diga quantos paragrafos tem e qual e a primeira frase.",
-  "espera": {
-   "acoes": ">0"
-  }
- },
- {
-  "id": "t22-ambiguo",
-  "pedido": "da uma olhada la e me fala o que achou",
-  "espera": {
-   "acoes": "0",
-   "contem": [
-    "?"
-   ]
-  }
- },
- {
-  "id": "t23-headers",
-  "pedido": "Abra https://httpbin.org/headers e me diga qual User-Agent o navegador esta enviando.",
-  "espera": {
-   "acoes": ">0"
-  }
- },
- {
-  "id": "t24-encad",
-  "pedido": "Abra https://example.com, clique em 'Learn more', e depois me diga o titulo da pagina onde voce chegou.",
-  "espera": {
-   "acoes": ">0"
-  }
- }
 ]

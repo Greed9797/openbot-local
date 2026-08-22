@@ -1,104 +1,92 @@
 [
- {
-  "id": "t01-ler",
-  "pedido": "Abra https://w3bsite.com.br e me diga o título exato da página.",
-  "espera": {
-   "acoes": ">0",
-   "contem": [
-    "W3bsite"
-   ]
+  {
+    "id": "t01-ler",
+    "pedido": "Abra https://w3bsite.com.br e me diga o título exato da página.",
+    "espera": {
+      "acoes": ">0",
+      "contem": ["W3bsite"]
+    }
+  },
+  {
+    "id": "t02-resumir",
+    "pedido": "Entra em https://example.com e me resume em uma frase o que a pagina diz.",
+    "espera": {
+      "acoes": ">0"
+    }
+  },
+  {
+    "id": "t03-numero",
+    "pedido": "Abra https://httpbin.org/uuid e diga o valor do campo uuid.",
+    "espera": {
+      "acoes": ">0"
+    }
+  },
+  {
+    "id": "t04-404",
+    "pedido": "Abra https://httpbin.org/status/404 e me diga o que aconteceu.",
+    "espera": {
+      "acoes": ">0",
+      "contem": ["404"]
+    }
+  },
+  {
+    "id": "t05-comparar",
+    "pedido": "Compare o titulo de https://example.com com o de https://w3bsite.com.br e diga se sao diferentes.",
+    "espera": {
+      "acoes": ">0"
+    }
+  },
+  {
+    "id": "t06-login",
+    "pedido": "Tente abrir https://www.instagram.com/brandsdecoded__/ e diga exatamente o que conseguiu ver.",
+    "espera": {
+      "acoes": ">0",
+      "nao_contem": ["429"]
+    }
+  },
+  {
+    "id": "t07-typo",
+    "pedido": "da uma olhada no site w3bsite.com.br e fala oq eles fazem",
+    "espera": {
+      "acoes": ">0"
+    }
+  },
+  {
+    "id": "t08-clicar",
+    "pedido": "Abra https://example.com, clique no link que tem na pagina e me diga para onde foi.",
+    "espera": {
+      "acoes": ">0"
+    }
+  },
+  {
+    "id": "t09-semweb",
+    "pedido": "Quanto e 17 vezes 23? Responda so o numero.",
+    "espera": {
+      "acoes": "0",
+      "contem": ["391"]
+    }
+  },
+  {
+    "id": "t10-lenta",
+    "pedido": "Abra https://httpbin.org/delay/5 e diga se a pagina respondeu.",
+    "espera": {
+      "acoes": ">0"
+    }
+  },
+  {
+    "id": "t11-json",
+    "pedido": "Abra https://httpbin.org/json e me diga o titulo do slideshow que aparece.",
+    "espera": {
+      "acoes": ">0",
+      "contem": ["Slide Show"],
+      "nao_contem": ["SKILL.md"]
+    }
+  },
+  {
+    "id": "t12-inexist",
+    "pedido": "Abra https://este-dominio-nao-existe-mesmo-12345.com.br e me diga o titulo.",
+    "espera": {
+      "acoes": ">0"
+    }
   }
- },
- {
-  "id": "t02-resumir",
-  "pedido": "Entra em https://example.com e me resume em uma frase o que a pagina diz.",
-  "espera": {
-   "acoes": ">0"
-  }
- },
- {
-  "id": "t03-numero",
-  "pedido": "Abra https://httpbin.org/uuid e diga o valor do campo uuid.",
-  "espera": {
-   "acoes": ">0"
-  }
- },
- {
-  "id": "t04-404",
-  "pedido": "Abra https://httpbin.org/status/404 e me diga o que aconteceu.",
-  "espera": {
-   "acoes": ">0",
-   "contem": [
-    "404"
-   ]
-  }
- },
- {
-  "id": "t05-comparar",
-  "pedido": "Compare o titulo de https://example.com com o de https://w3bsite.com.br e diga se sao diferentes.",
-  "espera": {
-   "acoes": ">0"
-  }
- },
- {
-  "id": "t06-login",
-  "pedido": "Tente abrir https://www.instagram.com/brandsdecoded__/ e diga exatamente o que conseguiu ver.",
-  "espera": {
-   "acoes": ">0",
-   "nao_contem": [
-    "429"
-   ]
-  }
- },
- {
-  "id": "t07-typo",
-  "pedido": "da uma olhada no site w3bsite.com.br e fala oq eles fazem",
-  "espera": {
-   "acoes": ">0"
-  }
- },
- {
-  "id": "t08-clicar",
-  "pedido": "Abra https://example.com, clique no link que tem na pagina e me diga para onde foi.",
-  "espera": {
-   "acoes": ">0"
-  }
- },
- {
-  "id": "t09-semweb",
-  "pedido": "Quanto e 17 vezes 23? Responda so o numero.",
-  "espera": {
-   "acoes": "0",
-   "contem": [
-    "391"
-   ]
-  }
- },
- {
-  "id": "t10-lenta",
-  "pedido": "Abra https://httpbin.org/delay/5 e diga se a pagina respondeu.",
-  "espera": {
-   "acoes": ">0"
-  }
- },
- {
-  "id": "t11-json",
-  "pedido": "Abra https://httpbin.org/json e me diga o titulo do slideshow que aparece.",
-  "espera": {
-   "acoes": ">0",
-   "contem": [
-    "Slide Show"
-   ],
-   "nao_contem": [
-    "SKILL.md"
-   ]
-  }
- },
- {
-  "id": "t12-inexist",
-  "pedido": "Abra https://este-dominio-nao-existe-mesmo-12345.com.br e me diga o titulo.",
-  "espera": {
-   "acoes": ">0"
-  }
- }
 ]

@@ -17,21 +17,22 @@ por meia hora. Repetir é o que separa "funciona" de "funcionou daquela vez".
 REPETICOES = int(next((a.split("=")[1] for a in sys.argv if a.startswith("--repete=")), "1"))
 URL = f"http://127.0.0.1:3001/api/copilotkit/agent/{AGENTE}/run"
 
-def desde_quando(servico="agent-codex"):
-    """Desde quando o serviço está de pé.
+def qual_container(servico="agent-codex"):
+    """O id do container, que muda quando ele é recriado.
 
     Uma bateria que roda enquanto alguém dá deploy reporta um bloco de falhas que não são do produto:
-    os turnos que caem na janela de reinício voltam sem ferramenta nenhuma. Aconteceu comigo, e eu
-    quase tratei como regressão — o sinal que faltava era este.
+    os turnos da janela de reinício voltam sem ferramenta nenhuma. Aconteceu comigo, e eu quase tratei
+    como regressão.
+
+    O id, e não o texto do status: `Up 2 minutes` e `Up 25 minutes` são o MESMO container, e comparar
+    a frase inteira acusava reinício em toda corrida — um alarme que dispara sempre é um alarme que
+    se aprende a ignorar, que é pior do que não ter.
     """
     saida = subprocess.run(
         ["docker", "compose", "-f", "/opt/openbot-local/docker-compose.yml", "ps",
-         "--format", "{{.Service}} {{.Status}}"],
+         "-q", servico],
         capture_output=True, text=True)
-    for linha in saida.stdout.splitlines():
-        if linha.startswith(servico):
-            return linha.strip()
-    return ""
+    return saida.stdout.strip()
 
 
 def audit():
@@ -104,9 +105,9 @@ def julgar(tarefa, acoes, texto):
 ARQUIVO = next((a for a in sys.argv[2:] if not a.startswith("--")), None)
 TAREFAS = json.load(open(ARQUIVO)) if ARQUIVO else []
 
-ESTADO_INICIAL = desde_quando()
+ESTADO_INICIAL = qual_container()
 print(f"agente={AGENTE}  tarefas={len(TAREFAS)}  repetições={REPETICOES}")
-print(f"serviço no início: {ESTADO_INICIAL}\n")
+print(f"container do serviço: {ESTADO_INICIAL[:12] or '(não encontrado)'}\n")
 print(f"{'tarefa':<16}{'seg':>5}{'ações':>7}{'aviso':>7}{'':>8}  resposta (fim)")
 falhas = []
 for tarefa in TAREFAS:
@@ -124,12 +125,13 @@ for tarefa in TAREFAS:
         fim = texto.replace("\n", " ")[-100:]
         print(f"{rotulo:<16}{duracao:>5}{acoes:>7}{aviso:>7}{veredito:>8}  {fim}")
 
-ESTADO_FINAL = desde_quando()
+ESTADO_FINAL = qual_container()
 if ESTADO_INICIAL and ESTADO_FINAL and ESTADO_INICIAL != ESTADO_FINAL:
     # Antes de qualquer conclusão sobre as falhas, porque provavelmente elas não são do produto.
     print(
-        f"\nATENÇÃO: o serviço reiniciou durante a bateria."
-        f"\n  início: {ESTADO_INICIAL}\n  fim:    {ESTADO_FINAL}"
+        f"\nATENÇÃO: o serviço foi recriado durante a bateria."
+        f"\n  container no início: {ESTADO_INICIAL[:12]}"
+        f"\n  container no fim:    {ESTADO_FINAL[:12]}"
         f"\n  Os turnos que caíram na janela de reinício voltam sem ferramenta nenhuma."
         f" Rode de novo sem deploy no meio antes de tratar qualquer falha como regressão."
     )

@@ -539,6 +539,15 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
             INSTRUÇÕES_DO_WORKSPACE,
             "utf8",
           );
+          /*
+           * A bagagem da conta volta sozinha, então some a cada turno também.
+           *
+           * Apagar no boot não bastou: o CLI ressincroniza o catálogo de plugins da conta em algum
+           * momento depois, e o Bot voltou a gastar turno abrindo `/bin/sh` para ler o `SKILL.md` de
+           * um deles antes de responder — visto de novo na bateria, horas depois de um boot limpo.
+           * Um diretório que não existe torna isto quase de graça.
+           */
+          await limparBagagemDaConta();
         }
 
         // Só o primeiro turno chega a esperar; depois disto a promessa já resolveu.
