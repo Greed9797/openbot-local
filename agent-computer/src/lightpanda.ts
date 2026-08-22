@@ -18,6 +18,20 @@
 const ENDPOINT =
   process.env.LIGHTPANDA_CDP_URL?.trim() || "ws://lightpanda:9222";
 
+/**
+ * O `Host` que o Lightpanda exige ver.
+ *
+ * O CDP valida o Host que recebe, como o Chrome faz contra DNS rebinding, e com bind em curinga o
+ * único que ele aceita é o loopback que anuncia. Medido um por um de dentro do container:
+ * `127.0.0.1:9222` completa o upgrade, `localhost:9222` e `lightpanda:9222` são recusados com
+ * "Expected 101 status code" — o mesmo endereço, três nomes, um funciona.
+ *
+ * Por isso o endereço a discar e o nome a declarar são coisas separadas aqui. Localmente, contra a
+ * porta publicada, isto não aparece: lá o Host já era loopback.
+ */
+const ADVERTISED_HOST =
+  process.env.LIGHTPANDA_HOST_HEADER?.trim() || "127.0.0.1:9222";
+
 /** Quanto uma página pode demorar antes de desistirmos, em milissegundos. */
 const TIMEOUT_MS = Number.parseInt(
   process.env.LIGHTPANDA_TIMEOUT_MS ?? "30000",
@@ -45,7 +59,9 @@ type Pending = (message: {
  * o que o computador persistente do Chromium existe para fazer.
  */
 export async function fetchPage(url: string): Promise<FetchedPage> {
-  const socket = new WebSocket(ENDPOINT);
+  const socket = new WebSocket(ENDPOINT, {
+    headers: { Host: ADVERTISED_HOST },
+  } as unknown as string[]);
   const pending = new Map<number, Pending>();
   let nextId = 0;
 

@@ -278,12 +278,13 @@ services:
       # ninguém, e isto é a mesma decisão tomada para a telemetria do CopilotKit.
       LIGHTPANDA_DISABLE_TELEMETRY: "true"
       DO_NOT_TRACK: "1"
-    # O nome pelo qual ele é chamado nesta rede.
+    # Bind em 0.0.0.0 para os outros containers alcançarem, e é só isso que este comando decide.
     #
-    # Sem isto o upgrade WebSocket é recusado com "Expected 101 status code": o CDP valida o Host que
-    # recebe — é a mesma proteção contra DNS rebinding que o Chrome faz —, e um bind em 0.0.0.0
-    # anuncia loopback, então "lightpanda:9222" não constava. Pela porta publicada funcionava; pelo
-    # nome do serviço, não, que é justamente como o resto do stack o chama.
+    # Quem chama tem de mandar `Host: 127.0.0.1:9222`, porque o CDP valida o Host que recebe — a
+    # mesma proteção contra DNS rebinding que o Chrome faz — e com bind em curinga o único Host que
+    # ele aceita é o loopback que anuncia. Medido um por um: 127.0.0.1 abre, `localhost` e o nome do
+    # serviço são recusados com "Expected 101". Ligar direto ao nome do serviço também não serve: o
+    # processo não sobe. Ver agent-computer/src/lightpanda.ts.
     command:
       - lightpanda
       - serve
@@ -291,8 +292,6 @@ services:
       - 0.0.0.0
       - --port
       - "9222"
-      - --advertise-host
-      - lightpanda
       - --obey-robots
       - --log-level
       - warn
