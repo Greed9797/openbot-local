@@ -226,6 +226,36 @@ Quatro coisas que essa ponte exigiu, e que falham de formas ilegíveis:
 - Registrar por `-c` na linha de comando **não funciona**: o Codex aceita a flag e ignora. O caminho
   que grava onde ele lê é `codex mcp add`.
 
+## O Bot usa mesmo as ferramentas?
+
+Esta é a pergunta que a suíte de testes não responde, e foi o defeito mais caro deste fork: o Bot
+respondia bem, de memória, sem abrir página nenhuma, e a resposta saía idêntica a uma que tinha sido
+lida — com "Fonte:" e link. Pedido três vezes o valor de `httpbin.org/uuid`, que muda a cada leitura,
+ele devolveu o mesmo valor inventado nas três.
+
+`tools/bateria/` responde. Roda tarefas do dia a dia e conta as ações no `audit_events`, então quem
+afirma ter aberto uma página aparece com zero.
+
+```bash
+python3 tools/bateria/bateria.py risk-analyst tools/bateria/tarefas-basicas.json
+```
+
+O que fez o Bot passar a usar o navegador, medido de 0/3 para 3/3:
+
+- **`AGENTS.md` no diretório de trabalho**, escrito no boot do `agent-codex`. A mesma regra no prompt
+  do turno não muda nada — o Codex a lê como pedido de uma pessoa, e um pedido não muda como ele
+  decide. `AGENTS.md` é lido como instrução permanente do projeto.
+- **Proibir buscar página pelo shell.** `curl` e `wget` não passam pela política e o que fazem não
+  fica no audit.
+- **Apagar no boot as skills e plugins que vieram com a conta.** Entrar com uma assinatura do ChatGPT
+  sincroniza 47 MB de conectores — Canva, Clay, Drive, HeyGen — e o Bot chegou a gastar turno abrindo
+  `/bin/sh` para ler o `SKILL.md` de um deles antes de responder sobre uma página.
+- **Perguntar em vez de adivinhar.** Nome de marca não é endereço: perguntado pelo "site da W3bsite",
+  ele abriu `w3bsite.com`, caiu numa página de venda de domínios e respondeu com o título dela.
+
+Mesmo assim, quem decide chamar a ferramenta é o modelo. Por isso a rede: quando o pedido cita um
+endereço e nenhuma ferramenta foi usada, a resposta termina dizendo que nada foi aberto.
+
 ## What was given up with Intelligence
 
 - **Memory.** Cross-thread recall was an Intelligence feature. A busca nos documentos dos conectores
