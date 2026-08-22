@@ -280,7 +280,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <div className="size-[28px] flex items-center justify-center">
                 <IconBox />
               </div>
-              <span className="text-sm trackint-tight">Skills</span>
+              <span className="text-sm trackint-tight">Habilidades</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>

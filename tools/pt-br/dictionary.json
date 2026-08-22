@@ -162,5 +162,6 @@
   "is used. Agents already carrying it keep it.": "for usada. Agentes que já a carregam continuam com ela.",
   "could not be drawn. The rest of this conversation is unaffected.": "não pôde ser desenhado. O resto da conversa não é afetado.",
   "header on every run, and kept in the credential vault. Leave empty to keep the current key.": "em toda execução, e guardada no cofre de credenciais. Deixe vazio para manter a chave atual.",
-  "A Bot with a grant may call that tool; a Bot without one is never told it exists.": "Um Bot com concessão pode chamar aquela ferramenta; um Bot sem ela nunca sabe que existe."
+  "A Bot with a grant may call that tool; a Bot without one is never told it exists.": "Um Bot com concessão pode chamar aquela ferramenta; um Bot sem ela nunca sabe que existe.",
+  "Skills": "Habilidades"
 }
