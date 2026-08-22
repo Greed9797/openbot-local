@@ -216,7 +216,7 @@ export function createConnectorAdminService(
 }
 
 import { eq } from "drizzle-orm";
-import { runConnector } from "../../worker/src/connector-runner";
+import { runConnector } from "./connectors/run";
 import type {
   CredentialAdminService,
   CredentialSecretReader,
