@@ -57,7 +57,7 @@ export function ApprovalCard(props: Waiting<ApprovalArgs> & { name?: string }) {
   if (status === "inProgress") {
     return (
       <GalleryFrame title={args.title ?? "Waiting for the assistant…"}>
-        <p className="text-sm text-muted-foreground">Preparing the request…</p>
+        <p className="text-sm text-muted-foreground">Preparando o pedido…</p>
       </GalleryFrame>
     );
   }
@@ -73,7 +73,7 @@ export function ApprovalCard(props: Waiting<ApprovalArgs> & { name?: string }) {
             {decided === "approved" ? "Approved" : "Declined"}
           </Badge>
         ) : (
-          <Badge tone="caution">Waiting on you</Badge>
+          <Badge tone="caution">Esperando por você</Badge>
         )
       }
       title={args.title}
@@ -94,11 +94,11 @@ export function ApprovalCard(props: Waiting<ApprovalArgs> & { name?: string }) {
       {decided ? null : (
         <div className="mt-4 space-y-2">
           <input
-            aria-label="A reason, if you want to give one"
+            aria-label="Um motivo, se quiser dar um"
             className="w-full rounded-md border border-border bg-transparent px-3 py-1.5 text-sm"
             disabled={Boolean(sending)}
             onChange={(event) => setNote(event.target.value)}
-            placeholder="A reason, if you want to give one"
+            placeholder="Um motivo, se quiser dar um"
             value={note}
           />
           <div className="flex gap-2">
@@ -156,7 +156,7 @@ export function ChoiceCard(props: Waiting<ChoiceArgs>) {
   if (status === "inProgress") {
     return (
       <GalleryFrame title={args.title ?? "Waiting for the assistant…"}>
-        <p className="text-sm text-muted-foreground">Preparing the question…</p>
+        <p className="text-sm text-muted-foreground">Preparando a pergunta…</p>
       </GalleryFrame>
     );
   }
@@ -169,7 +169,7 @@ export function ChoiceCard(props: Waiting<ChoiceArgs>) {
         chosen ? (
           <Badge tone="positive">Answered</Badge>
         ) : (
-          <Badge tone="caution">Waiting on you</Badge>
+          <Badge tone="caution">Esperando por você</Badge>
         )
       }
       caption={args.summary}

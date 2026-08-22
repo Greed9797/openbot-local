@@ -31,7 +31,7 @@ function RouteComponent() {
   return (
     <div className="flex h-screen flex-col">
       <header className="border-b px-6 py-3">
-        <h1 className="text-lg font-semibold">Browser Bot</h1>
+        <h1 className="text-lg font-semibold">Bot de navegador</h1>
         <p className="text-sm text-muted-foreground">
           Ask it to open a page and watch it work.
         </p>

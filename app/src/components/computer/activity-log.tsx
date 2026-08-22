@@ -103,8 +103,8 @@ export function ActivityLog({ computerId }: { computerId: string }) {
   if (entries.length === 0) {
     return (
       <p className="py-6 text-center text-muted-foreground text-sm">
-        Nothing yet. Commands the Bot runs, and files it reads, appear here as
-        they happen.
+        Nada ainda. Comandos que o Bot roda, e arquivos que ele lê, aparecem
+        aqui conforme acontecem.
       </p>
     );
   }

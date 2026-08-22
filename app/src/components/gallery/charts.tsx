@@ -34,7 +34,7 @@ function formatNumber(value: number): string {
 function Empty() {
   return (
     <p className="py-10 text-center text-sm text-muted-foreground">
-      There is no data to chart.
+      Não há dados para o gráfico.
     </p>
   );
 }

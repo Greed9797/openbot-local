@@ -49,7 +49,7 @@ export function CallbackTokenPanel({
       {token ? (
         <div className="grid gap-2 rounded-lg border border-border bg-card p-3">
           <p className="font-medium text-sm">
-            Copy this now. It will not be shown again.
+            Copie agora. Não será mostrado de novo.
           </p>
           {/*
            * Selectable and wrapped rather than a copy button alone: somebody pasting this into a
@@ -59,8 +59,8 @@ export function CallbackTokenPanel({
             {token}
           </code>
           <p className="text-muted-foreground text-xs">
-            The deployment keeps only a hash of it, so nothing here can show it
-            to you a second time.
+            O deployment guarda só um hash disso, então nada aqui consegue
+            mostrar de novo.
           </p>
           <Button onClick={() => setToken(null)} size="sm" variant="outline">
             Done

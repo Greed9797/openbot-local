@@ -55,7 +55,7 @@ function GoogleDriveConnectorPage() {
      * page whose only content immediately covers itself up.
      */
     <PageShell
-      description="Connect an organization service account with domain-wide delegation."
+      description="Conecte uma conta de serviço da organização com delegação em todo o domínio."
       title="Google Drive"
     >
       <form
@@ -116,7 +116,7 @@ function GoogleDriveConnectorPage() {
         </FieldGroup>
         {setup.error ? (
           <p className="mt-4 text-destructive text-sm" role="alert">
-            Could not save the Google Drive connection.
+            Não foi possível salvar a conexão com o Google Drive.
           </p>
         ) : null}
         <Button className="mt-4" disabled={setup.isPending} type="submit">

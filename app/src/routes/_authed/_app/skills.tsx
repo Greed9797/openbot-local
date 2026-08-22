@@ -114,7 +114,7 @@ function SkillsPage() {
             Bot follows. Yours are yours alone, and go on the Bots you own.
           </>
         }
-        title="Agent Skills"
+        title="Habilidades do agente"
       >
         {error ? (
           <p className="text-sm text-destructive" role="alert">
@@ -132,10 +132,10 @@ function SkillsPage() {
               variant="ghost"
             >
               <IconPlus />
-              New skill
+              Nova habilidade
             </Button>
           }
-          title="Your skills"
+          title="Suas habilidades"
         >
           {/*
            * Nothing while the two queries are still in flight. The alternative is the empty state
@@ -229,8 +229,8 @@ function SkillsPage() {
          */}
         {deployment.length > 0 ? (
           <PageSection
-            description="Written for everyone by an administrator. Which Bots carry them is decided in Admin."
-            title="Workspace skills"
+            description="Escritas por um administrador para todo mundo. Quais Bots as carregam se decide no Admin."
+            title="Habilidades do espaço"
           >
             <PageRows>
               {deployment.map((skill, index) => (

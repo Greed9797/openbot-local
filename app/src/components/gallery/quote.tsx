@@ -25,9 +25,7 @@ export function QuoteCard({ quote, attribution, context }: Partial<QuoteArgs>) {
   if (!quote) {
     return (
       <GalleryFrame title="Quotation">
-        <p className="text-sm text-muted-foreground">
-          There is nothing to quote.
-        </p>
+        <p className="text-sm text-muted-foreground">Não há nada para citar.</p>
       </GalleryFrame>
     );
   }

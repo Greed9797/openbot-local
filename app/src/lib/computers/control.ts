@@ -64,11 +64,14 @@ export async function supplySecret(
     const body = (await response.json().catch(() => null)) as {
       error?: string;
     } | null;
-    return { ok: false, error: body?.error ?? "That could not be entered." };
+    return {
+      ok: false,
+      error: body?.error ?? "Não foi possível digitar isso.",
+    };
   } catch {
     return {
       ok: false,
-      error: "The assistant's computer could not be reached.",
+      error: "Não foi possível alcançar o computador do assistente.",
     };
   }
 }

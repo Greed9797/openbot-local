@@ -118,7 +118,7 @@ export function ComputerView({
         if (generation.current !== mine) return;
 
         if (!frame) {
-          setProblem(error ?? "The screen is not available right now.");
+          setProblem(error ?? "A tela não está disponível agora.");
         } else {
           // Exact byte comparison is the settling signal.
           unchanged = frame.base64 === lastFrame ? unchanged + 1 : 0;
@@ -182,7 +182,7 @@ export function ComputerView({
   const polledScreen = showScreen ? (
     <img
       src={`data:image/png;base64,${shot.base64}`}
-      alt="What the assistant is looking at"
+      alt="O que o assistente está olhando"
       // Keep unexpected screenshot dimensions inside the reserved frame.
       className="absolute inset-0 h-full w-full object-contain opacity-100 transition-opacity duration-300 starting:opacity-0"
     />
@@ -199,7 +199,7 @@ export function ComputerView({
           disabled={!showScreen}
           className="relative block w-full bg-muted enabled:cursor-zoom-in"
           style={frameStyle}
-          aria-label="Open the assistant's screen full size"
+          aria-label="Abrir a tela do assistente em tamanho cheio"
         >
           {polledScreen}
 
@@ -218,18 +218,18 @@ export function ComputerView({
               {problem ? (
                 <>
                   <span className="font-medium">
-                    You cannot see the screen right now
+                    Você não consegue ver a tela agora
                   </span>
                   <span>{problem}</span>
                   <span className={blankBrowser ? "text-white/80" : undefined}>
-                    The assistant may still be working. An administrator can
-                    check whether its computer is running.
+                    O assistente pode ainda estar trabalhando. Um administrador
+                    consegue checar se o computador dele está de pé.
                   </span>
                 </>
               ) : blankBrowser ? (
-                <span>The assistant has not opened a page yet.</span>
+                <span>O assistente ainda não abriu nenhuma página.</span>
               ) : (
-                <span>Waiting for the assistant's screen…</span>
+                <span>Esperando a tela do assistente…</span>
               )}
             </span>
           )}
@@ -269,7 +269,7 @@ export function ComputerView({
                 autoComplete="off"
                 autoCorrect="off"
                 spellCheck={false}
-                placeholder="Typed here, never shown to the assistant"
+                placeholder="Digitado aqui, nunca mostrado ao assistente"
                 className="min-w-0 flex-1 rounded-md border bg-background px-2 py-1 text-sm"
               />
               <button
@@ -277,12 +277,12 @@ export function ComputerView({
                 disabled={!secret || sendingSecret}
                 className="shrink-0 rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
               >
-                {sendingSecret ? "Sending…" : "Send to the page"}
+                {sendingSecret ? "Sending…" : "Enviar para a página"}
               </button>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              This goes straight to the page. It is not shown in the
-              conversation and the assistant never receives it.
+              Isto vai direto para a página. Não aparece na conversa e o
+              assistente nunca recebe.
             </p>
             {secretProblem ? (
               <p className="mt-1 text-xs text-destructive">{secretProblem}</p>
@@ -292,7 +292,7 @@ export function ComputerView({
 
         {driving ? (
           <div className="flex items-center justify-between gap-3 border-t bg-muted/40 px-3 py-2 text-sm">
-            <span>You have control of this browser.</span>
+            <span>Você está no controle deste navegador.</span>
             <span className="flex shrink-0 gap-2">
               <button
                 type="button"
@@ -315,7 +315,9 @@ export function ComputerView({
         {control?.requested && !driving ? (
           <div className="flex items-start justify-between gap-3 border-t bg-amber-500/10 px-3 py-2 text-sm">
             <span>
-              <strong className="font-medium">The assistant needs you.</strong>{" "}
+              <strong className="font-medium">
+                O assistente precisa de você.
+              </strong>{" "}
               {control.reason}
             </span>
             <button
@@ -341,14 +343,14 @@ export function ComputerView({
             <div
               role="dialog"
               aria-modal="true"
-              aria-label="The assistant's screen"
+              aria-label="A tela do assistente"
               className="fixed inset-0 z-50 flex flex-col p-4 sm:p-8"
             >
               {/* Backdrop closes only while read-only; during driving, Escape remains the exit. */}
               <button
                 type="button"
                 onClick={() => !driving && setExpanded(false)}
-                aria-label="Close the assistant's screen"
+                aria-label="Fechar a tela do assistente"
                 aria-hidden={driving}
                 tabIndex={driving ? -1 : 0}
                 className={`absolute inset-0 bg-black/80 ${driving ? "cursor-default" : "cursor-zoom-out"}`}
@@ -357,7 +359,9 @@ export function ComputerView({
                 <span className="pointer-events-none">
                   {driving ? (
                     <>
-                      <strong className="font-medium">You have control.</strong>{" "}
+                      <strong className="font-medium">
+                        Você está no controle.
+                      </strong>{" "}
                       Click and type on the page as you normally would.
                       {control?.reason ? ` ${control.reason}` : null}
                     </>
@@ -375,7 +379,7 @@ export function ComputerView({
                       }}
                       className="rounded-md bg-white px-3 py-1 text-xs font-medium text-black"
                     >
-                      Hand back to the assistant
+                      Devolver ao assistente
                     </button>
                   ) : control?.requested ? (
                     <button
@@ -391,8 +395,8 @@ export function ComputerView({
                   ) : null}
                   <span className="pointer-events-none text-white/70">
                     {driving
-                      ? "Press Escape to close"
-                      : "Click anywhere or press Escape to close"}
+                      ? "Aperte Escape para fechar"
+                      : "Clique em qualquer lugar ou aperte Escape para fechar"}
                   </span>
                 </span>
               </div>

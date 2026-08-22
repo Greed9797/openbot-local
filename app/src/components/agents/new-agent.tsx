@@ -12,10 +12,10 @@ export function NewAgent() {
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-6 p-8">
       <header>
-        <h1 className="text-2xl font-semibold">New coworker</h1>
+        <h1 className="text-2xl font-semibold">Novo colega</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          The role you write here applies in every channel this coworker works
-          in.
+          O papel que você escrever aqui vale em todo canal onde este colega
+          trabalhar.
         </p>
       </header>
 

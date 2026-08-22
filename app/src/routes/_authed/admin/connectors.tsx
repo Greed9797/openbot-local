@@ -28,7 +28,7 @@ function ConnectorsPage() {
   const connectors = useQuery(connectorListQueryOptions());
   return (
     <PageShell
-      description="Available integrations are defined by this deployment’s knowledge sources."
+      description="As integrações disponíveis são definidas pelas fontes de conhecimento deste deployment."
       title="Connectors"
     >
       <PageSection title="Available">

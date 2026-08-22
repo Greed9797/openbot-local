@@ -28,7 +28,7 @@ export function CommandOutput({
     <div className="space-y-1.5">
       {truncated ? (
         <p className="text-muted-foreground text-xs">
-          Output was cut short at the start. What follows is the end of it.
+          A saída foi cortada no começo. O que vem abaixo é o final dela.
         </p>
       ) : null}
       {output ? (
@@ -37,7 +37,7 @@ export function CommandOutput({
         </pre>
       ) : (
         <p className="text-muted-foreground text-xs italic">
-          It printed nothing.
+          Não imprimiu nada.
         </p>
       )}
       {timedOut ? (

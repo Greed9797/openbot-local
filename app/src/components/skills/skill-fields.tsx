@@ -90,7 +90,7 @@ export function SkillFields({
                 ) : (
                   <p className="text-muted-foreground text-xs">
                     {slugLocked ? (
-                      "A command cannot be changed. To rename a skill, write a new one and delete this."
+                      "Um comando não pode ser alterado. Para renomear uma habilidade, escreva outra e exclua esta."
                     ) : (
                       <>
                         What you type after a slash.{" "}
@@ -112,14 +112,14 @@ export function SkillFields({
               field.state.meta.isTouched && !field.state.meta.isValid;
             return (
               <Field data-invalid={isInvalid}>
-                <FieldLabel htmlFor={field.name}>Title</FieldLabel>
+                <FieldLabel htmlFor={field.name}>Título</FieldLabel>
                 <Input
                   aria-invalid={isInvalid}
                   id={field.name}
                   name={field.name}
                   onBlur={field.handleBlur}
                   onChange={(event) => field.handleChange(event.target.value)}
-                  placeholder="My standup skill"
+                  placeholder="Minha habilidade de standup"
                   value={field.state.value}
                 />
                 {isInvalid ? (
@@ -136,14 +136,14 @@ export function SkillFields({
               field.state.meta.isTouched && !field.state.meta.isValid;
             return (
               <Field data-invalid={isInvalid}>
-                <FieldLabel htmlFor={field.name}>One-liner</FieldLabel>
+                <FieldLabel htmlFor={field.name}>Uma linha</FieldLabel>
                 <Input
                   aria-invalid={isInvalid}
                   id={field.name}
                   name={field.name}
                   onBlur={field.handleBlur}
                   onChange={(event) => field.handleChange(event.target.value)}
-                  placeholder="Turns yesterday's work into a standup update"
+                  placeholder="Transforma o trabalho de ontem num relato de standup"
                   value={field.state.value}
                 />
                 {isInvalid ? (
@@ -173,15 +173,15 @@ export function SkillFields({
                   name={field.name}
                   onBlur={field.handleBlur}
                   onChange={(event) => field.handleChange(event.target.value)}
-                  placeholder="Summarise what I did yesterday from the channel, then list what is left."
+                  placeholder="Resuma o que eu fiz ontem a partir do canal e depois liste o que falta."
                   value={field.state.value}
                 />
                 {isInvalid ? (
                   <FieldError errors={field.state.meta.errors} />
                 ) : (
                   <p className="text-muted-foreground text-xs">
-                    Added to the run when the command is used. Write it as
-                    instructions to the Bot, not as a description of them.
+                    Entra na execução quando o comando é usado. Escreva como
+                    instrução ao Bot, não como descrição dela.
                   </p>
                 )}
               </Field>

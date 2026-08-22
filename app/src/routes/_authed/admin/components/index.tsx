@@ -27,7 +27,7 @@ function RouteComponent() {
   return (
     <PageShell
       description="What each Bot may answer with. Every published component is available to every Bot; switch one off here and that Bot is never told about it. Each change and each refusal is a row in Audit."
-      title="UI Components"
+      title="Componentes de interface"
     >
       {/*
        * Pending, error, empty, rows — in that order. Pending draws nothing rather than a
@@ -41,7 +41,7 @@ function RouteComponent() {
       ) : components.data?.length === 0 ? (
         <Empty className="mt-12 min-h-[30dvh] border border-dashed">
           <EmptyHeader>
-            <EmptyTitle>No components yet</EmptyTitle>
+            <EmptyTitle>Nenhum componente ainda</EmptyTitle>
             <EmptyDescription className="text-pretty">
               Components that your Agents can use will be shown here.
             </EmptyDescription>

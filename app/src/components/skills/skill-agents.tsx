@@ -36,10 +36,10 @@ export function SkillAgents({
 
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="text-sm font-medium">Agents</h2>
+      <h2 className="text-sm font-medium">Agentes</h2>
       {mine.length === 0 ? (
         <p className="text-muted-foreground text-xs">
-          You do not own an Agent to put this on yet.
+          Você ainda não tem um Agente onde colocar isto.
         </p>
       ) : (
         <>
@@ -66,7 +66,8 @@ export function SkillAgents({
             })}
           </div>
           <p className="text-muted-foreground text-xs">
-            An Agent carrying this offers <code>/{slug}</code> in its composer.
+            Um Agente que carrega isto oferece <code>/{slug}</code> in its
+            composer.
           </p>
         </>
       )}

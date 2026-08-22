@@ -297,7 +297,7 @@ export function ComputerTools() {
       return (
         <ActionLine
           running={status !== "complete"}
-          label="Read the page"
+          label="Leu a página"
           detail={
             elements.length
               ? `${elements.length} thing${elements.length === 1 ? "" : "s"} it can act on`
@@ -346,7 +346,7 @@ export function ComputerTools() {
     render: ({ args, result, status }) => (
       <ActionLine
         running={status !== "complete"}
-        label="Filled in"
+        label="Preencheu"
         detail={
           // Never show typed values; identify only the target field.
           labelOf(result) ??
@@ -623,7 +623,7 @@ export function ComputerTools() {
       return (
         <ActionLine
           running={status !== "complete"}
-          label="Listed files"
+          label="Listou arquivos"
           detail={
             outcome.refused === true || didNotWork(outcome)
               ? String(outcome.reason ?? "")
@@ -668,7 +668,7 @@ export function ComputerTools() {
       return (
         <ActionLine
           running={status !== "complete"}
-          label="Read file"
+          label="Leu arquivo"
           detail={
             outcome.refused === true
               ? String(outcome.reason ?? "")
@@ -744,7 +744,7 @@ export function ComputerTools() {
       return (
         <ToolLine
           running={status !== "complete"}
-          label="Ran a command"
+          label="Rodou um comando"
           detail={
             outcome.refused === true
               ? String(outcome.reason ?? "")

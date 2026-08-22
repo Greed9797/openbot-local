@@ -40,7 +40,7 @@ export function saveActionPolicyMutationOptions(queryClient: QueryClient) {
       client("/api/computers/policy", "policy", {
         method: "PUT",
         body: next,
-        fallback: "The boundary could not be saved.",
+        fallback: "Não foi possível salvar o limite.",
       }),
     onSuccess: () => invalidateComputers(queryClient),
   });

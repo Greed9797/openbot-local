@@ -121,8 +121,8 @@ function RouteComponent() {
     return (
       <PageShell
         backButton={BACK}
-        description="Nothing here answers to that name."
-        title="No such component"
+        description="Nada aqui atende por esse nome."
+        title="Componente inexistente"
       >
         <Empty className="mt-12 min-h-[30dvh] border border-dashed">
           <EmptyHeader>
@@ -310,7 +310,7 @@ function ComponentDetail({
       </div>
 
       <PageSection
-        description="What this component is for, and which Bots are allowed to answer with it."
+        description="Para que serve este componente, e quais Bots podem responder com ele."
         title="Configuration"
       >
         <PageRows>
@@ -325,7 +325,7 @@ function ComponentDetail({
                   <IconAlertTriangle className="text-amber-600 dark:text-amber-400" />
                 </ItemMedia>
                 <ItemContent>
-                  <ItemTitle>Not in this build</ItemTitle>
+                  <ItemTitle>Não existe nesta build</ItemTitle>
                   <ItemDescription>
                     Nothing here can draw it, whatever else is set.
                   </ItemDescription>
@@ -364,7 +364,7 @@ function ComponentDetail({
 
           <SheetRow
             icon={<IconFileText />}
-            label="Description"
+            label="Descrição"
             onOpen={() => setSheet("description")}
             summary={component.draftDescription || "Nothing yet"}
             testId={`description-${component.name}`}
@@ -374,7 +374,7 @@ function ComponentDetail({
 
           <SheetRow
             icon={<IconUsers />}
-            label="Available to"
+            label="Disponível para"
             onOpen={() => setSheet("grants")}
             summary={grantSummary}
             testId={`grants-${component.name}`}
@@ -384,7 +384,7 @@ function ComponentDetail({
 
           <SheetRow
             icon={<IconDatabase />}
-            label="May read"
+            label="Pode ler"
             onOpen={() => setSheet("functions")}
             summary={functionSummary}
             testId={`functions-${component.name}`}
@@ -392,19 +392,19 @@ function ComponentDetail({
         </PageRows>
       </PageSection>
 
-      <PageSection title="Details">
+      <PageSection title="Detalhes">
         <PageRows>
           <FactRow icon={<IconTag />} label="Kind">
             {component.kind}
           </FactRow>
           <Separator />
-          <FactRow icon={<IconCode />} label="Called as">
+          <FactRow icon={<IconCode />} label="Chamado como">
             <code className="rounded bg-foreground/5 px-1.5 py-0.5 text-xs">
               {component.name}
             </code>
           </FactRow>
           <Separator />
-          <FactRow icon={<IconClock />} label="Last changed">
+          <FactRow icon={<IconClock />} label="Última alteração">
             {new Date(component.updatedAt).toLocaleString()}
             {component.updatedBy ? ` by ${component.updatedBy}` : null}
           </FactRow>
@@ -427,7 +427,7 @@ function ComponentDetail({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Description</DialogTitle>
+            <DialogTitle>Descrição</DialogTitle>
             <DialogDescription>
               What the model reads when deciding to call this. It changes
               nothing until the component is published.
@@ -435,7 +435,7 @@ function ComponentDetail({
           </DialogHeader>
           <DialogBody className="mt-4">
             <Textarea
-              aria-label="Description"
+              aria-label="Descrição"
               onChange={(event) => setDraft(event.target.value)}
               rows={6}
               value={draft}
@@ -472,7 +472,7 @@ function ComponentDetail({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Available to</DialogTitle>
+            <DialogTitle>Disponível para</DialogTitle>
             <DialogDescription>
               Switch a Bot off and it is never told this component exists, so it
               cannot ask for it and does not apologise for not having it. Each
@@ -524,7 +524,7 @@ function ComponentDetail({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>May read</DialogTitle>
+            <DialogTitle>Pode ler</DialogTitle>
             <DialogDescription>
               A separate grant from Available to, and not implied by it: that
               one decides who may draw this, and this decides what it may go and

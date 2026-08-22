@@ -169,22 +169,22 @@ function PlaygroundPage() {
         <div className="space-y-3">
           <div className="grid gap-2 md:grid-cols-2">
             <TextField
-              label="Name"
+              label="Nome"
               onChange={set("slug")}
               placeholder="refund_card"
               value={draft.slug}
             />
             <TextField
-              label="Title"
+              label="Título"
               onChange={set("title")}
-              placeholder="Refund card"
+              placeholder="Estornar cartão"
               value={draft.title}
             />
           </div>
           <TextField
-            label="What the model is told about it"
+            label="O que o modelo sabe sobre isso"
             onChange={set("description")}
-            placeholder="Show a refund with its amount, reason and status."
+            placeholder="Mostra um estorno com valor, motivo e situação."
             value={draft.description}
           />
           <CodeField label="HTML" onChange={set("html")} value={draft.html} />
@@ -196,13 +196,13 @@ function PlaygroundPage() {
           />
           <CodeField
             invalid={schema === null}
-            label="Arguments (JSON Schema)"
+            label="Argumentos (JSON Schema)"
             onChange={set("argumentSchema")}
             value={draft.argumentSchema}
           />
           <CodeField
             invalid={sample === null}
-            label="Sample arguments"
+            label="Argumentos de exemplo"
             onChange={set("sampleArguments")}
             value={draft.sampleArguments}
           />
@@ -383,7 +383,7 @@ function CodeField({
       <FieldLabel htmlFor={id}>
         {label}
         {invalid ? (
-          <span className="ml-2 text-destructive">not valid JSON</span>
+          <span className="ml-2 text-destructive">JSON inválido</span>
         ) : null}
       </FieldLabel>
       <Textarea

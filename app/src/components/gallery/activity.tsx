@@ -94,7 +94,9 @@ export function ActivityReportCard({
   if (!report) {
     return (
       <GalleryFrame title="Report">
-        <p className="text-sm text-muted-foreground">Choosing a report…</p>
+        <p className="text-sm text-muted-foreground">
+          Escolhendo um relatório…
+        </p>
       </GalleryFrame>
     );
   }
@@ -105,7 +107,7 @@ export function ActivityReportCard({
         caption="Reading from this deployment"
         title={title ?? "Report"}
       >
-        <p className="text-sm text-muted-foreground">Reading…</p>
+        <p className="text-sm text-muted-foreground">Lendo…</p>
       </GalleryFrame>
     );
   }
@@ -113,7 +115,7 @@ export function ActivityReportCard({
   if (state.status === "refused") {
     return (
       <GalleryFrame title={title ?? "Report"}>
-        <p className="text-sm text-destructive">Not shown</p>
+        <p className="text-sm text-destructive">Não mostrado</p>
         <p className="mt-1 text-sm text-foreground/80">{state.reason}</p>
       </GalleryFrame>
     );
@@ -170,7 +172,7 @@ function ActivityChart({
             size="sm"
             variant="outline"
           >
-            Ask about the busiest
+            Pergunte sobre o mais movimentado
           </Button>
         ) : undefined
       }
@@ -217,7 +219,7 @@ function RefusalList({
     return (
       <GalleryFrame title={title ?? "Recent refusals"}>
         <p className="text-sm text-muted-foreground">
-          This deployment has refused nothing.
+          Este deployment não recusou nada.
         </p>
       </GalleryFrame>
     );
@@ -236,7 +238,7 @@ function RefusalList({
             size="sm"
             variant="outline"
           >
-            Explain the latest
+            Explique o mais recente
           </Button>
         ) : undefined
       }

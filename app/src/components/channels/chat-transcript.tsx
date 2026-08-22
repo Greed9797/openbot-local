@@ -165,7 +165,7 @@ function Queued({
             <button
               /*
                * The sentence it deletes, in the name. Three parked corrections put three buttons
-               * called "Remove" in a row, and somebody reading by name alone is told what they can
+               * called "Remover" in a row, and somebody reading by name alone is told what they can
                * do and nothing about which one it would happen to. The visible word stays short
                * because the bubble it sits under is the answer for everybody who can see it.
                */

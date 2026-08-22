@@ -331,8 +331,8 @@ export function ChannelChat({
         notice={
           channel.active ? null : (
             <p className="pb-2 text-sm text-muted-foreground" role="status">
-              This coworker has been deleted. The conversation stays readable,
-              but it can no longer reply.
+              Este colega foi excluído. A conversa continua legível, mas ele não
+              responde mais.
             </p>
           )
         }

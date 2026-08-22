@@ -71,12 +71,12 @@ function PeoplePage() {
 
   return (
     <PageShell
-      description="Everybody who has signed in. Administrators reach these screens; everybody else talks to Bots."
+      description="Todo mundo que já entrou. Administradores alcançam estas telas; o resto conversa com os Bots."
       title="People"
     >
       <PageSection
-        description="An address named in INITIAL_ADMIN_EMAILS is an administrator whatever this screen says, so it cannot be changed here."
-        title="Who is here"
+        description="Um endereço listado em INITIAL_ADMIN_EMAILS é administrador independente do que esta tela disser, então não dá para mudar aqui."
+        title="Quem está aqui"
       >
         {failure ? (
           <p className="mt-4 text-destructive text-sm" role="alert">
@@ -133,7 +133,7 @@ function PeoplePage() {
                         size="sm"
                         variant={person.revoked ? "outline" : "destructive"}
                       >
-                        {person.revoked ? "Restore" : "Remove"}
+                        {person.revoked ? "Restore" : "Remover"}
                       </Button>
                       <Switch
                         aria-label={`Administrator: ${person.email}`}

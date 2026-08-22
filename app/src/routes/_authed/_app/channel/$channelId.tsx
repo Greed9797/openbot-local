@@ -231,7 +231,7 @@ function RouteComponent() {
               ) : null}
             </Button>
             <Button
-              aria-label="Channel coworker"
+              aria-label="Colega do canal"
               aria-pressed={isSettingsOpen}
               className={isSettingsOpen ? "bg-foreground/5" : undefined}
               disabled={agentId === undefined}

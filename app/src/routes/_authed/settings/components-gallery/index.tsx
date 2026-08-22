@@ -30,7 +30,7 @@ function RouteComponent() {
   return (
     <PageShell
       description="The pieces a Bot can draw in a conversation instead of describing something in prose. Which of them any one Bot may use is an administrator's decision."
-      title="Components gallery"
+      title="Galeria de componentes"
     >
       {components.isPending ? null : components.error ? (
         <p className="mt-12 text-destructive text-sm" role="alert">
@@ -39,9 +39,9 @@ function RouteComponent() {
       ) : published?.length === 0 ? (
         <Empty className="mt-12 min-h-[30dvh] border border-dashed">
           <EmptyHeader>
-            <EmptyTitle>Nothing published yet</EmptyTitle>
+            <EmptyTitle>Nada publicado ainda</EmptyTitle>
             <EmptyDescription className="text-pretty">
-              When an administrator publishes a component, it will show up here.
+              Quando um administrador publicar um componente, ele aparece aqui.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>

@@ -77,7 +77,7 @@ export function LiveScreen({ computerId, driving, onProblem }: Props) {
         return;
       }
       if (message.type === "error") {
-        onProblem?.(message.error ?? "The screen could not be shown.");
+        onProblem?.(message.error ?? "Não foi possível mostrar a tela.");
         return;
       }
       if (message.type !== "frame" || !message.data) return;
@@ -117,7 +117,8 @@ export function LiveScreen({ computerId, driving, onProblem }: Props) {
       }
     };
 
-    socket.onerror = () => onProblem?.("The live screen could not be reached.");
+    socket.onerror = () =>
+      onProblem?.("Não foi possível alcançar a tela ao vivo.");
     socket.onclose = () => setConnected(false);
 
     return () => {
@@ -252,8 +253,8 @@ export function LiveScreen({ computerId, driving, onProblem }: Props) {
         : {})}
       aria-label={
         driving
-          ? "The assistant's screen. You have control: click and type here."
-          : "The assistant's screen, live"
+          ? "A tela do assistente. Você está no controle: clique e digite aqui."
+          : "A tela do assistente, ao vivo"
       }
       data-connected={connected}
     />

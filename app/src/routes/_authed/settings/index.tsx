@@ -28,21 +28,21 @@ function RouteComponent() {
    */
   return (
     <PageShell
-      description="How OpenBot looks and behaves for you. These apply to your account alone, on every deployment you sign in to."
+      description="Como o OpenBot aparece e se comporta para você. Vale só para a sua conta, em todo deployment onde você entrar."
       title="Preferences"
     >
       <PageSection title="General">
         <PageRows>
           <Item size="sm">
             <ItemContent>
-              <ItemTitle>Dark theme</ItemTitle>
+              <ItemTitle>Tema escuro</ItemTitle>
               <ItemDescription>
-                Use the dark appearance across OpenBot.
+                Usar a aparência escura em todo o OpenBot.
               </ItemDescription>
             </ItemContent>
             <ItemActions>
               <Switch
-                aria-label="Dark theme"
+                aria-label="Tema escuro"
                 checked={dark}
                 onCheckedChange={setDark}
               />

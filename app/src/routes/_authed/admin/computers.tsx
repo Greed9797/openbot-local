@@ -51,7 +51,7 @@ function ComputersPage() {
    * both "this did not work", and the page has one place to say so.
    */
   const problem = fleet.error
-    ? "The computers could not be listed."
+    ? "Não foi possível listar os computadores."
     : setState.error
       ? setState.error.message
       : null;
@@ -92,9 +92,9 @@ function ComputersPage() {
         </p>
       ) : null}
 
-      <PageSection title="Computers in this deployment">
+      <PageSection title="Computadores deste deployment">
         {computers === null && problem ? (
-          <PageEmpty>The list could not be loaded.</PageEmpty>
+          <PageEmpty>Não foi possível carregar a lista.</PageEmpty>
         ) : computers === null ? null : computers.length === 0 ? (
           <PageEmpty>
             No computers yet. One appears the first time a Bot opens a page.

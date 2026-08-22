@@ -43,7 +43,7 @@ export type CustomServerInput = {
 /** Which kinds of plugin a grant can be about. */
 export type PluginKind = "mcp" | "skill";
 
-const FALLBACK = "That did not work.";
+const FALLBACK = "Isso não funcionou.";
 
 function invalidatePlugins(queryClient: QueryClient) {
   return queryClient.invalidateQueries({ queryKey: pluginKeys.all });

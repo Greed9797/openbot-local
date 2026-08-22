@@ -21,7 +21,7 @@ export function setUpGoogleDriveMutationOptions(queryClient: QueryClient) {
       await client("/api/admin/connectors/google-drive/setup", {
         method: "POST",
         body: input,
-        fallback: "Could not set up Google Drive",
+        fallback: "Não foi possível configurar o Google Drive",
       });
     },
     onSuccess: () =>

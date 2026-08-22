@@ -207,9 +207,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             <SidebarMenuItem>
               <InputGroup className="bg-background text-sm rounded-lg h-9">
                 <InputGroupInput
-                  aria-label="Search channels"
+                  aria-label="Buscar canais"
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search..."
+                  placeholder="Buscar..."
                   value={search}
                 />
                 <InputGroupAddon>
@@ -228,7 +228,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <div className="py-4">
                 <Empty className="border border-dashed min-h-[40dvh]">
                   <EmptyHeader>
-                    <EmptyTitle>No channels match your search</EmptyTitle>
+                    <EmptyTitle>Nenhum canal corresponde à busca</EmptyTitle>
                     <EmptyDescription className="text-pretty">
                       Nothing here is named “{search.trim()}”, and nobody has
                       said it recently either.
@@ -241,10 +241,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <div className="py-4">
                 <Empty className="border border-dashed min-h-[40dvh]">
                   <EmptyHeader>
-                    <EmptyTitle>You don't have channels yet</EmptyTitle>
+                    <EmptyTitle>Você ainda não tem canais</EmptyTitle>
                     <EmptyDescription className="text-pretty">
-                      Start talking to agents and your channels will appear
-                      here.
+                      Converse com os agentes e seus canais aparecem aqui.
                     </EmptyDescription>
                   </EmptyHeader>
                 </Empty>
@@ -300,7 +299,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <div className="size-[28px] flex items-center justify-center">
                 <IconBolt />
               </div>
-              <span className="text-sm trackint-tight">Agents</span>
+              <span className="text-sm trackint-tight">Agentes</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>

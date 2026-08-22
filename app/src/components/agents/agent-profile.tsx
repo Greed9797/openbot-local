@@ -77,7 +77,7 @@ export function AgentProfile({ agentId }: { agentId: string }) {
   if (agent.error || !agent.data) {
     return (
       <p className="p-8 text-sm text-destructive" role="alert">
-        Could not load this coworker.
+        Não foi possível carregar este colega.
       </p>
     );
   }
@@ -105,7 +105,7 @@ export function AgentProfile({ agentId }: { agentId: string }) {
 
         <div className="flex flex-wrap justify-center gap-1.5">
           <Tag>{profile.visibility === "private" ? "Private" : "Public"}</Tag>
-          {profile.systemOwned ? <Tag>System owned</Tag> : null}
+          {profile.systemOwned ? <Tag>Do sistema</Tag> : null}
         </div>
       </header>
 
@@ -130,7 +130,7 @@ export function AgentProfile({ agentId }: { agentId: string }) {
             });
             setEditingId(null);
           }}
-          submitLabel="Save changes"
+          submitLabel="Salvar alterações"
         />
       ) : (
         <section className="grid gap-2">
@@ -210,8 +210,8 @@ export function AgentProfile({ agentId }: { agentId: string }) {
 
           {profile.hidden ? (
             <p className="-mt-1 text-xs text-muted-foreground">
-              Hidden from your agents list. This changes nothing for anyone
-              else.
+              Escondido da sua lista de agentes. Não muda nada para mais
+              ninguém.
             </p>
           ) : null}
 
@@ -252,7 +252,7 @@ export function AgentProfile({ agentId }: { agentId: string }) {
                     }}
                     variant="destructive"
                   >
-                    {deleteAgent.isPending ? "Deleting…" : "Delete"}
+                    {deleteAgent.isPending ? "Deleting…" : "Excluir"}
                   </Button>
                 </div>
               ) : (

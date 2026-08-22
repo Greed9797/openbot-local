@@ -67,7 +67,7 @@ function AuditPage() {
           Refresh
         </Button>
       }
-      description="Every action a Bot took, and every one this deployment's policy refused."
+      description="Toda ação que um Bot tomou, e toda que a política deste deployment recusou."
       title="Audit"
       width="wide"
     >
@@ -92,7 +92,7 @@ function AuditPage() {
             The audit trail could not be loaded.
           </p>
         ) : rows.length === 0 ? (
-          <PageEmpty>No events match this filter yet.</PageEmpty>
+          <PageEmpty>Nenhum evento corresponde a este filtro ainda.</PageEmpty>
         ) : (
           <div className="mt-4 overflow-x-auto rounded-lg border border-border bg-card">
             <table className="w-full text-left text-sm">
@@ -232,7 +232,7 @@ function Row({
         typeof payload.reason === "string" ? (
           <div className="mt-0.5 text-xs text-muted-foreground">
             {payload.reason}
-            <span className="italic">, reported by the Bot itself</span>
+            <span className="italic">, relatado pelo próprio Bot</span>
           </div>
         ) : null}
         {failed && typeof payload.failure === "string" ? (

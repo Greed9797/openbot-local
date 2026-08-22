@@ -76,14 +76,14 @@ export function AgentFields({
               field.state.meta.isTouched && !field.state.meta.isValid;
             return (
               <Field data-invalid={isInvalid}>
-                <FieldLabel htmlFor={field.name}>Name</FieldLabel>
+                <FieldLabel htmlFor={field.name}>Nome</FieldLabel>
                 <Input
                   aria-invalid={isInvalid}
                   id={field.name}
                   name={field.name}
                   onBlur={field.handleBlur}
                   onChange={(event) => field.handleChange(event.target.value)}
-                  placeholder="Expense Manager"
+                  placeholder="Gestor de despesas"
                   value={field.state.value}
                 />
                 {isInvalid ? (
@@ -99,14 +99,14 @@ export function AgentFields({
               field.state.meta.isTouched && !field.state.meta.isValid;
             return (
               <Field data-invalid={isInvalid}>
-                <FieldLabel htmlFor={field.name}>Title</FieldLabel>
+                <FieldLabel htmlFor={field.name}>Título</FieldLabel>
                 <Input
                   aria-invalid={isInvalid}
                   id={field.name}
                   name={field.name}
                   onBlur={field.handleBlur}
                   onChange={(event) => field.handleChange(event.target.value)}
-                  placeholder="Finance Operations"
+                  placeholder="Operações financeiras"
                   value={field.state.value}
                 />
                 {isInvalid ? (
@@ -129,7 +129,7 @@ export function AgentFields({
                   name={field.name}
                   onBlur={field.handleBlur}
                   onChange={(event) => field.handleChange(event.target.value)}
-                  placeholder="Review receipts, categorize expenses, and prepare reimbursement reports."
+                  placeholder="Revisa recibos, classifica despesas e prepara relatórios de reembolso."
                   rows={4}
                   value={field.state.value}
                 />
@@ -159,7 +159,7 @@ export function AgentFields({
                       Private, only you can see it
                     </SelectItem>
                     <SelectItem value="public">
-                      Public, everybody can see it
+                      Público, todo mundo vê
                     </SelectItem>
                   </SelectGroup>
                 </SelectContent>
@@ -230,7 +230,7 @@ export function AgentFields({
           {(field) => (
             <Field>
               <FieldLabel htmlFor={field.name}>
-                Key for that agent (optional)
+                Chave desse agente (opcional)
               </FieldLabel>
               <Input
                 autoComplete="off"
@@ -240,7 +240,7 @@ export function AgentFields({
                 onChange={(event) => field.handleChange(event.target.value)}
                 placeholder={
                   hasAuth
-                    ? "A key is set. Type a new one to replace it."
+                    ? "Há uma chave definida. Digite outra para substituir."
                     : "Bearer …"
                 }
                 // Never repopulated; `hasAuth` communicates that a key exists without exposing it.
@@ -248,9 +248,9 @@ export function AgentFields({
                 value={field.state.value}
               />
               <p className="text-muted-foreground text-sm">
-                Sent as an <code>Authorization</code> header on every run, and
-                kept in the credential vault. Leave empty to keep the current
-                key.
+                Sent as an <code>Authorization</code> em toda execução, e
+                guardada no cofre de credenciais. Deixe vazio para manter a
+                chave atual.
               </p>
             </Field>
           )}

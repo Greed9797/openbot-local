@@ -52,7 +52,7 @@ export function computerFleetQueryOptions() {
     queryKey: computerKeys.fleet(),
     queryFn: async (): Promise<ComputerFleet> => {
       const response = await client(`/api/computers/${FLEET_ID}/computers`, {
-        fallback: "The computers could not be listed.",
+        fallback: "Não foi possível listar os computadores.",
       });
       return response.json();
     },
@@ -64,7 +64,7 @@ export function actionPolicyQueryOptions() {
     queryKey: computerKeys.policy(),
     queryFn: (): Promise<ActionPolicy> =>
       client("/api/computers/policy", "policy", {
-        fallback: "The boundary could not be read.",
+        fallback: "Não foi possível ler o limite.",
       }),
   });
 }

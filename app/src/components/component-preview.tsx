@@ -99,8 +99,8 @@ export function ComponentPreview({
          */}
         <p className="text-center text-neutral-700 text-xs">
           {entry
-            ? "This one is only drawn in a conversation."
-            : "This build cannot draw this."}
+            ? "Este só é desenhado dentro de uma conversa."
+            : "Esta build não consegue desenhar isto."}
         </p>
       </div>
     );

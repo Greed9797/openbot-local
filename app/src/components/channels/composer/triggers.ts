@@ -56,7 +56,7 @@ export function agentTrigger(agents: readonly AgentOption[]): TriggerConfig {
     char: AGENT_TRIGGER,
     accessibilityLabel: "agent",
     reopenOnChipClick: true,
-    emptyMessage: "No agents in this channel",
+    emptyMessage: "Nenhum agente neste canal",
     onSearch: (query): TriggerSuggestion[] =>
       agents
         .filter((agent) => matches(query, agent.name, agent.description))
@@ -81,7 +81,7 @@ export function slashCommandTrigger(
     char: COMMAND_TRIGGER,
     position: "start",
     accessibilityLabel: "command",
-    emptyMessage: "No matching commands",
+    emptyMessage: "Nenhum comando corresponde",
     onSearch: (query): TriggerSuggestion[] =>
       commands
         .filter((command) => matches(query, command.name, command.description))

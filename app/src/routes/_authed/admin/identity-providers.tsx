@@ -105,10 +105,10 @@ function IdentityProvidersPage() {
         </Button>
       }
       description="A company's own identity provider, by SAML or OpenID Connect. Somebody types their email address and the domain decides which one they are sent to."
-      title="Identity providers"
+      title="Provedores de identidade"
     >
       <PageSection
-        description="Google, Microsoft and Okta are configured in the environment instead and do not appear here."
+        description="Google, Microsoft e Okta são configurados no ambiente e não aparecem aqui."
         title="Registered"
       >
         {failure ? (
@@ -122,8 +122,8 @@ function IdentityProvidersPage() {
           </p>
         ) : providers.data?.length === 0 ? (
           <PageEmpty>
-            No identity providers are registered. Add one with the metadata your
-            identity team supplied.
+            Nenhum provedor de identidade registrado. Adicione um com os
+            metadados que seu time de identidade forneceu.
           </PageEmpty>
         ) : (
           <PageRows>
@@ -162,7 +162,7 @@ function IdentityProvidersPage() {
       <Dialog onOpenChange={setOpen} open={open}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add an identity provider</DialogTitle>
+            <DialogTitle>Adicionar provedor de identidade</DialogTitle>
           </DialogHeader>
           <form onSubmit={submit}>
             <DialogBody className="mt-4 space-y-4 overflow-y-auto">
@@ -183,7 +183,7 @@ function IdentityProvidersPage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="providerId">Name</Label>
+                <Label htmlFor="providerId">Nome</Label>
                 <Input
                   id="providerId"
                   onChange={(event) =>
@@ -196,7 +196,7 @@ function IdentityProvidersPage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="domain">Email domain</Label>
+                <Label htmlFor="domain">Domínio de e-mail</Label>
                 <Input
                   id="domain"
                   onChange={(event) =>
@@ -208,8 +208,8 @@ function IdentityProvidersPage() {
                 />
                 {/* Said out loud because it is the field that decides who this applies to. */}
                 <p className="text-muted-foreground text-xs">
-                  Anybody signing in with an address at this domain is sent
-                  here. Separate several with commas.
+                  Quem entrar com um endereço deste domínio vem para cá. Separe
+                  vários com vírgula.
                 </p>
               </div>
 
@@ -230,7 +230,7 @@ function IdentityProvidersPage() {
               {draft.protocol === "saml" ? (
                 <>
                   <div className="space-y-1.5">
-                    <Label htmlFor="entryPoint">Sign-on URL</Label>
+                    <Label htmlFor="entryPoint">URL de sign-on</Label>
                     <Input
                       id="entryPoint"
                       onChange={(event) =>
@@ -243,7 +243,7 @@ function IdentityProvidersPage() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="metadata">Metadata XML</Label>
+                    <Label htmlFor="metadata">XML de metadados</Label>
                     <Textarea
                       className="font-mono text-xs"
                       id="metadata"
@@ -256,8 +256,8 @@ function IdentityProvidersPage() {
                       value={draft.metadata}
                     />
                     <p className="text-muted-foreground text-xs">
-                      The document your identity team supplied. It carries the
-                      signing certificate.
+                      O documento que seu time de identidade forneceu. É ele que
+                      carrega o certificado de assinatura.
                     </p>
                   </div>
                 </>

@@ -69,7 +69,7 @@ function BoundariesPage() {
 
   if (problem && !policy) {
     return (
-      <PageShell title="Boundaries">
+      <PageShell title="Limites">
         <p className="mt-4 text-destructive text-sm" role="alert">
           {problem}
         </p>
@@ -79,7 +79,7 @@ function BoundariesPage() {
 
   /* Nothing until the policy is known: a rule list that guesses is worse than a blank. */
   if (!policy) {
-    return <PageShell title="Boundaries">{null}</PageShell>;
+    return <PageShell title="Limites">{null}</PageShell>;
   }
 
   const addRule = (rule: string) => {
@@ -101,11 +101,11 @@ function BoundariesPage() {
           with the rule that refused it.
         </>
       }
-      title="Boundaries"
+      title="Limites"
     >
       <PageSection
         description="Enforce stops the action. Record it and allow it writes the same row and lets the action through, which is how a rule is tried on real traffic before it starts refusing anybody."
-        title="When a rule matches"
+        title="Quando uma regra casa"
       >
         <div className="mt-2 flex gap-2">
           {(["enforce", "dry-run"] as PolicyMode[]).map((mode) => (
@@ -140,14 +140,14 @@ function BoundariesPage() {
             <code>bot.id</code>, <code>actor.id</code>, <code>page.url</code>{" "}
             and <code>page.host</code>, the element being acted on, the{" "}
             <code>key</code> being pressed, the file being touched, the{" "}
-            <code>command</code> being run, and <code>mcp.server</code>,{" "}
+            <code>command</code> sendo executado, e <code>mcp.server</code>,{" "}
             <code>mcp.tool</code> and <code>mcp.effect</code> for a call to
             somebody else&rsquo;s tools. A rule that cannot be evaluated counts
             as a match, so a mistyped deny refuses rather than quietly
             permitting what it was meant to forbid.
           </>
         }
-        title="It may never"
+        title="Nunca pode"
       >
         {policy.deny.length === 0 ? (
           <p className="mt-2 text-sm text-muted-foreground">
@@ -183,7 +183,7 @@ function BoundariesPage() {
 
         <div className="mt-3 flex gap-2">
           <Input
-            aria-label="A rule, written in CEL"
+            aria-label="Uma regra, escrita em CEL"
             className="min-w-0 flex-1 font-mono text-xs"
             onChange={(event) => {
               setDraft(event.target.value);
@@ -228,7 +228,7 @@ function BoundariesPage() {
 
       <PageSection
         description="The floor, applied to anything the deny list did not catch. It is not a formality: an empty list here permits nothing, so a deployment that clears this refuses every action rather than allowing every action."
-        title="Otherwise it may"
+        title="Fora isso, pode"
       >
         <ul className="mt-2 space-y-1">
           {policy.allow.map((rule) => (

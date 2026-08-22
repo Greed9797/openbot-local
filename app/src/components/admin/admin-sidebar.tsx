@@ -136,7 +136,7 @@ export function AdminSidebar({
               render={(props) => (
                 <Link {...appLinkOptions} {...props}>
                   <IconArrowLeft className="mr-2 h-4 w-4" />
-                  Back to app
+                  Voltar ao app
                 </Link>
               )}
             />

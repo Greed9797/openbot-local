@@ -29,7 +29,7 @@ export function stoppedReason(reported: unknown): string {
       : typeof reported === "string"
         ? reported
         : "";
-  return said.trim() || "The Bot stopped without saying why.";
+  return said.trim() || "O Bot parou sem dizer por quê.";
 }
 
 /**

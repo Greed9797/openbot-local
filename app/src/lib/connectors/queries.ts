@@ -19,7 +19,7 @@ export function connectorListQueryOptions() {
     queryKey: connectorKeys.list(),
     queryFn: async (): Promise<ConnectorStatus[]> => {
       return client("/api/admin/connectors", "connectors", {
-        fallback: "Could not load connectors",
+        fallback: "Não foi possível carregar os conectores",
       });
     },
   });

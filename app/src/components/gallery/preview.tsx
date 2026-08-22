@@ -48,7 +48,9 @@ export function GalleryPreview({
 }) {
   if (!available) {
     return (
-      <p className="text-muted-foreground text-sm">Loading what it can draw…</p>
+      <p className="text-muted-foreground text-sm">
+        Carregando o que ele pode desenhar…
+      </p>
     );
   }
 
@@ -62,7 +64,7 @@ export function GalleryPreview({
   if (shown.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
-        This Bot has not been granted any components, so it answers in prose.
+        Este Bot não recebeu nenhum componente, então responde em prosa.
       </p>
     );
   }
@@ -117,8 +119,8 @@ function PreviewOf({ name }: { name: string }) {
      */
     return (
       <p className="text-muted-foreground text-sm">
-        Draws this deployment's own records, so it has nothing to show until a
-        Bot asks for it.
+        Desenha os registros deste deployment, então não mostra nada até um Bot
+        pedir.
       </p>
     );
   }

@@ -26,7 +26,7 @@ export type Screenshot = {
 export async function readScreenshot(
   computerId: string,
 ): Promise<{ frame?: Screenshot; error?: string }> {
-  const unavailable = "The screen is not available right now.";
+  const unavailable = "A tela não está disponível agora.";
   try {
     const response = await tryClient(`/api/computers/${computerId}/screenshot`);
     if (!response.ok) {

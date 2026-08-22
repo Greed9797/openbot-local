@@ -88,10 +88,10 @@ function CredentialsPage() {
       action={
         <Button onClick={() => setAdding(true)} size="sm" variant="ghost">
           <IconPlus />
-          Add credential
+          Adicionar credencial
         </Button>
       }
-      description="Credentials are write-only. OpenBot never displays their secret values."
+      description="Credenciais são somente escrita. O OpenBot nunca mostra o valor secreto delas."
       title="Credentials"
     >
       {/*
@@ -109,7 +109,7 @@ function CredentialsPage() {
             }}
           >
             <DialogHeader>
-              <DialogTitle>Add credential</DialogTitle>
+              <DialogTitle>Adicionar credencial</DialogTitle>
               <DialogDescription>
                 Held for this deployment and never shown again once saved.
               </DialogDescription>
@@ -182,7 +182,9 @@ function CredentialsPage() {
                       field.state.meta.isTouched && !field.state.meta.isValid;
                     return (
                       <Field data-invalid={isInvalid}>
-                        <FieldLabel htmlFor={field.name}>Key ID</FieldLabel>
+                        <FieldLabel htmlFor={field.name}>
+                          ID da chave
+                        </FieldLabel>
                         <Input
                           aria-invalid={isInvalid}
                           id={field.name}
@@ -265,13 +267,13 @@ function CredentialsPage() {
         </DialogContent>
       </Dialog>
 
-      <PageSection title="Configured credentials">
+      <PageSection title="Credenciais configuradas">
         {credentials.isPending ? null : credentials.error ? (
           <p className="mt-4 text-destructive text-sm" role="alert">
             Could not load credentials.
           </p>
         ) : credentials.data?.length === 0 ? (
-          <PageEmpty>No credentials are configured.</PageEmpty>
+          <PageEmpty>Nenhuma credencial configurada.</PageEmpty>
         ) : (
           <PageRows>
             {credentials.data?.map((credential, index) => (

@@ -76,7 +76,7 @@ function RouteComponent() {
 
   if (components.error) {
     return (
-      <PageShell backButton={BACK} title="Components gallery">
+      <PageShell backButton={BACK} title="Galeria de componentes">
         <p className="mt-8 text-destructive text-sm" role="alert">
           Could not load components.
         </p>
@@ -96,15 +96,14 @@ function RouteComponent() {
     return (
       <PageShell
         backButton={BACK}
-        description="Nothing here answers to that name."
-        title="No such component"
+        description="Nada aqui atende por esse nome."
+        title="Componente inexistente"
       >
         <Empty className="mt-12 min-h-[30dvh] border border-dashed">
           <EmptyHeader>
             <EmptyTitle>{name}</EmptyTitle>
             <EmptyDescription className="text-pretty">
-              It may have been withdrawn, or this deployment may no longer ship
-              it.
+              Pode ter sido retirado, ou este deployment pode não trazer mais.
             </EmptyDescription>
           </EmptyHeader>
           <Button
@@ -112,7 +111,7 @@ function RouteComponent() {
             size="sm"
             variant="outline"
           >
-            Back to the gallery
+            Voltar à galeria
           </Button>
         </Empty>
       </PageShell>
@@ -134,13 +133,13 @@ function RouteComponent() {
         </div>
       </div>
 
-      <PageSection title="Details">
+      <PageSection title="Detalhes">
         <PageRows>
           <FactRow icon={<IconTag />} label="Kind">
             {component.kind}
           </FactRow>
           <Separator />
-          <FactRow icon={<IconCode />} label="Called as">
+          <FactRow icon={<IconCode />} label="Chamado como">
             <code className="rounded bg-foreground/5 px-1.5 py-0.5 text-xs">
               {component.name}
             </code>

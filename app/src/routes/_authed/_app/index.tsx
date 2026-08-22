@@ -27,7 +27,7 @@ function RouteComponent() {
           {appConfig.brand.productName}
         </h2>
         <h1 className="text-2xl font-bold tracking-tight mt-1.5 text-center">
-          Start a new channel
+          Começar um canal
         </h1>
       </div>
       <div className="mt-8 w-full flex flex-col items-center">
@@ -71,7 +71,7 @@ function RouteComponent() {
         ) : null}
       </div>
       <div className="mt-10 w-full max-w-2xl">
-        <h2 className="font-bold text-lg">Explore agents</h2>
+        <h2 className="font-bold text-lg">Explorar agentes</h2>
         <div className="flex flex-row gap-4 mt-4">
           {!!explore?.length &&
             explore.map((agent) => (

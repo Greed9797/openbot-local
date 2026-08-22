@@ -110,16 +110,16 @@ function PluginsPage() {
 
   return (
     <PageShell
-      description="What this deployment can reach, and which Bots may reach it. Adding is account-wide; enabling is per Bot."
+      description="O que este deployment alcança, e quais Bots podem alcançar. Adicionar vale para a conta toda; habilitar é por Bot."
       title="Plugins"
     >
       <PageSection>
         <div className="flex flex-wrap gap-2">
           {(
             [
-              ["catalogue", "Catalogue"],
-              ["yours", "Yours"],
-              ["skills", "Skills"],
+              ["catalogue", "Catálogo"],
+              ["yours", "Seus"],
+              ["skills", "Habilidades"],
             ] as const
           ).map(([key, label]) => (
             <Button
@@ -300,7 +300,7 @@ function Catalogue({
                     [item.key]: event.target.value,
                   }))
                 }
-                placeholder="Access token for this server"
+                placeholder="Token de acesso deste servidor"
                 type="password"
                 value={token[item.key] ?? ""}
               />
@@ -320,14 +320,14 @@ function Catalogue({
       <div className="flex justify-start">
         <Button onClick={() => setAddingCustom(true)} size="sm" variant="ghost">
           <IconPlus />
-          Add a server by URL
+          Adicionar um servidor por URL
         </Button>
       </div>
 
       <Dialog onOpenChange={setAddingCustom} open={addingCustom}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add a server by URL</DialogTitle>
+            <DialogTitle>Adicionar um servidor por URL</DialogTitle>
             <DialogDescription>
               For a server that is not in the catalogue. Nobody has reviewed it,
               so every tool it offers is treated as one that changes something,
@@ -337,7 +337,7 @@ function Catalogue({
           <DialogBody className="mt-4">
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="custom-id">Name</FieldLabel>
+                <FieldLabel htmlFor="custom-id">Nome</FieldLabel>
                 <Input
                   id="custom-id"
                   onChange={(event) =>
@@ -351,7 +351,7 @@ function Catalogue({
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="custom-title">Title</FieldLabel>
+                <FieldLabel htmlFor="custom-title">Título</FieldLabel>
                 <Input
                   id="custom-title"
                   onChange={(event) =>
@@ -360,7 +360,7 @@ function Catalogue({
                       title: event.target.value,
                     }))
                   }
-                  placeholder="Title"
+                  placeholder="Título"
                   value={custom.title}
                 />
               </Field>
@@ -439,7 +439,7 @@ function Yours({
   if (servers.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        No servers added yet. The Catalogue tab is where they come from.
+        Nenhum servidor adicionado ainda. A aba Catálogo é de onde eles vêm.
       </p>
     );
   }
@@ -452,13 +452,14 @@ function Yours({
        * and somebody writing a rule about writes has no way to know that from the badge alone.
        */}
       <p className="max-w-prose text-muted-foreground text-sm leading-relaxed">
-        A Bot with a grant may call that tool; a Bot without one is never told
-        it exists. Beside each tool is what it does to the far end, which is
-        what a boundary rule means by <code>mcp.effect</code>. Anything not
-        positively known to be read-only counts as <span>changes things</span>,
-        so every tool on a server somebody added by URL is treated as a write
-        until it is reviewed. Every call is checked against the boundary and
-        written to Audit whichever way it goes.
+        Um Bot com concessão pode chamar aquela ferramenta; um Bot sem ela nunca
+        sabe que existe. Ao lado de cada ferramenta está o que ela faz do outro
+        lado, que é o que uma regra de limite chama de <code>mcp.effect</code>.
+        O que não for comprovadamente somente leitura conta como{" "}
+        <span>muda coisas</span>, então toda ferramenta de um servidor que
+        alguém adicionou por URL é tratada como escrita até ser revisada. Toda
+        chamada é conferida contra o limite e registrada na Auditoria, dê no que
+        der.
       </p>
       {servers.map((server) => (
         <div
@@ -513,7 +514,8 @@ function Yours({
            */}
           {server.tools.length === 0 ? (
             <p className="px-4 py-3 text-muted-foreground text-sm">
-              No tools listed. Refresh to ask the server again.
+              Nenhuma ferramenta listada. Atualize para perguntar ao servidor de
+              novo.
             </p>
           ) : (
             <div className="divide-y divide-border">
@@ -599,7 +601,7 @@ function Skills({
       <Dialog onOpenChange={setWriting} open={writing}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Write a skill for the deployment</DialogTitle>
+            <DialogTitle>Escrever uma habilidade para o deployment</DialogTitle>
             <DialogDescription>
               The slug is what a person types after a slash, and the
               instructions are added to the run when they do. Everybody here can
@@ -624,7 +626,7 @@ function Skills({
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="skill-title">Title</FieldLabel>
+                <FieldLabel htmlFor="skill-title">Título</FieldLabel>
                 <Input
                   id="skill-title"
                   onChange={(event) =>
@@ -633,7 +635,7 @@ function Skills({
                       title: event.target.value,
                     }))
                   }
-                  placeholder="Title"
+                  placeholder="Título"
                   value={draft.title}
                 />
               </Field>
@@ -647,7 +649,7 @@ function Skills({
                       summary: event.target.value,
                     }))
                   }
-                  placeholder="One line"
+                  placeholder="Uma linha"
                   value={draft.summary}
                 />
               </Field>
@@ -664,7 +666,7 @@ function Skills({
                       instructions: event.target.value,
                     }))
                   }
-                  placeholder="What the Bot should do when this skill is used."
+                  placeholder="O que o Bot deve fazer quando esta habilidade for usada."
                   value={draft.instructions}
                 />
               </Field>

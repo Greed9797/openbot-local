@@ -69,7 +69,7 @@ function SheetContent({
             }
           >
             <IconX />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">Fechar</span>
           </SheetPrimitive.Close>
         )}
       </SheetPrimitive.Popup>
