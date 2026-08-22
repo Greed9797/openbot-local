@@ -396,7 +396,11 @@ export const chunks = pgTable(
       .references(() => documents.id, { onDelete: "cascade" }),
     position: integer("position").notNull(),
     content: text("content").notNull(),
-    embedding: vector("embedding", { dimensions: 1536 }).notNull(),
+    /*
+     * Nulo é permitido porque nada lê isto ainda. A coluna era NOT NULL e obrigava todo conector a
+     * inventar 1536 números para escrever ao lado do texto — que é o que a busca realmente usa.
+     */
+    embedding: vector("embedding", { dimensions: 1536 }),
     createdAt: createdAt(),
   },
   (table) => [

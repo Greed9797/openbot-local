@@ -167,6 +167,46 @@ const tools: Tool[] = [
   },
 ];
 
+/**
+ * Procurar nos documentos que os conectores trouxeram.
+ *
+ * Não é uma ação de computador, então não passa por `/api/computers`: procurar num índice que este
+ * deployment já indexou não navega para lugar nenhum e não tem alvo para uma regra de destino julgar.
+ * Autentica com as mesmas duas credenciais.
+ */
+tools.push({
+  name: "buscar_conhecimento",
+  description:
+    "Procura nos documentos que este deployment sincronizou (Google Drive, entre outros) e devolve os trechos que respondem, com título e link para citar. Use antes de dizer que não sabe algo sobre a empresa.",
+  inputSchema: object(
+    {
+      pergunta: text("O que procurar, em palavras"),
+      limite: number("Quantos trechos trazer. Padrão 6"),
+    },
+    ["pergunta"],
+  ),
+  call: async (args) => {
+    const response = await fetch(`${API}/api/knowledge/search`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-openbot-agent-token": TOKEN,
+        "x-openbot-run": RUN,
+      },
+      body: JSON.stringify({ question: args.pergunta, limit: args.limite }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      return {
+        erro:
+          (payload as { error?: string } | null)?.error ??
+          `A busca respondeu ${response.status}.`,
+      };
+    }
+    return payload ?? {};
+  },
+});
+
 const byName = new Map(tools.map((tool) => [tool.name, tool]));
 
 /* ---- JSON-RPC em stdio ---- */

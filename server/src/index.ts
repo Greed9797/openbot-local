@@ -43,6 +43,7 @@ import {
   createCredentialStore,
   resolveModelApiKey,
 } from "./credentials";
+import { createKnowledgeSearch } from "./connectors/knowledge-search";
 import { createDatabase } from "./db/client";
 import { createPeopleStore } from "./people/store";
 import { createPluginStore } from "./plugins/store";
@@ -364,6 +365,8 @@ const app = createApp(
       credentialStore,
       createAuditStore(database),
     ),
+    // O que permite abrir a credencial de volta na hora de sincronizar. Guardar nunca precisou dela.
+    { reader: credentialStore, encryptionKey: config.keyEncryptionKey },
   ),
   // The runtime call: the model, per-actor agent loading, and the two identity
   // functions are how a run is attributed to a person.
@@ -422,6 +425,7 @@ const app = createApp(
   // The enterprise identity providers registered here. Read as facts about the deployment rather
   // than through Better Auth's own listing, which answers per person. See identity-provider-store.ts.
   identityProviderStore,
+  createKnowledgeSearch(database),
 );
 
 /**

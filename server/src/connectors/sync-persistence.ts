@@ -67,7 +67,7 @@ export function createSyncPersistence(
                 documentId: document.id,
                 position: chunk.position,
                 content: chunk.content,
-                embedding: chunk.embedding,
+                embedding: chunk.embedding ?? null,
               })),
             );
           }

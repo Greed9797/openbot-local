@@ -33,6 +33,7 @@ import type { PolicyStore } from "./computer/policy-store";
 import { createComputerRoutes } from "./computer/routes";
 import { configuredAuthProviders, type DeploymentConfig } from "./config";
 import type { ConnectorAdminService } from "./connectors";
+import type { KnowledgeSearch } from "./connectors/knowledge-search";
 import type { CredentialAdminService, CredentialInput } from "./credentials";
 import type { PeopleStore } from "./people/store";
 import { createPluginRoutes } from "./plugins/routes";
@@ -145,6 +146,14 @@ export function createApp(
    * metadata in. See identity-provider-store.ts.
    */
   identityProviders?: IdentityProviderStore,
+  /**
+   * A busca no que os conectores trouxeram.
+   *
+   * Último na lista porque é o parâmetro mais novo, e mexer na ordem dos outros trocaria os
+   * argumentos de uma chamada com dezenas deles em silêncio — o compilador só reclama quando os
+   * tipos por acaso não batem.
+   */
+  knowledgeSearch?: KnowledgeSearch,
 ) {
   const app = new Hono<{ Variables: AppVariables }>();
 
@@ -575,6 +584,55 @@ export function createApp(
 
     return context.json({ connectors: await connectorService.list() });
   });
+  /**
+   * Puxar do Drive agora, e dizer quantos documentos vieram.
+   *
+   * Um número, e não "conectado": quem acabou de configurar quer saber se funcionou, e a tela dizendo
+   * conectado foi exatamente o que escondeu, até aqui, que nenhuma linha do produto chamava o Drive.
+   *
+   * `reconcile` varre tudo de novo em vez de seguir o cursor. É a passada para quando a incremental
+   * deixou algo para trás — e a primeira sincronização é sempre completa de qualquer forma.
+   */
+  app.post(
+    "/api/admin/connectors/google-drive/sync",
+    requireUser,
+    async (context) => {
+      const denied = requireAdmin(context);
+      if (denied) return denied;
+      if (!connectorService?.syncGoogleDrive) {
+        return context.json(
+          { error: "A sincronização do Google Drive não está configurada." },
+          503,
+        );
+      }
+      const body = (await context.req.json().catch(() => null)) as {
+        mode?: string;
+      } | null;
+      try {
+        return context.json(
+          await connectorService.syncGoogleDrive({
+            mode: body?.mode === "reconcile" ? "reconcile" : "sync",
+          }),
+        );
+      } catch (error) {
+        /*
+         * A mensagem do Google chega inteira até aqui. "unauthorized_client" e "conta de serviço sem
+         * delegação" mandam a pessoa a lugares diferentes do Admin, e um "falhou" genérico manda ao
+         * lugar errado.
+         */
+        return context.json(
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : "A sincronização falhou.",
+          },
+          502,
+        );
+      }
+    },
+  );
+
   app.post(
     "/api/admin/connectors/google-drive/setup",
     requireUser,
@@ -649,6 +707,50 @@ export function createApp(
           : null;
       }
     : undefined;
+
+  /**
+   * Procurar no que os conectores trouxeram.
+   *
+   * Aberta a uma pessoa com sessão e a um Bot com as duas credenciais, porque as duas fazem a mesma
+   * pergunta: um administrador conferindo se a sincronização trouxe algo, e o Bot de conhecimento
+   * respondendo com citação. Sem isto o Drive encheria uma tabela que nada consulta.
+   */
+  if (knowledgeSearch) {
+    app.post("/api/knowledge/search", async (context) => {
+      const presented = context.req.header("x-openbot-agent-token");
+      if (presented && authoriseAgent) {
+        const verdict = await authoriseAgent({
+          presented,
+          run: context.req.header("x-openbot-run"),
+        });
+        if (!verdict) return context.json({ error: "Not authorised." }, 401);
+      } else {
+        let denied: Response | undefined;
+        await requireUser(context, async () => {});
+        if (denied) return denied;
+        if (!context.var.actor) {
+          return context.json({ error: "Not authorised." }, 401);
+        }
+      }
+
+      const body = (await context.req.json().catch(() => null)) as {
+        question?: string;
+        limit?: number;
+      } | null;
+      if (typeof body?.question !== "string" || !body.question.trim()) {
+        return context.json({ error: "Uma pergunta é obrigatória." }, 400);
+      }
+
+      const passages = await knowledgeSearch.search(
+        body.question,
+        Math.min(Math.max(body.limit ?? 6, 1), 20),
+      );
+      return context.json({
+        passages,
+        documents: await knowledgeSearch.count(),
+      });
+    });
+  }
 
   if (computerGateway && computerPolicy) {
     app.route(
