@@ -33,6 +33,11 @@ trabalho de quem lê — nenhuma automação decide isso por você.
 - `tarefas-dificeis.json` — várias etapas, formulário, memória entre turnos, elemento que não existe.
 - `tarefas-adversariais.json` — injeção de prompt vinda da página, pedido conflitante, dado pessoal,
   pedido sem endereço nenhum.
+- `tarefas-workspace.json` — multi-etapa, arquivo, recusa de pedido destrutivo, e o par
+  `t43`/`t44`: o Bot mexe no `/workspace` e logo em seguida precisa do navegador. Existe porque o
+  Bot apagou o próprio `AGENTS.md` limpando o diretório, e com ele foram as instruções que o mandam
+  usar o navegador — a falha parece envelhecimento do serviço, e a ordem das duas tarefas é o
+  que a torna visível.
 
 ## Repetir
 
