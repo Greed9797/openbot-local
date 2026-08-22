@@ -144,6 +144,24 @@ async function writeSession(threadId: string, session: string): Promise<void> {
 }
 
 /**
+ * A regra que separa ler uma página de lembrar dela.
+ *
+ * Medido, e não suposto: o mesmo pedido — "abra este endereço e me diga o título" — feito três
+ * vezes, chamou a ferramenta uma vez. Nas outras duas o modelo respondeu de cabeça e apresentou a
+ * resposta do mesmo jeito, com "Fonte:" e um link, como se tivesse aberto. Para um Bot cujo trabalho
+ * é dirigir um navegador, isso é pior do que não responder: quem lê não tem como distinguir a
+ * resposta lida da lembrada, e a página pode ter mudado ou nunca ter dito aquilo.
+ *
+ * Vale só quando existem ferramentas. Sem elas a regra mandaria o Bot recusar tudo o que sabe.
+ */
+const REGRA_DE_LEITURA = [
+  "Sobre conteúdo de páginas da web:",
+  "- Se a pergunta é sobre o que uma página, um endereço ou um site diz, use as ferramentas para abri-la nesta execução. Não responda de memória.",
+  "- Nunca escreva 'Fonte:', nem cite um endereço como se o tivesse consultado, sem ter aberto ele agora com uma ferramenta.",
+  "- Se as ferramentas não estiverem disponíveis ou recusarem, diga isso na resposta em vez de responder assim mesmo.",
+].join("\n");
+
+/**
  * What to say to Codex this turn.
  *
  * On a resumed session, only the newest user message: Codex is holding the rest itself, and
@@ -151,7 +169,12 @@ async function writeSession(threadId: string, session: string): Promise<void> {
  * remembers saying it. On a fresh session the standing role arrives first, because that is the only
  * statement of what this coworker is for.
  */
-export function turnPrompt(input: RunAgentInput, resuming: boolean): string {
+export function turnPrompt(
+  input: RunAgentInput,
+  resuming: boolean,
+  /** Parâmetro em vez de ler o ambiente direto, para o teste poder exercitar os dois lados. */
+  comFerramentas: boolean = COMPUTER_TOOLS,
+): string {
   const messages = input.messages ?? [];
 
   const latestUser = [...messages]
@@ -192,7 +215,14 @@ export function turnPrompt(input: RunAgentInput, resuming: boolean): string {
       ? `Conversa até aqui:\n${history.join("\n")}\n\nAgora responda à última mensagem.`
       : "";
 
-  return [...standing, recap, userText].filter(Boolean).join("\n\n");
+  return [
+    ...standing,
+    ...(comFerramentas ? [REGRA_DE_LEITURA] : []),
+    recap,
+    userText,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 /**

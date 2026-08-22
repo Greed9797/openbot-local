@@ -114,3 +114,35 @@ describe("turn prompt", () => {
     );
   });
 });
+
+describe("a regra de ler antes de afirmar", () => {
+  const messages = [
+    { id: "u1", role: "user", content: "Abra example.com e diga o título." },
+  ];
+  const input = { threadId: "t", runId: "r", messages } as never;
+
+  /**
+   * Medido antes de escrever isto: o mesmo pedido, três vezes, chamou a ferramenta uma vez. Nas
+   * outras duas o modelo respondeu de cabeça e escreveu "Fonte:" com um link, do mesmo jeito que
+   * escreve quando leu de verdade — e quem lê não tem como saber qual das duas recebeu.
+   */
+  test("com ferramentas, o turno proíbe responder de memória sobre uma página", () => {
+    const prompt = turnPrompt(input, false, true);
+
+    expect(prompt).toContain("Não responda de memória");
+    expect(prompt).toContain("Fonte:");
+  });
+
+  /** Sem ferramentas a regra mandaria o Bot recusar tudo o que sabe, então ela não vai. */
+  test("sem ferramentas, a regra fica de fora", () => {
+    expect(turnPrompt(input, false, false)).not.toContain(
+      "Não responda de memória",
+    );
+  });
+
+  test("num turno retomado o prompt continua sendo só a pergunta", () => {
+    expect(turnPrompt(input, true, true)).toBe(
+      "Abra example.com e diga o título.",
+    );
+  });
+});
