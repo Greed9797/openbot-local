@@ -344,22 +344,23 @@ export function codexArguments(
     "--json",
     "--skip-git-repo-check",
     /*
-     * O SHELL DO BOT NÃO ALCANÇA A INTERNET, e isto é a trava, não a instrução.
+     * A REDE DO SHELL FICA LIGADA, e não por falta de vontade de fechá-la.
      *
-     * `AGENTS.md` pede que ele não busque página com `curl`, e medido, ele obedece — mas obedecer é
-     * escolha, e a web alcançada por fora do gateway não passa pela política nem aparece no audit.
-     * Um Bot que PODE contornar o registro contorna no dia em que o modelo achar que deve.
+     * Fechar seria a defesa certa: `AGENTS.md` pede que o Bot não busque página com `curl`, e medido,
+     * ele obedece — mas obedecer é escolha, e a web alcançada por fora do gateway não passa pela
+     * política nem aparece no audit.
      *
-     * Custa nada em capacidade: o servidor MCP roda FORA do sandbox, então as ferramentas continuam
-     * abrindo páginas — verificado listando e chamando com a rede desligada. O que some é só o
-     * caminho não governado.
+     * Não dá. Com `network_access=false`, TODA chamada de ferramenta MCP volta a pedir aprovação:
+     * o `--approve-for-me` deixa de cobri-las, o turno termina com "APPROVAL REQUEST" no rollout e o
+     * Bot responde de memória. Medido em bateria — de 44 tarefas, as 40 que dependiam de abrir uma
+     * página falharam, e a mudança foi essa única linha.
      *
-     * Efeito colateral medido: sem rede o modelo às vezes AFIRMA ter rodado o comando e inventa a
-     * saída ("Código HTTP: 200"). A trava impede o acesso, não a mentira sobre ele — por isso a
-     * resposta também conta o que foi executado de verdade.
+     * Então a contenção do shell é a instrução, e não a trava, enquanto o CLI tratar rede desligada
+     * como motivo para pedir aprovação de tudo. O que fecha o buraco de verdade é o guarda de
+     * destino do gateway, que recusa a rede interna nos dois caminhos de leitura.
      */
     "-c",
-    "sandbox_workspace_write.network_access=false",
+    "sandbox_workspace_write.network_access=true",
   ];
 
   if (MODEL) options.push("--model", MODEL);
@@ -816,9 +817,8 @@ se mudou.
 - Nunca use o shell (\`curl\`, \`wget\`, scripts) para buscar uma página. O shell não passa pela
   política deste deployment e o que ele faz não fica registrado. Se as ferramentas recusarem, diga
   isso; não contorne.
-- **O shell deste ambiente não tem internet.** Qualquer \`curl\` ou \`wget\` falha, sempre. Não
-  invente a saída de um comando que você não rodou nem afirme um código HTTP que não recebeu — se
-  precisar da web, a única porta são as ferramentas acima.
+- Não invente a saída de um comando que você não rodou, nem afirme um código HTTP que não recebeu.
+  Se precisar da web, a porta são as ferramentas acima.
 
 ## Quando o pedido não diz o alvo
 

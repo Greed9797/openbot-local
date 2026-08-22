@@ -198,24 +198,22 @@ describe("dizer quando a resposta não foi lida", () => {
   });
 });
 
-describe("o caminho não governado fica fechado", () => {
+describe("a rede do shell fica ligada, e o teste diz por quê", () => {
   /**
-   * A instrução no `AGENTS.md` pede que o Bot não busque página com `curl`, e ele obedece — medido.
-   * Mas obedecer é escolha, e a web alcançada por fora do gateway não passa pela política nem
-   * aparece no audit. Isto aqui é a trava, e ela não depende de o modelo concordar.
+   * Fechar a rede do shell seria a defesa certa, e foi tentado. Com `network_access=false`, TODA
+   * chamada de ferramenta MCP volta a pedir aprovação — `--approve-for-me` deixa de cobri-las, o
+   * turno termina com "APPROVAL REQUEST" no rollout e o Bot responde de memória. Medido em bateria:
+   * das 44 tarefas, as 40 que dependiam de abrir uma página falharam, e a mudança foi essa única
+   * linha.
+   *
+   * Este teste existe para que a próxima pessoa que tiver a mesma boa ideia leia isto antes de
+   * gastar a tarde. Se um dia o CLI parar de tratar rede desligada como motivo para pedir aprovação,
+   * o caminho está aberto — e é este teste que precisa mudar junto.
    */
-  test("o shell do Bot não alcança a internet", () => {
-    const args = codexArguments(null);
-
-    expect(args).toContain("sandbox_workspace_write.network_access=false");
-    expect(args).not.toContain("sandbox_workspace_write.network_access=true");
-  });
-
-  /** Vale para o turno com ferramentas também, que é justamente o que teria motivo para burlar. */
-  test("vale igual quando as ferramentas estão ligadas", () => {
+  test("a rede do shell continua ligada, senão as ferramentas param", () => {
     const args = codexArguments(null, { OPENBOT_RUN: "r" });
 
-    expect(args).toContain("sandbox_workspace_write.network_access=false");
+    expect(args).toContain("sandbox_workspace_write.network_access=true");
   });
 });
 
@@ -232,7 +230,6 @@ describe("as instruções que o Bot lê como do projeto", () => {
 
   test("proíbem buscar página pelo shell, que é o caminho sem audit", () => {
     expect(INSTRUÇÕES_DO_WORKSPACE).toMatch(/nunca use o shell/i);
-    expect(INSTRUÇÕES_DO_WORKSPACE).toContain("não tem internet");
   });
 
   /** Sem isto o Bot chuta o domínio a partir do nome da marca — foi como caiu numa página de venda. */
