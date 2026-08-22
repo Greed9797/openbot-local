@@ -67,7 +67,10 @@
   "id": "t34-sem-url",
   "pedido": "Qual e o titulo da pagina inicial do site da W3bsite?",
   "espera": {
-   "acoes": ">0"
+   "acoes": "0",
+   "contem": [
+    "?"
+   ]
   }
  }
 ]
