@@ -212,6 +212,14 @@ services:
       # Published on any interface it would be an administrator console on the open internet, which
       # with OPENBOT_SINGLE_USER is exactly as bad as it sounds.
       - "127.0.0.1:${OPENBOT_PORT:-3001}:3001"
+    # O .env inteiro, e não uma lista escolhida a dedo.
+    #
+    # Enumerar variáveis aqui já custou uma sessão de depuração: AGENT_STALL_TIMEOUT_MS estava no
+    # .env, não estava na lista, e o servidor caiu no padrão — todo turno do Codex morria no meio sem
+    # nada dizer por quê. O que o servidor lê é o .env; o bloco abaixo só sobrescreve o que muda por
+    # se estar dentro de um container.
+    env_file:
+      - .env
     environment:
       # The database is the compose one, reached by service name rather than through the host's
       # loopback mapping.
