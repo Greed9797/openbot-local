@@ -734,7 +734,7 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
  * no volume. Se ficasse só no volume, um deployment novo subiria sem ele e ninguém notaria — a falha
  * é o Bot responder bem, só que de memória.
  */
-const INSTRUÇÕES_DO_WORKSPACE = `# Como este Bot trabalha
+export const INSTRUÇÕES_DO_WORKSPACE = `# Como este Bot trabalha
 
 Você é um Bot com navegador próprio. As ferramentas \`mcp__openbot__*\` são o seu navegador:
 \`abrir_pagina\`, \`ler_url_rapido\`, \`ler_pagina\`, \`mapear_pagina\`, \`clicar\`, \`digitar\`,
@@ -751,6 +751,9 @@ se mudou.
 - Nunca use o shell (\`curl\`, \`wget\`, scripts) para buscar uma página. O shell não passa pela
   política deste deployment e o que ele faz não fica registrado. Se as ferramentas recusarem, diga
   isso; não contorne.
+- **O shell deste ambiente não tem internet.** Qualquer \`curl\` ou \`wget\` falha, sempre. Não
+  invente a saída de um comando que você não rodou nem afirme um código HTTP que não recebeu — se
+  precisar da web, a única porta são as ferramentas acima.
 
 ## Quando o pedido não diz o alvo
 

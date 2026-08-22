@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   avisoDeNaoLeitura,
   codexArguments,
+  INSTRUÇÕES_DO_WORKSPACE,
   perguntaDoTurno,
   turnPrompt,
 } from "../src/index";
@@ -213,5 +214,37 @@ describe("o caminho não governado fica fechado", () => {
     const args = codexArguments(null, { OPENBOT_RUN: "r" });
 
     expect(args).toContain("sandbox_workspace_write.network_access=false");
+  });
+});
+
+describe("as instruções que o Bot lê como do projeto", () => {
+  /**
+   * Elas são o que fez o Bot passar a usar o navegador: medido, de zero chamadas em três pedidos
+   * para três em três. São também a coisa mais fácil de apagar sem ninguém notar, porque a falha é
+   * silenciosa — o Bot volta a responder bem, só que de memória.
+   */
+  test("mandam usar as ferramentas em vez de responder de cabeça", () => {
+    expect(INSTRUÇÕES_DO_WORKSPACE).toContain("use as ferramentas");
+    expect(INSTRUÇÕES_DO_WORKSPACE).toContain("Não responda sobre o conteúdo");
+  });
+
+  test("proíbem buscar página pelo shell, que é o caminho sem audit", () => {
+    expect(INSTRUÇÕES_DO_WORKSPACE).toMatch(/nunca use o shell/i);
+    expect(INSTRUÇÕES_DO_WORKSPACE).toContain("não tem internet");
+  });
+
+  /** Sem isto o Bot chuta o domínio a partir do nome da marca — foi como caiu numa página de venda. */
+  test("mandam perguntar o endereço em vez de adivinhar", () => {
+    expect(INSTRUÇÕES_DO_WORKSPACE).toContain("Nome de marca não é endereço");
+  });
+
+  test("nomeiam as ferramentas que existem de verdade", () => {
+    for (const ferramenta of [
+      "abrir_pagina",
+      "ler_url_rapido",
+      "mapear_pagina",
+    ]) {
+      expect(INSTRUÇÕES_DO_WORKSPACE).toContain(ferramenta);
+    }
   });
 });
