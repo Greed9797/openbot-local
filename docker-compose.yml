@@ -340,10 +340,14 @@ services:
       # The only directory the sandbox may write to.
       - codex-workspace:/workspace
     healthcheck:
-      test: ["CMD-SHELL", "bun -e \"await fetch('http://localhost:4202/health')\""]
-      interval: 10s
-      timeout: 5s
+      # `r.ok`, e não só `fetch`. Sem isso o teste passava com qualquer resposta, inclusive a que diz
+      # que o Bot subiu SEM navegador — e um Bot sem ferramentas continua atendendo e respondendo
+      # bem, de memória. O `start_period` dá tempo do probe de boot terminar antes de valer.
+      test: ["CMD-SHELL", "bun -e \"const r = await fetch('http://localhost:4202/health'); process.exit(r.ok ? 0 : 1)\""]
+      interval: 15s
+      timeout: 10s
       retries: 5
+      start_period: 45s
 
   # The same Bot behavior on a framework, exposed as another AG-UI endpoint and registry row.
   agent-langgraph:

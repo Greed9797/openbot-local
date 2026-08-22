@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -86,4 +86,24 @@ test("runs migrations after PostgreSQL becomes healthy", () => {
   expect(compose).toContain("migrate:");
   expect(compose).toContain("condition: service_healthy");
   expect(compose).toContain('"drizzle-kit", "migrate"');
+});
+
+describe("um Bot sem navegador tem de aparecer", () => {
+  /**
+   * `fetch` sozinho não reprova nada. O teste antigo do `agent-codex` chamava o `/health` e ignorava
+   * a resposta, então passava também quando o Bot tinha subido SEM ferramentas — e um Bot sem
+   * ferramentas continua atendendo, conversando e respondendo bem, de memória. A falha só aparecia
+   * na resposta de alguém, dias depois, indistinguível de uma resposta lida.
+   */
+  test("o healthcheck do agent-codex olha o status da resposta", () => {
+    const compose = readFileSync(
+      join(import.meta.dir, "..", "docker-compose.yml"),
+      "utf8",
+    );
+    const servico = compose.slice(compose.indexOf("  agent-codex:"));
+    const bloco = servico.slice(0, servico.indexOf("\n  # "));
+
+    expect(bloco).toContain("r.ok");
+    expect(bloco).toContain("start_period");
+  });
 });

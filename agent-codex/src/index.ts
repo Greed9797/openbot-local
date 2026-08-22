@@ -62,6 +62,13 @@ const OPENBOT_API_URL =
 /** A preparação das ferramentas, para o primeiro turno poder esperar por ela. */
 let preparação: Promise<void> | null = null;
 
+/**
+ * O que o probe de boot descobriu. `null` enquanto ele não terminou.
+ *
+ * Separado da preparação porque são perguntas diferentes: uma é "já rodou", outra é "deu certo".
+ */
+let ferramentasProntas: boolean | null = null;
+
 const MCP_SERVER_PATH =
   process.env.OPENBOT_MCP_PATH?.trim() ||
   "/app/agent-codex/src/mcp-computer.ts";
@@ -893,6 +900,7 @@ async function verificarFerramentas(): Promise<void> {
   servidor.kill();
 
   const quantas = (saida.match(/"name":"[a-z_]+"/g) ?? []).length;
+  ferramentasProntas = quantas > 0;
   if (quantas === 0) {
     console.warn(
       `O servidor de ferramentas subiu sem oferecer nada. O Bot vai responder sem navegador. stderr: ${(
@@ -942,7 +950,23 @@ if (import.meta.main) {
       const url = new URL(request.url);
 
       if (url.pathname === "/health") {
-        return Response.json({ status: "ok", model: MODEL || "codex default" });
+        /*
+         * "Responde" e "tem navegador" são duas saúdes diferentes, e a segunda falhava calada.
+         *
+         * Um Bot cujas ferramentas não subiram continua atendendo, conversando e respondendo bem —
+         * de memória. Nada no lado de fora tinha como notar. Agora quem monitora vê `ferramentas`
+         * e pode transformar isso em container doente, que é ruidoso, em vez de respostas
+         * inventadas, que não são.
+         */
+        const pronto = COMPUTER_TOOLS ? ferramentasProntas : null;
+        return Response.json(
+          {
+            status: pronto === false ? "sem ferramentas" : "ok",
+            model: MODEL || "codex default",
+            ferramentas: pronto,
+          },
+          { status: pronto === false ? 503 : 200 },
+        );
       }
 
       if (url.pathname === "/ag-ui" && request.method === "POST") {
