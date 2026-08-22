@@ -274,7 +274,10 @@ services:
     expose:
       - "9222"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:9222 || exit 1"]
+      # A porta aceita conexão, e nada além disso. Um GET comum devolve 400 — o protocolo dele é
+      # WebSocket, e `curl -f` lia esse 400 como serviço doente enquanto ele atendia normalmente.
+      test:
+        ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/127.0.0.1/9222' || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
