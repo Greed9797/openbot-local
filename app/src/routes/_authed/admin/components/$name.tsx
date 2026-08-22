@@ -273,7 +273,7 @@ function ComponentDetail({
 
   const grantSummary =
     bots.length === 0
-      ? "There are no Bots yet"
+      ? "Ainda não há Bots"
       : granted.length === bots.length
         ? `All ${bots.length} Bots`
         : granted.length === 0
@@ -282,9 +282,9 @@ function ComponentDetail({
 
   const functionSummary =
     dataFunctions.length === 0
-      ? "This deployment grants no data functions"
+      ? "Este deployment não concede nenhuma função de dados"
       : held.length === 0
-        ? "Nothing — it draws only what the model hands it"
+        ? "Nada — ele desenha só o que o modelo entrega"
         : held.map((fn) => fn.name).join(", ");
 
   return (
@@ -344,10 +344,10 @@ function ComponentDetail({
               <ItemTitle>Published</ItemTitle>
               <ItemDescription>
                 {component.published
-                  ? "Bots may answer with it."
-                  : "No Bot may use it."}
+                  ? "Os Bots podem responder com ele."
+                  : "Nenhum Bot pode usá-lo."}
                 {component.hasUnpublishedChanges
-                  ? " The description has changes that are not published."
+                  ? " A descrição tem mudanças que não estão publicadas."
                   : null}
               </ItemDescription>
             </ItemContent>

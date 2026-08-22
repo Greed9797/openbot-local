@@ -119,16 +119,14 @@ function BoundariesPage() {
               size="sm"
               variant="outline"
             >
-              {mode === "enforce"
-                ? "Stop the action"
-                : "Record it and allow it"}
+              {mode === "enforce" ? "Barrar a ação" : "Registrar e permitir"}
             </Button>
           ))}
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
           {policy.mode === "enforce"
-            ? "The Bot is stopped and told which rule refused it."
-            : "Nothing is stopped. Every action a rule matches is recorded as it would have been refused, which is how a rule is tried out before it is switched on."}
+            ? "O Bot é barrado e avisado de qual regra recusou."
+            : "Nada é barrado. Toda ação que casa com uma regra fica registrada como teria sido recusada, que é como se testa uma regra antes de ligá-la."}
         </p>
       </PageSection>
 
@@ -201,7 +199,7 @@ function BoundariesPage() {
             onClick={() => addRule(draft)}
             size="sm"
           >
-            Add rule
+            Adicionar regra
           </Button>
         </div>
 
@@ -234,7 +232,7 @@ function BoundariesPage() {
         <ul className="mt-2 space-y-1">
           {policy.allow.map((rule) => (
             <li className="font-mono text-xs text-muted-foreground" key={rule}>
-              {rule === "true" ? "true, anything not refused above" : rule}
+              {rule === "true" ? "true, tudo que não foi recusado acima" : rule}
             </li>
           ))}
         </ul>
@@ -248,7 +246,7 @@ function BoundariesPage() {
         ) : saved ? (
           "Saved. It applies to the next action any Bot takes."
         ) : (
-          "Changes apply to the next action any Bot takes, and are kept: a restart comes back up enforcing what is here."
+          "As mudanças valem para a próxima ação de qualquer Bot, e ficam guardadas: um reinício volta aplicando o que está aqui."
         )}
       </p>
     </PageShell>

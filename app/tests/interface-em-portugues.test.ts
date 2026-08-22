@@ -36,6 +36,17 @@ const ATRIBUTOS =
   /\b(placeholder|title|aria-label|label|fallback|emptyText)\s*[=:]\s*"([^"]{3,})"/g;
 const TEXTO_SOLTO = />\s*([A-Z][A-Za-z0-9 ,.'’\-?!]{6,})\s*</g;
 
+/*
+ * O QUE ESTA VARREDURA NÃO ALCANÇA, e por que não vale forçar.
+ *
+ * Texto que vive numa string literal solta — um ternário como
+ * `ativo ? "Stop the action" : "Record it and allow it"`, um array de rótulos — não tem nome de
+ * atributo nem tag por onde procurar. Varrer todo literal foi tentado e medido: os três detectores
+ * acima achavam 81 strings de verdade, e varrer literal solto passou a 266, sendo a diferença quase
+ * inteira nome de classe do Tailwind e descrição de ferramenta, que fica em inglês de propósito.
+ * Uma varredura que reprova por 185 coisas certas é uma varredura que alguém desliga.
+ */
+
 /** Endereços de exemplo. São endereços, não frases, e traduzir um quebra o exemplo. */
 const EXEMPLOS = /^(https?:\/\/|[\w.+-]+@[\w-]+\.)/;
 

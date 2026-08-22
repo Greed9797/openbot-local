@@ -257,7 +257,7 @@ function PlaygroundPage() {
                       <div className="text-xs text-muted-foreground">
                         {component.published
                           ? `published, revision ${component.revision}`
-                          : "draft only, no Bot can draw it"}
+                          : "só rascunho, nenhum Bot desenha"}
                         {component.hasUnpublishedChanges
                           ? " · edited since publishing"
                           : ""}
