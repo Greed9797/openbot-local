@@ -65,7 +65,7 @@ function ComputersPage() {
   return (
     <PageShell
       description="O navegador de cada Bot e o perfil que ele guarda. O perfil é o que mantém um Bot logado amanhã, e zerar um desloga ele de tudo."
-      title="Computers"
+      title="Computadores"
     >
       {problem ? (
         <p
@@ -79,16 +79,17 @@ function ComputersPage() {
       {isolation === "shared" ? (
         <p className="mt-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
           <span className="font-medium">
-            Every Bot is sharing one computer.
+            Todos os Bots estão dividindo um computador só.
           </span>{" "}
-          They share its logins, its files and its session, so a Bot can reach
-          what another signed into. Set <code>COMPUTER_SUPERVISOR_URL</code> to
-          give each Bot its own.
+          Eles dividem os logins, os arquivos e a sessão dele, então um Bot
+          alcança o que outro entrou. Defina{" "}
+          <code>COMPUTER_SUPERVISOR_URL</code> para dar um computador a cada
+          Bot.
         </p>
       ) : isolation === "per-bot" ? (
         <p className="mt-4 rounded-md border border-border bg-muted/40 px-3 py-2 text-muted-foreground text-sm">
-          Each Bot has a computer of its own: its own container, its own files
-          and its own browser profile.
+          Cada Bot tem um computador só dele: container próprio, arquivos
+          próprios e perfil de navegador próprio.
         </p>
       ) : null}
 
@@ -97,7 +98,8 @@ function ComputersPage() {
           <PageEmpty>Não foi possível carregar a lista.</PageEmpty>
         ) : computers === null ? null : computers.length === 0 ? (
           <PageEmpty>
-            No computers yet. One appears the first time a Bot opens a page.
+            Nenhum computador ainda. Um aparece na primeira vez que um Bot abre
+            uma página.
           </PageEmpty>
         ) : (
           <PageRows>
@@ -110,14 +112,14 @@ function ComputersPage() {
                     </ItemTitle>
                     <ItemDescription>
                       {computer.running
-                        ? `Browser running since ${new Date(computer.startedAt ?? "").toLocaleTimeString()}`
-                        : "No browser running. It starts when the Bot next needs it."}
+                        ? `Navegador rodando desde ${new Date(computer.startedAt ?? "").toLocaleTimeString()}`
+                        : "Nenhum navegador rodando. Ele sobe quando o Bot precisar."}
                       {" · "}
                       {computer.egress === undefined
-                        ? "Egress not reported"
+                        ? "Saída não informada"
                         : computer.egress === null
-                          ? "Leaves directly"
-                          : `Leaves through ${computer.egress}`}
+                          ? "Sai direto"
+                          : `Sai por ${computer.egress}`}
                     </ItemDescription>
                   </ItemContent>
                   <ItemActions>
@@ -127,7 +129,9 @@ function ComputersPage() {
                       size="sm"
                       variant="outline"
                     >
-                      {busy === computer.botId ? "Working…" : "Stop browser"}
+                      {busy === computer.botId
+                        ? "Trabalhando…"
+                        : "Parar navegador"}
                     </Button>
                     <Button
                       disabled={busy === computer.botId}
@@ -135,7 +139,7 @@ function ComputersPage() {
                       size="sm"
                       variant="outline"
                     >
-                      Reset
+                      Zerar
                     </Button>
                   </ItemActions>
                 </Item>
@@ -161,11 +165,11 @@ function ComputersPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              Reset {confirming ? nameFor(confirming) : ""}'s computer?
+              Zerar o computador de {confirming ? nameFor(confirming) : ""}?
             </DialogTitle>
             <DialogDescription>
-              Its profile is deleted, so the Bot is signed out of every service
-              it had logged into and starts clean. This cannot be undone.
+              O perfil dele é apagado, então o Bot sai de todo serviço em que
+              tinha entrado e começa do zero. Isto não tem volta.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -174,7 +178,7 @@ function ComputersPage() {
               size="sm"
               variant="ghost"
             >
-              Cancel
+              Cancelar
             </Button>
             <Button
               disabled={busy === confirming}
@@ -184,19 +188,19 @@ function ComputersPage() {
               size="sm"
               variant="destructive"
             >
-              {busy === confirming ? "Resetting…" : "Reset it"}
+              {busy === confirming ? "Zerando…" : "Zerar"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <p className="mt-4 text-muted-foreground text-sm">
-        <strong>Stop</strong> closes the browser and keeps its logins: the next
-        thing the Bot does starts it again where it left off.{" "}
-        <strong>Reset</strong> deletes the profile, so the Bot is signed out of
-        everything and starts clean. Both are recorded in{" "}
+        <strong>Parar</strong> fecha o navegador e guarda os logins dele: a
+        próxima coisa que o Bot fizer sobe ele de novo de onde parou.{" "}
+        <strong>Zerar</strong> apaga o perfil, então o Bot sai de tudo e começa
+        do zero. Os dois ficam registrados na{" "}
         <Link className="underline" to="/admin/audit">
-          Audit
+          Auditoria
         </Link>
         .
       </p>

@@ -4,8 +4,8 @@ import { eq } from "drizzle-orm";
 import { createAuditStore } from "../src/audit";
 import { createSandboxedStore } from "../src/components/sandboxed";
 import { createDatabase } from "../src/db/client";
-import { TEST_POOL } from "./support/database";
 import { components, sandboxedComponents } from "../src/db/schema";
+import { TEST_POOL } from "./support/database";
 
 /**
  * A component authored in a browser can be edited freely and still reach nobody until it is

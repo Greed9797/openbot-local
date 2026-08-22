@@ -92,7 +92,7 @@ function CredentialsPage() {
         </Button>
       }
       description="Credenciais são somente escrita. O OpenBot nunca mostra o valor secreto delas."
-      title="Credentials"
+      title="Credenciais"
     >
       {/*
        * THE FORM IS NOT ON THE PAGE. A credential is added once and then lived with, so a permanent

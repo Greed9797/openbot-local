@@ -3,8 +3,8 @@ import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { createSyncPersistence } from "../src/connectors/sync-persistence";
 import { createDatabase } from "../src/db/client";
-import { TEST_POOL } from "./support/database";
 import { connectorInstances, credentials, documents } from "../src/db/schema";
+import { TEST_POOL } from "./support/database";
 
 const database = createDatabase(
   process.env.DATABASE_URL ??

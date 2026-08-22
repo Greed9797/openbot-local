@@ -13,8 +13,8 @@
  * honest about being one shared computer.
  */
 
-import type { ComputerStatus } from "./schema";
 import type { ComputerLocation, ComputerProvider } from "./provider";
+import type { ComputerStatus } from "./schema";
 
 type SupervisorComputerLocation = {
   botId: string;

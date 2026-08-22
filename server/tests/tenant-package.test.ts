@@ -2,7 +2,6 @@ import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { createDatabase } from "../src/db/client";
-import { TEST_POOL } from "./support/database";
 import {
   agentProfiles,
   agents,
@@ -18,6 +17,7 @@ import {
   validateTenantPackage,
   validateThemeCss,
 } from "../src/tenant-package";
+import { TEST_POOL } from "./support/database";
 
 const database = createDatabase(
   process.env.DATABASE_URL ??

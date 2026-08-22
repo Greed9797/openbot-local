@@ -31,6 +31,7 @@ import {
 import { createSnapshotStore } from "./computer/snapshot-store";
 import { loadConfig } from "./config";
 import { createConnectorAdminService } from "./connectors";
+import { createKnowledgeSearch } from "./connectors/knowledge-search";
 import {
   type IdentifyActor,
   type IdentifyUser,
@@ -42,7 +43,6 @@ import {
   createCredentialStore,
   resolveModelApiKey,
 } from "./credentials";
-import { createKnowledgeSearch } from "./connectors/knowledge-search";
 import { createDatabase } from "./db/client";
 import { createPeopleStore } from "./people/store";
 import { createPluginStore } from "./plugins/store";

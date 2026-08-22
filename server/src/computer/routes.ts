@@ -111,6 +111,66 @@ export function createComputerRoutes(
     await next();
   };
 
+  /*
+   * AS ROTAS QUE NÃO SÃO DE UM BOT VÊM ANTES DE `/:botId/*`, e é por isso que elas ficam aqui em cima.
+   *
+   * `/:botId/*` casa um caminho de um único segmento — `/policy` entra nele com `botId` valendo
+   * "policy" e o resto vazio. O guarda seguinte pergunta se esta pessoa pode dirigir o Bot chamado
+   * "policy", não encontra Bot nenhum com esse nome, e responde 404 "There is no such Bot" para a
+   * leitura da política e para a lista de computadores. Nada acusa: a tela de Computadores fica
+   * vazia como se este deployment não tivesse nenhum, e a de Limites como se não houvesse regra.
+   *
+   * Registradas antes do middleware, elas respondem sem passar por ele. `requireUser` volta explícito
+   * em cada uma porque era o middleware que o aplicava.
+   */
+  routes.get("/fleet", requireUser, async (context) => {
+    // A resposta é a frota inteira, então administrar o deployment é o que se exige aqui.
+    const denied = requireAdmin(context);
+    if (denied) return denied;
+
+    try {
+      return context.json(await gateway.computers());
+    } catch (error) {
+      return context.json({ error: describe(error) }, statusFor(error));
+    }
+  });
+
+  routes.get("/policy", requireUser, (context) => {
+    const denied = requireAdmin(context);
+    return denied ?? context.json({ policy: policyStore.get() });
+  });
+
+  routes.put("/policy", requireUser, async (context) => {
+    const denied = requireAdmin(context);
+    if (denied) return denied;
+
+    const parsed = parseActionPolicy(
+      await context.req.json().catch(() => null),
+    );
+    if (!parsed.ok) {
+      return context.json({ error: parsed.error }, 400);
+    }
+    try {
+      await policyStore.set(parsed.policy, context.var.actor.email);
+    } catch {
+      /*
+       * Saved, or said so. A boundary that is enforced now and gone after the next restart is worse
+       * than one that was never set, so a policy that could not be written is reported as a failure
+       * rather than quietly held in memory. Nothing changes: the previous policy is still in force.
+       */
+      return context.json(
+        {
+          error:
+            "That rule could not be saved, so it has not been applied. The previous boundary is still in force.",
+        },
+        503,
+      );
+    }
+    // Echoed back so a caller can see exactly what is now in force rather than assuming its request
+    // was stored verbatim.
+    return context.json({ policy: policyStore.get() });
+  });
+
   routes.use("/:botId/*", asAgent, async (context, next) => {
     if (context.get("viaAgent")) return next();
     return requireUser(context, next);
@@ -332,19 +392,6 @@ export function createComputerRoutes(
    * it holds a list. `:botId` is still there because every route under this router has it. The
    * list itself is every computer, so a signed-in user is not enough; an administrator has to ask.
    */
-  routes.get("/:botId/computers", async (context) => {
-    // The session guard and the question of whether this person may act as the Bot in the path are
-    // both applied by the middleware above. Neither is the question here: the answer is the whole
-    // fleet whatever `:botId` says, so it takes administering the deployment.
-    const denied = requireAdmin(context);
-    if (denied) return denied;
-
-    try {
-      return context.json(await gateway.computers());
-    } catch (error) {
-      return context.json({ error: describe(error) }, statusFor(error));
-    }
-  });
 
   /** Stop the browser, keep the logins. */
   routes.post("/:botId/computers/stop", (context) =>
@@ -508,41 +555,6 @@ export function createComputerRoutes(
    * takes one appended line per mount. The storage underneath is durable, so administrator rules
    * remain active after a restart.
    */
-  routes.get("/policy", requireUser, (context) => {
-    const denied = requireAdmin(context);
-    return denied ?? context.json({ policy: policyStore.get() });
-  });
-
-  routes.put("/policy", requireUser, async (context) => {
-    const denied = requireAdmin(context);
-    if (denied) return denied;
-
-    const parsed = parseActionPolicy(
-      await context.req.json().catch(() => null),
-    );
-    if (!parsed.ok) {
-      return context.json({ error: parsed.error }, 400);
-    }
-    try {
-      await policyStore.set(parsed.policy, context.var.actor.email);
-    } catch {
-      /*
-       * Saved, or said so. A boundary that is enforced now and gone after the next restart is worse
-       * than one that was never set, so a policy that could not be written is reported as a failure
-       * rather than quietly held in memory. Nothing changes: the previous policy is still in force.
-       */
-      return context.json(
-        {
-          error:
-            "That rule could not be saved, so it has not been applied. The previous boundary is still in force.",
-        },
-        503,
-      );
-    }
-    // Echoed back so a caller can see exactly what is now in force rather than assuming its request
-    // was stored verbatim.
-    return context.json({ policy: policyStore.get() });
-  });
 
   return routes;
 }

@@ -3,11 +3,11 @@ import { eq } from "drizzle-orm";
 import { createConnectorAdminService } from "../src/connectors";
 import type { CredentialAdminService } from "../src/credentials";
 import { createDatabase } from "../src/db/client";
-import { TEST_POOL } from "./support/database";
 import {
   connectorInstances,
   credentials as credentialRows,
 } from "../src/db/schema";
+import { TEST_POOL } from "./support/database";
 
 /**
  * What the Connectors page reports about a connector that has been set up.

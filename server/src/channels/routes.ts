@@ -20,8 +20,8 @@ import {
   type ChannelActivityEvent,
   type ChannelEventHub,
 } from "./events";
-import type { ThreadIdentity } from "./thread-identity";
 import { upgradeWebSocket } from "./socket";
+import type { ThreadIdentity } from "./thread-identity";
 
 export type AgentChannel = {
   id: string;

@@ -67,11 +67,11 @@ function AuditPage() {
       action={
         <Button onClick={() => events.refetch()} size="sm" variant="ghost">
           <IconRefresh />
-          Refresh
+          Atualizar
         </Button>
       }
       description="Toda ação que um Bot tomou, e toda que a política deste deployment recusou."
-      title="Audit"
+      title="Auditoria"
       width="wide"
     >
       <PageSection>

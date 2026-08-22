@@ -72,7 +72,7 @@ function PeoplePage() {
   return (
     <PageShell
       description="Todo mundo que já entrou. Administradores alcançam estas telas; o resto conversa com os Bots."
-      title="People"
+      title="Pessoas"
     >
       <PageSection
         description="Um endereço listado em INITIAL_ADMIN_EMAILS é administrador independente do que esta tela disser, então não dá para mudar aqui."

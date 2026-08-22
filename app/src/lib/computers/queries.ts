@@ -40,18 +40,12 @@ export const computerKeys = {
   policy: () => ["computers", "policy"] as const,
 };
 
-/**
- * A placeholder id in the path. The endpoint answers with every computer regardless, so this is
- * addressing a collection through a member's route rather than naming one.
- */
-const FLEET_ID = "openbot-computer";
-
 /** No envelope key: the body carries both the list and the isolation mode. */
 export function computerFleetQueryOptions() {
   return queryOptions({
     queryKey: computerKeys.fleet(),
     queryFn: async (): Promise<ComputerFleet> => {
-      const response = await client(`/api/computers/${FLEET_ID}/computers`, {
+      const response = await client("/api/computers/fleet", {
         fallback: "Não foi possível listar os computadores.",
       });
       return response.json();

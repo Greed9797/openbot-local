@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import type { ComputerConfig } from "../src/config";
 import {
   createComputerProvider,
   createSharedComputerProvider,
   describeComputerIsolation,
   ProviderError,
 } from "../src/computer/provider";
+import type { ComputerConfig } from "../src/config";
 
 const servers: { stop(closeActiveConnections?: boolean): void }[] = [];
 

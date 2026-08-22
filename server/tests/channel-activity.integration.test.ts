@@ -12,7 +12,6 @@ import {
 } from "../src/channels/routes";
 import { createThreadIdentity } from "../src/channels/thread-identity";
 import { createDatabase } from "../src/db/client";
-import { TEST_POOL } from "./support/database";
 import {
   agentProfiles,
   agents,
@@ -20,6 +19,7 @@ import {
   intelligenceChannelMappings,
   users,
 } from "../src/db/schema";
+import { TEST_POOL } from "./support/database";
 
 const databaseUrl =
   process.env.DATABASE_URL ??
@@ -44,8 +44,9 @@ const store = createChannelStore(
  * lados no mesmo relógio tira o relógio da equação e deixa só a regra sob teste.
  */
 async function databaseNow(): Promise<Date> {
-  const [row] = (await database.execute(sql`select now() as at`)) as unknown as
-    | { at: Date | string }[];
+  const [row] = (await database.execute(
+    sql`select now() as at`,
+  )) as unknown as { at: Date | string }[];
   return new Date(row?.at ?? Date.now());
 }
 

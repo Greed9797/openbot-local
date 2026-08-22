@@ -33,11 +33,50 @@ const INGLESAS = new Set(
  * título, placeholder, mensagem de erro e texto solto na tela.
  */
 const ATRIBUTOS =
-  /\b(placeholder|title|aria-label|label|fallback|emptyText)\s*[=:]\s*"([^"]{6,})"/g;
+  /\b(placeholder|title|aria-label|label|fallback|emptyText)\s*[=:]\s*"([^"]{3,})"/g;
 const TEXTO_SOLTO = />\s*([A-Z][A-Za-z0-9 ,.'’\-?!]{6,})\s*</g;
 
 /** Endereços de exemplo. São endereços, não frases, e traduzir um quebra o exemplo. */
 const EXEMPLOS = /^(https?:\/\/|[\w.+-]+@[\w-]+\.)/;
+
+/**
+ * Palavras que denunciam sozinhas.
+ *
+ * A regra das duas palavras de função precisa de uma frase, e um título não é uma frase:
+ * `title="Computers"` passou por ela inteiro, numa página cujo corpo já estava traduzido. Estas são
+ * as poucas palavras de interface que, aparecendo em qualquer texto visível, significam que aquele
+ * pedaço não foi traduzido — escolhidas por não serem também palavras portuguesas nem termos
+ * técnicos que ficam em inglês de propósito.
+ */
+const DENUNCIAM =
+  /\b(computers?|credentials?|boundaries|connectors?|settings|people|audit|overview|search|save|cancel|delete|remove|close|reset|stop|start|browser|password|sign in|sign out|log out|working|loading|failed|unknown|enabled|disabled)\b/i;
+
+/**
+ * Os pedaços de texto JSX de uma linha.
+ *
+ * Um parágrafo real atravessa tags: em `<strong>Stop</strong> closes the browser and keeps its`, o
+ * texto está partido por elementos que dão ênfase, e o último pedaço não fecha em `<` nenhum porque
+ * a frase continua na linha seguinte. Por isso os dois casos: o que está entre um `>` e um `<`, e o
+ * que vem depois do último `>` até o fim da linha.
+ *
+ * Só texto entre tags, e nunca a linha inteira. Uma linha de código não é texto — varrê-la inteira
+ * faz uma lista de classes do Tailwind (`flex items-center gap-2 text-sm`) parecer uma frase em
+ * inglês, e a varredura afoga em ruído exatamente o que ela existe para achar.
+ */
+function textosJsxDe(linha: string): string[] {
+  const pedacos: string[] = [];
+  for (const encontrado of linha.matchAll(/>([^<>{}]+)(?:<|$)/g)) {
+    const texto = (encontrado[1] ?? "").replace(/\s+/g, " ").trim();
+    /*
+     * O `>` de `=>`, de `===` e de um seletor CSS não fecha tag nenhuma, e o que vem depois dele é
+     * código. Em vez de tentar reconhecer cada uma dessas formas, esta linha reconhece o que texto
+     * de interface NÃO tem: pontuação de programa. Uma frase que alguém lê na tela não traz `=`,
+     * `;`, parênteses ou aspas.
+     */
+    if (texto.length > 3 && !/[=;(){}[\]"`|]/.test(texto)) pedacos.push(texto);
+  }
+  return pedacos;
+}
 
 function arquivosDaInterface(directory: string): string[] {
   const found: string[] = [];
@@ -88,8 +127,13 @@ describe("a interface fala português", () => {
           ...[...linha.matchAll(ATRIBUTOS)].map((m) => m[2] as string),
           ...[...linha.matchAll(TEXTO_SOLTO)].map((m) => m[1] as string),
         ];
+        candidatos.push(...textosJsxDe(linha));
+
         for (const texto of candidatos) {
-          if (!pareceIngles(texto)) continue;
+          const suspeito =
+            pareceIngles(texto) ||
+            (DENUNCIAM.test(texto) && !EXEMPLOS.test(texto.trim()));
+          if (!suspeito) continue;
           encontrados.push(
             `${path.slice(ROOT.length + 1)}:${indice + 1}  ${texto.trim()}`,
           );

@@ -69,7 +69,16 @@ function asActor(
   };
 }
 
-function appFor(actor: AuthenticatedActor, computers: () => Promise<unknown>) {
+function appFor(
+  actor: AuthenticatedActor,
+  computers: () => Promise<unknown>,
+  /**
+   * Permissivo por padrão. Se esta pessoa pode dirigir o Bot do caminho é outra pergunta, com a
+   * própria suíte, e não é sobre isso que estas rotas respondem — mas um teste aqui embaixo precisa
+   * poder recusar todo Bot, que é como um deployment com registro de agentes trata um id inventado.
+   */
+  canUseBot: () => Promise<boolean> = async () => true,
+) {
   let listed = 0;
   const countingGateway = {
     async computers() {
@@ -81,16 +90,23 @@ function appFor(actor: AuthenticatedActor, computers: () => Promise<unknown>) {
   return {
     app: createComputerRoutes(
       countingGateway,
-      {} as PolicyStore,
+      {
+        get: () => ({ mode: "enforce", deny: [], allow: [] }),
+      } as unknown as PolicyStore,
       asActor(actor),
-      // Permissive. Whether this person may act as the Bot in the path is a different question with
-      // its own suite, and `:botId` is not what this route answers about anyway.
-      async () => true,
+      canUseBot,
     ),
     listed: () => listed,
   };
 }
 
+/**
+ * A frota não é de um Bot, e o endereço dela diz isso.
+ *
+ * Enquanto ela morou em `/:botId/computers`, o guarda que pergunta se esta pessoa pode dirigir o Bot
+ * do caminho rodava antes — e como o id ali era um marcador, não um Bot, num deployment com registro
+ * de agentes a resposta virava 404 e a tela de Computadores ficava vazia sem uma queixa.
+ */
 describe("computer fleet listing", () => {
   test("refuses a signed-in user the fleet, and does not ask the gateway", async () => {
     const { app, listed } = appFor(member, async () => ({
@@ -100,7 +116,7 @@ describe("computer fleet listing", () => {
       ],
     }));
 
-    const response = await app.request("http://openbot.test/any-bot/computers");
+    const response = await app.request("http://openbot.test/fleet");
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
@@ -109,6 +125,27 @@ describe("computer fleet listing", () => {
     // Refused before the gateway is asked: a check that runs after the fleet has been read is not a
     // check, it is a filter on the response.
     expect(listed()).toBe(0);
+  });
+
+  /**
+   * O guarda de Bot não pode alcançar o que não é de um Bot.
+   *
+   * `/:botId/*` casa um caminho de um segmento só, então `/policy` entrava nele com `botId` valendo
+   * "policy". Num deployment sem registro de agentes `canUseBot` responde sim a tudo e nada aparece;
+   * num deployment com registro, não existe Bot chamado "policy" e a resposta vira 404. O sintoma
+   * não é um erro na tela: é a de Limites abrindo como se não houvesse regra nenhuma configurada, e
+   * a de Computadores como se este deployment não tivesse nenhum.
+   */
+  test("a política e a frota não passam pelo guarda de Bot", async () => {
+    const recusaTodoBot = async () => false;
+    const { app } = appFor(
+      administrator,
+      async () => ({ isolation: "per-bot", computers: [] }),
+      recusaTodoBot,
+    );
+
+    expect((await app.request("http://openbot.test/policy")).status).toBe(200);
+    expect((await app.request("http://openbot.test/fleet")).status).toBe(200);
   });
 
   test("lets an administrator see the fleet", async () => {
@@ -125,7 +162,7 @@ describe("computer fleet listing", () => {
     };
     const { app, listed } = appFor(administrator, async () => fleet);
 
-    const response = await app.request("http://openbot.test/any-bot/computers");
+    const response = await app.request("http://openbot.test/fleet");
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual(fleet);

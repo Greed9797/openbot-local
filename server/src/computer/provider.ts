@@ -1,10 +1,9 @@
 import type { ComputerConfig } from "../config";
+import type { ComputerStatus } from "./schema";
 import {
   createDockerSupervisorProvider,
   type SupervisorOptions,
 } from "./supervisor";
-
-import type { ComputerStatus } from "./schema";
 
 /** The address and lifecycle details for one Bot's computer. */
 export type ComputerLocation = {
