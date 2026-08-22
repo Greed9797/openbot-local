@@ -243,6 +243,27 @@ lugar, o guarda de destino recusa a rede de dentro, uma página pública ainda a
 navegador quando pedem uma página — esta última contra `httpbin.org/uuid`, que muda a cada leitura,
 então uma resposta certa não pode ter vindo de memória.
 
+## O que roda sozinho
+
+A degradação deste Bot é silenciosa: ele continua respondendo. O defeito mais caro daqui — apagar as
+próprias instruções mexendo no `/workspace` e voltar a responder de memória — ficou horas assim, e só
+apareceu porque alguém resolveu rodar a bateria. Um sistema cujo modo de falha é "continua
+respondendo" não pode depender de desconfiança humana.
+
+No `crontab` da VPS:
+
+| Quando | O quê | Onde fica |
+|---|---|---|
+| Todo minuto 17 | `monitorar.sh smoke` (~1 min) | `logs/smoke.log` |
+| 4h40 todo dia | `monitorar.sh bateria` (~25 min) | `logs/bateria.log` |
+
+O log guarda uma linha por corrida quando passa, e a saída inteira quando reprova — um log que guarda
+tudo é um log que ninguém abre. Para ver se algo azedou:
+
+```bash
+grep REPROVOU /opt/openbot-local/logs/*.log | tail
+```
+
 ## O Bot usa mesmo as ferramentas?
 
 Esta é a pergunta que a suíte de testes não responde, e foi o defeito mais caro deste fork: o Bot
