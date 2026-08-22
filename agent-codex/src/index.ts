@@ -212,6 +212,19 @@ export function codexArguments(
   }
 
   /*
+   * Sem isto, toda chamada de ferramenta MCP volta como "MCP tool call requires approval, but
+   * approval policy is never" e o Codex termina o turno explicando que não conseguiu — o que na tela
+   * parece a ferramenta não existir.
+   *
+   * Aprovar automaticamente aqui não afrouxa nada: quem decide se a ação vale é o gateway do
+   * deployment, do outro lado da chamada, com a política de /admin/boundaries e a linha de auditoria.
+   * A aprovação do Codex pergunta se o operador local consente, e neste desenho o operador local é
+   * um processo sem ninguém na frente.
+   */
+  if (Object.keys(credentials ?? {}).length > 0)
+    options.push("--approve-for-me");
+
+  /*
    * `resume` takes a smaller set of flags than `exec` does: it accepts neither `--sandbox` nor `-C`,
    * because a resumed session already carries the sandbox policy and working root it was started
    * with. Passing them anyway is not ignored, it is a usage error that exits 2 — which is exactly how
