@@ -254,8 +254,16 @@ describe("tenant YAML validation", () => {
       id: "general-assistant",
       name: "Assistente",
       title: "Trabalho do dia a dia",
-      roleDescription:
-        "Ajuda no trabalho do dia a dia com respostas claras, curtas e corretas.",
+      /*
+       * O que a descrição PRECISA dizer, e não a redação dela.
+       *
+       * Fixar a frase inteira fazia este teste reprovar a cada revisão de texto — e reprovou
+       * justamente na que acrescentou o navegador ao papel, que era a melhoria. O que importa é que
+       * o papel mencione a ferramenta: um Bot cujo papel não fala de navegador responde de papel,
+       * medido — perguntado de forma vaga, o analista de risco ofereceu avaliar evidências de
+       * controle em vez de perguntar qual era a página.
+       */
+      roleDescription: expect.stringContaining("navegador"),
       avatarSeed: "general-assistant",
       type: "remote_ag_ui",
       /*

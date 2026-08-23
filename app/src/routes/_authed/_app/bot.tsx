@@ -17,7 +17,15 @@ export const Route = createFileRoute("/_authed/_app/bot")({
 
 function RouteComponent() {
   const { agent } = Route.useSearch();
-  const agentId = agent ?? "risk-analyst";
+  /*
+   * O Assistente, e não o analista de risco.
+   *
+   * Esta tela se chama "Bot de navegador" e abria no Bot cujo papel é investigar políticas e
+   * monitoramento de transações — e o papel aparece na resposta: perguntado de forma vaga, ele
+   * ofereceu avaliar evidências de controle em vez de perguntar qual era a página. Quem abre esta
+   * tela quer o colega de uso geral.
+   */
+  const agentId = agent ?? "general-assistant";
 
   // Tool calls here act on this Bot's own computer.
   useActiveBot(agentId);

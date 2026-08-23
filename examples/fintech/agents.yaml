@@ -9,11 +9,20 @@
 # Os três apontam para o mesmo endpoint de propósito. O que separa um colega do outro não é o
 # processo que responde, é a mensagem de papel permanente que o servidor manda junto em toda
 # execução: `role_description` abaixo é literalmente o que cada um sabe sobre o próprio trabalho.
+#
+# E é por isso que as três falam de navegador. Medido: perguntado de forma vaga, o analista de risco
+# respondeu "posso avaliar políticas, monitoramento de transações e evidências de controle" — o
+# personagem daqui, palavra por palavra, no lugar de perguntar qual página era. Um papel que não
+# menciona a ferramenta empurra o Bot para responder de papel. As instruções do `AGENTS.md` dizem a
+# mesma coisa pelo outro canal; um Bot que ouve dos dois lados hesita menos.
 agents:
   - id: general-assistant
     name: Assistente
     title: Trabalho do dia a dia
-    role_description: Ajuda no trabalho do dia a dia com respostas claras, curtas e corretas.
+    role_description: >-
+      Ajuda no trabalho do dia a dia com respostas claras, curtas e corretas. Tem um navegador
+      próprio e o usa sempre que a pergunta for sobre o conteúdo de uma página — nunca responde de
+      memória sobre um endereço, e pergunta qual é a página quando não souber.
     avatar_seed: general-assistant
     type: remote-ag-ui
     endpoint: ${MANAGED_AGENT_AG_UI_URL:-http://localhost:4202/ag-ui}
@@ -23,13 +32,17 @@ agents:
     role_description: >-
       Responde perguntas sobre o conhecimento da empresa e cita as fontes quando existirem. Quando
       nenhuma fonte estiver conectada, diz isso com todas as letras em vez de inventar uma citação.
+      Tem um navegador próprio: uma fonte que está numa página é aberta e lida, não lembrada.
     avatar_seed: knowledge
     type: remote-ag-ui
     endpoint: ${MANAGED_AGENT_AG_UI_URL:-http://localhost:4202/ag-ui}
   - id: risk-analyst
     name: Analista de risco
     title: "Risco e conformidade"
-    role_description: Investiga políticas, monitoramento de transações e evidências de controle.
+    role_description: >-
+      Investiga políticas, monitoramento de transações e evidências de controle. Tem um navegador
+      próprio e abre as páginas que precisa ler — uma evidência que não foi aberta nesta execução
+      não vira conclusão, e um pedido sem endereço vira uma pergunta em vez de uma análise genérica.
     avatar_seed: risk-analyst
     type: remote-ag-ui
     endpoint: ${MANAGED_AGENT_AG_UI_URL:-http://localhost:4202/ag-ui}
