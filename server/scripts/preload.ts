@@ -24,3 +24,42 @@
  */
 
 import "eventsource";
+
+/*
+ * E, no caminho do teste, um aviso quando o banco está vazio.
+ *
+ * Um Postgres sem schema produz 79 falhas espalhadas por 20 arquivos, com mensagens sobre JSON
+ * inválido e colunas ausentes — nenhuma delas dizendo "não há tabela nenhuma aqui". Aconteceu duas
+ * vezes no mesmo dia: o Colima recria a máquina virtual e leva o volume junto, e das duas vezes a
+ * primeira suspeita foi regressão de código.
+ *
+ * Aqui porque este arquivo é o único ponto por onde a suíte inteira passa antes de qualquer teste.
+ * Não bloqueia nada: quem quer só os testes de unidade não precisa de banco.
+ */
+if (process.env.NODE_ENV !== "production") {
+  const { SQL } = await import("bun");
+  const endereço =
+    process.env.DATABASE_URL ??
+    "postgres://openbot:openbot@localhost:5432/openbot";
+  const sql = new SQL(endereço);
+  try {
+    const [linha] = (await sql`
+      select count(*)::int as total
+      from information_schema.tables
+      where table_schema = 'public'
+    `) as { total: number }[];
+    if ((linha?.total ?? 0) === 0) {
+      console.warn(
+        "\n  O BANCO DE TESTES ESTÁ SEM SCHEMA — as falhas de integração abaixo são disso, não do código." +
+          "\n  Aplique com: bun run --cwd server db:migrate\n",
+      );
+    }
+  } catch {
+    console.warn(
+      "\n  O BANCO DE TESTES NÃO RESPONDEU — as falhas de integração abaixo são disso, não do código." +
+        "\n  Suba com: docker compose up -d postgres\n",
+    );
+  } finally {
+    await sql.end();
+  }
+}
