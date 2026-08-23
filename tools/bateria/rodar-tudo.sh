@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Roda as quatro listas contra um Bot e sai != 0 se alguma falhar.
+# Roda as quatro listas de turno único e as conversas contra um Bot, e sai != 0 se alguma falhar.
+#
+# As conversas vêm por último e sem `--repete`: elas são caras (dezenas de turnos) e existem para
+# medir o que a lista de turno único não alcança — o que o Bot ainda sabe na segunda pergunta.
 #
 # Do repositório, sem copiar arquivo nenhum. A primeira validação desta bateria abortou na quarta
 # lista porque uma cópia manual não tinha chegado à VPS, e o loop deu por encerrado sem ter rodado
@@ -24,6 +27,10 @@ for lista in basicas dificeis adversariais workspace; do
   python3 -u "$AQUI/bateria.py" "$AGENTE" "$arquivo" $REPETE || falhou=1
   echo
 done
+
+echo "##### conversas"
+python3 -u "$AQUI/conversa.py" "$AGENTE" "$AQUI/conversas.json" || falhou=1
+echo
 
 if [ "$falhou" -ne 0 ]; then
   echo "BATERIA REPROVOU" >&2

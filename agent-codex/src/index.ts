@@ -82,13 +82,19 @@ const MCP_SERVER_PATH =
 const COMPUTER_TOOLS = Boolean(process.env.OPENBOT_AGENT_TOKEN?.trim());
 
 /**
- * Quantas trocas anteriores vão no prompt quando não há sessão para retomar.
+ * Quanto da conversa cabe no prompt quando não há sessão para retomar, em caracteres.
  *
- * ponytail: uma janela fixa, não um resumo. Resumir exigiria outra chamada de modelo por turno para
- * economizar tokens numa conversa que quase nunca é longa. Se as conversas aqui virarem longas, é
- * aqui que entra um resumo.
+ * Era uma contagem de turnos — as últimas seis trocas — e o corte por turno tem um defeito medido.
+ * Na bateria de conversa (`tools/bateria/conversas.json`) as três coisas morreram na MESMA
+ * fronteira, o sétimo turno: o número de protocolo que a pessoa deu na abertura, a regra "comece
+ * cada resposta com ABACAXI", e o uuid que o próprio Bot tinha lido numa página. Seis trocas de
+ * "quanto é 7 vezes 8" custam algumas centenas de caracteres e consumiam a janela inteira.
+ *
+ * ponytail: um orçamento, não um resumo. Resumir custa outra chamada de modelo por turno; contar
+ * caracteres cabe muito mais conversa pelo mesmo tokens. Se um dia a conversa passar do orçamento
+ * com frequência, é aqui que entra o resumo.
  */
-const HISTORY_TURNS = 6;
+const HISTORY_BUDGET = 12_000;
 
 const MODEL = process.env.CODEX_MODEL?.trim() || "";
 const EFFORT = process.env.CODEX_EFFORT?.trim() || "";
@@ -250,6 +256,61 @@ export function avisoDeNaoLeitura(
 }
 
 /**
+ * A conversa até aqui, recontada para um modelo que não guardou nada dela.
+ *
+ * Sem sessão para retomar, este texto é a memória inteira do Bot. Ele é montado de trás para frente
+ * até encher o orçamento, porque o que foi dito há pouco é o que a próxima frase costuma
+ * referenciar — mas com duas garantias que a janela por turnos não dava.
+ */
+export function recapDe(
+  messages: { role?: string; content?: unknown }[],
+): string {
+  const falas = messages
+    .filter(
+      (message) => message.role === "user" || message.role === "assistant",
+    )
+    // A última é a pergunta deste turno, que já vai no fim do prompt por conta própria.
+    .slice(0, -1)
+    .map((message) => {
+      const quem = message.role === "user" ? "Pessoa" : "Você";
+      return `${quem}: ${String(message.content ?? "").trim()}`;
+    })
+    .filter((linha) => linha.length > 8);
+
+  if (falas.length === 0) return "";
+
+  const mantidas: string[] = [];
+  let orçamento = HISTORY_BUDGET;
+  for (let indice = falas.length - 1; indice >= 0; indice -= 1) {
+    const fala = falas[indice] as string;
+    if (fala.length > orçamento) break;
+    orçamento -= fala.length;
+    mantidas.unshift(fala);
+  }
+
+  /*
+   * A abertura nunca é descartada, e o corte é declarado. As duas coisas pelo mesmo motivo.
+   *
+   * É na primeira mensagem que a pessoa diz o que quer da conversa inteira — o número que ela vai
+   * cobrar depois, a regra que vale para todas as respostas — então ela vale mais do que qualquer
+   * troca do meio, e é justamente a primeira a cair num corte por recência.
+   *
+   * E o corte precisa aparecer, porque sem ele o modelo conclui que nunca houve nada ali: cobrado
+   * por um número que tinha saído da janela, ele respondeu "você não me deu nenhum número de
+   * protocolo nesta conversa". Negar com confiança é pior do que esquecer — quem lê não tem como
+   * saber que a pergunta era boa.
+   */
+  if (mantidas.length < falas.length) {
+    mantidas.unshift(
+      falas[0] as string,
+      "[trechos do meio desta conversa foram omitidos por tamanho — se precisar de algo que ficou de fora, diga que não está vendo em vez de negar que existiu]",
+    );
+  }
+
+  return `Conversa até aqui:\n${mantidas.join("\n")}\n\nAgora responda à última mensagem.`;
+}
+
+/**
  * What to say to Codex this turn.
  *
  * On a resumed session, only the newest user message: Codex is holding the rest itself, and
@@ -281,27 +342,7 @@ export function turnPrompt(
     .map((message) => String(message.content ?? "").trim())
     .filter((text) => text.length > 0);
 
-  /*
-   * Sem sessão para retomar, a conversa vai no prompt.
-   *
-   * Só as últimas trocas, e não a thread inteira: uma conversa longa recontada por completo a cada
-   * turno cresce sem limite e o custo é da assinatura de alguém.
-   */
-  const history = messages
-    .filter(
-      (message) => message.role === "user" || message.role === "assistant",
-    )
-    .slice(-HISTORY_TURNS * 2, -1)
-    .map((message) => {
-      const who = message.role === "user" ? "Pessoa" : "Você";
-      return `${who}: ${String(message.content ?? "").trim()}`;
-    })
-    .filter((line) => line.length > 8);
-
-  const recap =
-    history.length > 0
-      ? `Conversa até aqui:\n${history.join("\n")}\n\nAgora responda à última mensagem.`
-      : "";
+  const recap = recapDe(messages);
 
   return [
     ...standing,

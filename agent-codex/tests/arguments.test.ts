@@ -6,6 +6,7 @@ import {
   hostsEm,
   INSTRUÇÕES_DO_WORKSPACE,
   perguntaDoTurno,
+  recapDe,
   turnPrompt,
 } from "../src/index";
 
@@ -288,5 +289,108 @@ describe("abriu, mas não a página pedida", () => {
     expect(avisoDeOutraPagina("abra www.example.com", ["example.com"])).toBe(
       "",
     );
+  });
+});
+
+/**
+ * A memória da conversa, que é o prompt e mais nada.
+ *
+ * Cada teste aqui corresponde a uma falha medida contra o Bot rodando, em
+ * `tools/bateria/conversas.json`. As três caíram na mesma fronteira — o sétimo turno, quando a
+ * janela de seis trocas descartava a abertura — e as três eram invisíveis para a bateria de turno
+ * único, que nunca faz a segunda pergunta.
+ */
+describe("a conversa recontada para um modelo que não a guardou", () => {
+  /** Uma troca curta de perguntas baratas, que é o formato da conversa real. */
+  function conversaDe(trocas: number, abertura: string) {
+    const messages: { id: string; role: string; content: string }[] = [
+      { id: "u1", role: "user", content: abertura },
+      { id: "a1", role: "assistant", content: "Anotado." },
+    ];
+    for (let numero = 2; numero <= trocas; numero += 1) {
+      messages.push({
+        id: `u${numero}`,
+        role: "user",
+        content: `Quanto é ${numero} vezes oito?`,
+      });
+      messages.push({
+        id: `a${numero}`,
+        role: "assistant",
+        content: `São ${numero * 8}, sem mistério nenhum.`,
+      });
+    }
+    messages.push({ id: "uf", role: "user", content: "E o que eu pedi lá no começo?" });
+    return messages;
+  }
+
+  /**
+   * Medido: o número dado no turno 1 sumiu no turno 9, e o Bot não disse "não lembro" — disse
+   * "você não me deu nenhum número de protocolo nesta conversa".
+   */
+  test("o que a pessoa disse na abertura atravessa uma conversa longa", () => {
+    const recap = recapDe(conversaDe(12, "Guarda o protocolo 84120 para depois."));
+
+    expect(recap).toContain("84120");
+  });
+
+  /** Medido: a regra "comece cada resposta com ABACAXI" parou de valer no sétimo turno. */
+  test("uma regra dada uma vez continua valendo no décimo turno", () => {
+    const recap = recapDe(conversaDe(10, "Regra desta conversa: comece tudo com ABACAXI."));
+
+    expect(recap).toContain("ABACAXI");
+  });
+
+  /**
+   * Medido: o uuid que o Bot leu numa página no turno 1 não existia mais no turno 9. O valor está
+   * numa fala DELE, não numa da pessoa — por isso não basta preservar o que a pessoa escreveu.
+   */
+  test("o que o Bot leu e disse também atravessa", () => {
+    const messages = conversaDe(10, "Abra a página e me diga o uuid.");
+    messages[1] = {
+      id: "a1",
+      role: "assistant",
+      content: "O uuid é b1ab63f9-70bf-43d2-95da-f3a9dd7e0ad2.",
+    };
+
+    expect(recapDe(messages)).toContain("b1ab63f9-70bf-43d2-95da-f3a9dd7e0ad2");
+  });
+
+  test("uma conversa que cabe inteira vai inteira, sem marcador de corte", () => {
+    const recap = recapDe(conversaDe(8, "Guarda o protocolo 84120."));
+
+    expect(recap).toContain("Quanto é 2 vezes oito?");
+    expect(recap).not.toContain("omitidos por tamanho");
+  });
+
+  describe("quando não cabe", () => {
+    /** Uma fala do meio grande o bastante para estourar o orçamento sozinha. */
+    const gigante = "x".repeat(13_000);
+    const messages = [
+      { id: "u1", role: "user", content: "Guarda o protocolo 84120." },
+      { id: "a1", role: "assistant", content: "Anotado." },
+      { id: "u2", role: "user", content: "Cola isto aqui e resume." },
+      { id: "a2", role: "assistant", content: gigante },
+      { id: "u3", role: "user", content: "E o protocolo?" },
+    ];
+
+    test("a abertura fica mesmo assim", () => {
+      expect(recapDe(messages)).toContain("84120");
+    });
+
+    /**
+     * Sem isto o modelo trata a conversa recortada como a conversa completa e nega o que não vê,
+     * que foi a resposta que a medição pegou. Dizer que faltou pedaço custa uma linha.
+     */
+    test("o corte é declarado, para ele não negar o que não está vendo", () => {
+      expect(recapDe(messages)).toContain("omitidos por tamanho");
+    });
+
+    test("o pedaço gigante não vai junto", () => {
+      expect(recapDe(messages)).not.toContain(gigante);
+    });
+  });
+
+  test("um primeiro turno não tem conversa nenhuma para recontar", () => {
+    expect(recapDe([{ id: "u1", role: "user", content: "Olá, tudo bem?" }])).toBe("");
   });
 });

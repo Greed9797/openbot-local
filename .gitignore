@@ -21,3 +21,4 @@ app/src/lib/generated/application-config.ts
 
 # TanStack Router scratch output
 app/.tanstack/
+__pycache__/

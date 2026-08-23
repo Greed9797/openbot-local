@@ -15,7 +15,11 @@ chamou a ferramenta uma vez em três, e a passada sortuda foi o que me fez procu
 por meia hora. Repetir é o que separa "funciona" de "funcionou daquela vez".
 """
 REPETICOES = int(next((a.split("=")[1] for a in sys.argv if a.startswith("--repete=")), "1"))
-URL = f"http://127.0.0.1:3001/api/copilotkit/agent/{AGENTE}/run"
+def url_do(agente):
+    return f"http://127.0.0.1:3001/api/copilotkit/agent/{agente}/run"
+
+
+URL = url_do(AGENTE)
 
 def qual_container(servico="agent-codex"):
     """O id do container, que muda quando ele é recriado.
@@ -46,15 +50,15 @@ def audit():
     except ValueError:
         return -1
 
-def turno(ident, texto, historico=None):
+def turno(ident, texto, historico=None, thread=None, url=None):
     corpo = {
-        "threadId": f"bat-{ident}-{int(time.time())}",
+        "threadId": thread or f"bat-{ident}-{int(time.time())}",
         "runId": ident,
         "messages": (historico or []) + [{"id": "u9", "role": "user", "content": texto}],
         "tools": [], "context": [], "state": {}, "forwardedProps": {},
     }
     pedido = urllib.request.Request(
-        URL, data=json.dumps(corpo).encode(), headers={"content-type": "application/json"})
+        url or URL, data=json.dumps(corpo).encode(), headers={"content-type": "application/json"})
     partes = []
     try:
         with urllib.request.urlopen(pedido, timeout=300) as resposta:
@@ -102,43 +106,44 @@ def julgar(tarefa, acoes, texto):
     return "passa", ""
 
 
-ARQUIVO = next((a for a in sys.argv[2:] if not a.startswith("--")), None)
-TAREFAS = json.load(open(ARQUIVO)) if ARQUIVO else []
+if __name__ == "__main__":
+    ARQUIVO = next((a for a in sys.argv[2:] if not a.startswith("--")), None)
+    TAREFAS = json.load(open(ARQUIVO)) if ARQUIVO else []
 
-ESTADO_INICIAL = qual_container()
-print(f"agente={AGENTE}  tarefas={len(TAREFAS)}  repetições={REPETICOES}")
-print(f"container do serviço: {ESTADO_INICIAL[:12] or '(não encontrado)'}\n")
-print(f"{'tarefa':<16}{'seg':>5}{'ações':>7}{'aviso':>7}{'':>8}  resposta (fim)")
-falhas = []
-for tarefa in TAREFAS:
-    for repeticao in range(1, REPETICOES + 1):
-        rotulo = tarefa["id"] if REPETICOES == 1 else f"{tarefa['id']}#{repeticao}"
-        antes = audit()
-        inicio = time.time()
-        texto = turno(rotulo, tarefa["pedido"], tarefa.get("historico"))
-        duracao = round(time.time() - inicio)
-        acoes = audit() - antes
-        aviso = "SIM" if "Nenhuma página foi aberta" in texto else "-"
-        veredito, motivo = julgar(tarefa, acoes, texto)
-        if veredito == "FALHA":
-            falhas.append(f"{rotulo}: {motivo}")
-        fim = texto.replace("\n", " ")[-100:]
-        print(f"{rotulo:<16}{duracao:>5}{acoes:>7}{aviso:>7}{veredito:>8}  {fim}")
+    ESTADO_INICIAL = qual_container()
+    print(f"agente={AGENTE}  tarefas={len(TAREFAS)}  repetições={REPETICOES}")
+    print(f"container do serviço: {ESTADO_INICIAL[:12] or '(não encontrado)'}\n")
+    print(f"{'tarefa':<16}{'seg':>5}{'ações':>7}{'aviso':>7}{'':>8}  resposta (fim)")
+    falhas = []
+    for tarefa in TAREFAS:
+        for repeticao in range(1, REPETICOES + 1):
+            rotulo = tarefa["id"] if REPETICOES == 1 else f"{tarefa['id']}#{repeticao}"
+            antes = audit()
+            inicio = time.time()
+            texto = turno(rotulo, tarefa["pedido"], tarefa.get("historico"))
+            duracao = round(time.time() - inicio)
+            acoes = audit() - antes
+            aviso = "SIM" if "Nenhuma página foi aberta" in texto else "-"
+            veredito, motivo = julgar(tarefa, acoes, texto)
+            if veredito == "FALHA":
+                falhas.append(f"{rotulo}: {motivo}")
+            fim = texto.replace("\n", " ")[-100:]
+            print(f"{rotulo:<16}{duracao:>5}{acoes:>7}{aviso:>7}{veredito:>8}  {fim}")
 
-ESTADO_FINAL = qual_container()
-if ESTADO_INICIAL and ESTADO_FINAL and ESTADO_INICIAL != ESTADO_FINAL:
-    # Antes de qualquer conclusão sobre as falhas, porque provavelmente elas não são do produto.
-    print(
-        f"\nATENÇÃO: o serviço foi recriado durante a bateria."
-        f"\n  container no início: {ESTADO_INICIAL[:12]}"
-        f"\n  container no fim:    {ESTADO_FINAL[:12]}"
-        f"\n  Os turnos que caíram na janela de reinício voltam sem ferramenta nenhuma."
-        f" Rode de novo sem deploy no meio antes de tratar qualquer falha como regressão."
-    )
+    ESTADO_FINAL = qual_container()
+    if ESTADO_INICIAL and ESTADO_FINAL and ESTADO_INICIAL != ESTADO_FINAL:
+        # Antes de qualquer conclusão sobre as falhas, porque provavelmente elas não são do produto.
+        print(
+            f"\nATENÇÃO: o serviço foi recriado durante a bateria."
+            f"\n  container no início: {ESTADO_INICIAL[:12]}"
+            f"\n  container no fim:    {ESTADO_FINAL[:12]}"
+            f"\n  Os turnos que caíram na janela de reinício voltam sem ferramenta nenhuma."
+            f" Rode de novo sem deploy no meio antes de tratar qualquer falha como regressão."
+        )
 
-if falhas:
-    print(f"\n{len(falhas)} falha(s) automática(s):")
-    for falha in falhas:
-        print(f"  - {falha}")
-    sys.exit(1)
-print("\nNenhuma falha automática. O conteúdo das respostas ainda precisa de olho humano.")
+    if falhas:
+        print(f"\n{len(falhas)} falha(s) automática(s):")
+        for falha in falhas:
+            print(f"  - {falha}")
+        sys.exit(1)
+    print("\nNenhuma falha automática. O conteúdo das respostas ainda precisa de olho humano.")
