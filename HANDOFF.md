@@ -96,11 +96,12 @@ rollback no fim aponta para o commit exato de antes do deploy. Exercitado em san
 (atrasado limpo; colisão de arquivo; branch sem upstream; árvore suja; divergência; fetch morto sem
 e com `--local`; já em dia; smoke reprovando de verdade). Falta a primeira execução real na VPS.
 
-### 3. ~~Decidir se as conversas entram no cron~~ — decidido
+### 3. ~~Decidir se as conversas entram no cron~~ — decidido e conferido na VPS
 
-Decisão de 2026-08-24: **sim, junto com a bateria** — a entrada das 4:40 roda `rodar-tudo.sh`, que
-já cobre as quatro listas de turno único e as conversas. O smoke continua de hora em hora (`:17`).
-As duas entradas tinham sido instaladas comentadas; o crontab anterior está em `/tmp/cron.bak`.
+Decisão de 2026-08-24: **sim, junto com a bateria**. Conferido na VPS que já é assim: as duas
+entradas estão ativas (o handoff anterior dizia comentadas — estava velho), `17 * * * *` roda
+`tools/monitorar.sh smoke` e `40 4 * * *` roda `tools/monitorar.sh bateria`, que chama
+`rodar-tudo.sh` — turnos únicos e conversas. Nada a mudar no crontab.
 
 ### 4. O orçamento de 12k caracteres nunca foi exercitado de verdade
 
