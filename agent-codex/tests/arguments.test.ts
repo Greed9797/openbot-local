@@ -145,6 +145,13 @@ describe("a regra de ler antes de afirmar", () => {
     expect(prompt).toContain("Fonte:");
   });
 
+  /** A regra manda ler; a pessoa manda mais. A exceção precisa estar escrita, não presumida. */
+  test("a regra declara a exceção da recusa explícita", () => {
+    const prompt = turnPrompt(input, false, true);
+
+    expect(prompt).toContain("pedir expressamente para não usar ferramentas");
+  });
+
   /** Sem ferramentas a regra mandaria o Bot recusar tudo o que sabe, então ela não vai. */
   test("sem ferramentas, a regra fica de fora", () => {
     expect(turnPrompt(input, false, false)).not.toContain(

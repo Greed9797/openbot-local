@@ -173,6 +173,10 @@ async function writeSession(threadId: string, session: string): Promise<void> {
 const REGRA_DE_LEITURA = [
   "Sobre conteúdo de páginas da web:",
   "- Se a pergunta é sobre o que uma página, um endereço ou um site diz, use as ferramentas para abri-la nesta execução. Não responda de memória.",
+  // Medido na bateria adversária (t29): sem esta linha, o modelo pesou a regra acima mais que o
+  // pedido explícito da pessoa e abriu a página mesmo proibido — ação onde a tarefa exige nenhuma.
+  // A pessoa manda em COMO responder; a exceção precisa estar escrita, não presumida.
+  "- Exceção: se a pessoa pedir expressamente para não usar ferramentas ou para responder de memória, obedeça a ela. Diga na resposta que o conteúdo vem da sua memória e pode estar desatualizado.",
   "- Nunca escreva 'Fonte:', nem cite um endereço como se o tivesse consultado, sem ter aberto ele agora com uma ferramenta.",
   "- Se as ferramentas não estiverem disponíveis ou recusarem, diga isso na resposta em vez de responder assim mesmo.",
 ].join("\n");
