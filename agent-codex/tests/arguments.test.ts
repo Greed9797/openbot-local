@@ -6,7 +6,10 @@ import {
   hostsEm,
   INSTRUÇÕES_DO_WORKSPACE,
   perguntaDoTurno,
+  promptDeReforço,
+  REPROVAÇÃO_DE_MEMÓRIA,
   recapDe,
+  turnoMereceReforço,
   turnPrompt,
 } from "../src/index";
 
@@ -199,6 +202,48 @@ describe("dizer quando a resposta não foi lida", () => {
   });
 });
 
+describe("o reforço: resposta de memória é refeita, não só marcada", () => {
+  /**
+   * O aviso honesto deixava na tela a resposta errada — o valor inventado vinha primeiro e a
+   * ressalva depois. O reforço existe para o turno que cita endereço não terminar sem leitura.
+   */
+  test("pergunta com endereço e nenhuma ferramenta merece reforço", () => {
+    expect(
+      turnoMereceReforço(
+        "Abra https://httpbin.org/uuid e diga o valor.",
+        false,
+      ),
+    ).toBe(true);
+  });
+
+  test("ferramenta usada, não há o que reforçar", () => {
+    expect(turnoMereceReforço("Abra https://example.com", true)).toBe(false);
+  });
+
+  /** Sem endereço não há promessa de leitura; reforçar aqui seria cobrar ferramenta à toa. */
+  test("pergunta sem endereço nenhum nunca dispara reforço", () => {
+    expect(turnoMereceReforço("Quanto é 7 vezes 8?", false)).toBe(false);
+  });
+
+  test("um domínio escrito sem http também dispara reforço", () => {
+    expect(turnoMereceReforço("o que tem em exemplo.com.br hoje?", false)).toBe(
+      true,
+    );
+  });
+
+  test("o prompt do reforço mantém o original e manda abrir de verdade", () => {
+    const reforçado = promptDeReforço("PROMPT-ORIGINAL");
+
+    expect(reforçado).toStartWith("PROMPT-ORIGINAL");
+    expect(reforçado).toContain("está reprovada");
+    expect(reforçado).toContain("ferramenta de navegador");
+  });
+
+  test("entre as duas respostas, a pessoa lê que a primeira foi reprovada", () => {
+    expect(REPROVAÇÃO_DE_MEMÓRIA).toContain("reprovada");
+  });
+});
+
 describe("a rede do shell fica ligada, e o teste diz por quê", () => {
   /**
    * Fechar a rede do shell seria a defesa certa, e foi tentado. Com `network_access=false`, TODA
@@ -319,7 +364,11 @@ describe("a conversa recontada para um modelo que não a guardou", () => {
         content: `São ${numero * 8}, sem mistério nenhum.`,
       });
     }
-    messages.push({ id: "uf", role: "user", content: "E o que eu pedi lá no começo?" });
+    messages.push({
+      id: "uf",
+      role: "user",
+      content: "E o que eu pedi lá no começo?",
+    });
     return messages;
   }
 
@@ -328,14 +377,18 @@ describe("a conversa recontada para um modelo que não a guardou", () => {
    * "você não me deu nenhum número de protocolo nesta conversa".
    */
   test("o que a pessoa disse na abertura atravessa uma conversa longa", () => {
-    const recap = recapDe(conversaDe(12, "Guarda o protocolo 84120 para depois."));
+    const recap = recapDe(
+      conversaDe(12, "Guarda o protocolo 84120 para depois."),
+    );
 
     expect(recap).toContain("84120");
   });
 
   /** Medido: a regra "comece cada resposta com ABACAXI" parou de valer no sétimo turno. */
   test("uma regra dada uma vez continua valendo no décimo turno", () => {
-    const recap = recapDe(conversaDe(10, "Regra desta conversa: comece tudo com ABACAXI."));
+    const recap = recapDe(
+      conversaDe(10, "Regra desta conversa: comece tudo com ABACAXI."),
+    );
 
     expect(recap).toContain("ABACAXI");
   });
@@ -391,6 +444,8 @@ describe("a conversa recontada para um modelo que não a guardou", () => {
   });
 
   test("um primeiro turno não tem conversa nenhuma para recontar", () => {
-    expect(recapDe([{ id: "u1", role: "user", content: "Olá, tudo bem?" }])).toBe("");
+    expect(
+      recapDe([{ id: "u1", role: "user", content: "Olá, tudo bem?" }]),
+    ).toBe("");
   });
 });
