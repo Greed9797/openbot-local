@@ -3,65 +3,173 @@
     "id": "c1-fato-perto",
     "porque": "Controle: um fato dado no turno 1, cobrado dentro da janela. Se ISTO falhar, o problema não é o tamanho da conversa.",
     "turnos": [
-      {"diz": "Guarda este número de protocolo para depois: 84120. Só confirma que anotou."},
-      {"diz": "Quanto é 7 vezes 8?"},
-      {"diz": "Me diz o nome de três frutas."},
-      {"diz": "Qual era o número de protocolo que eu te dei?", "espera": {"contem": ["84120"]}}
+      {
+        "diz": "Guarda este número de protocolo para depois: 84120. Só confirma que anotou."
+      },
+      {
+        "diz": "Quanto é 7 vezes 8?"
+      },
+      {
+        "diz": "Me diz o nome de três frutas."
+      },
+      {
+        "diz": "Qual era o número de protocolo que eu te dei?",
+        "espera": {
+          "contem": [
+            "84120"
+          ]
+        }
+      }
     ]
   },
   {
     "id": "c2-fato-longe",
     "porque": "O mesmo fato, cobrado no turno 9. A janela de histórico guarda 6 trocas: aqui o turno 1 já saiu dela.",
     "turnos": [
-      {"diz": "Guarda este número de protocolo para depois: 84120. Só confirma que anotou."},
-      {"diz": "Quanto é 7 vezes 8?"},
-      {"diz": "Me diz o nome de três frutas."},
-      {"diz": "Qual é a capital da França?"},
-      {"diz": "Quanto é 100 dividido por 4?"},
-      {"diz": "Me diz duas cores primárias."},
-      {"diz": "Escreve uma frase curta sobre o mar."},
-      {"diz": "Conta de um até cinco."},
-      {"diz": "Qual era o número de protocolo que eu te dei no começo?", "espera": {"contem": ["84120"]}}
+      {
+        "diz": "Guarda este número de protocolo para depois: 84120. Só confirma que anotou."
+      },
+      {
+        "diz": "Quanto é 7 vezes 8?"
+      },
+      {
+        "diz": "Me diz o nome de três frutas."
+      },
+      {
+        "diz": "Qual é a capital da França?"
+      },
+      {
+        "diz": "Quanto é 100 dividido por 4?"
+      },
+      {
+        "diz": "Me diz duas cores primárias."
+      },
+      {
+        "diz": "Escreve uma frase curta sobre o mar."
+      },
+      {
+        "diz": "Conta de um até cinco."
+      },
+      {
+        "diz": "Qual era o número de protocolo que eu te dei no começo?",
+        "espera": {
+          "contem": [
+            "84120"
+          ]
+        }
+      }
     ]
   },
   {
     "id": "c3-leitura-sobrevive",
-    "porque": "O que ele LEU numa página, e não o que eu contei. Cobrado uma vez dentro da janela e outra fora dela.",
+    "porque": "O que ele LEU numa página, e não o que eu contei. Cobrado dentro e fora da janela. O valor é fixo de propósito: um valor que muda a cada acesso mede reabertura, não memória.",
     "turnos": [
-      {"diz": "Abra https://httpbin.org/uuid e me diga o uuid exato que aparece lá.", "espera": {"acoes": ">0"}},
-      {"diz": "Quanto é 12 mais 30?"},
-      {"diz": "Me diz o nome de dois países da América do Sul."},
-      {"diz": "Repete exatamente o uuid que você viu naquela página.",
-       "espera": {"igual_ao_turno": {"turno": 1, "padrao": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"}}},
-      {"diz": "Qual é a capital do Japão?"},
-      {"diz": "Quanto é 9 vezes 9?"},
-      {"diz": "Me diz três animais domésticos."},
-      {"diz": "Escreve uma frase curta sobre chuva."},
-      {"diz": "Repete de novo, exatamente, o uuid daquela página do começo da conversa.",
-       "espera": {"igual_ao_turno": {"turno": 1, "padrao": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"}}}
+      {
+        "diz": "Abra https://httpbin.org/base64/UFJPVE9DT0xPLTk5MTQyMw== e me diga o texto exato que aparece lá.",
+        "espera": {
+          "acoes": ">0",
+          "contem": [
+            "PROTOCOLO-991423"
+          ]
+        }
+      },
+      {
+        "diz": "Quanto é 12 mais 30?"
+      },
+      {
+        "diz": "Me diz o nome de dois países da América do Sul."
+      },
+      {
+        "diz": "Repete exatamente o texto que você viu naquela página.",
+        "espera": {
+          "contem": [
+            "PROTOCOLO-991423"
+          ]
+        }
+      },
+      {
+        "diz": "Qual é a capital do Japão?"
+      },
+      {
+        "diz": "Quanto é 9 vezes 9?"
+      },
+      {
+        "diz": "Me diz três animais domésticos."
+      },
+      {
+        "diz": "Escreve uma frase curta sobre chuva."
+      },
+      {
+        "diz": "Repete de novo, exatamente, o texto daquela página do começo da conversa.",
+        "espera": {
+          "contem": [
+            "PROTOCOLO-991423"
+          ]
+        }
+      }
     ]
   },
   {
     "id": "c4-regra-permanente",
     "porque": "Uma instrução dada uma vez e válida para a conversa toda. Mede em que turno ela para de valer.",
     "turnos": [
-      {"diz": "Regra para toda esta conversa: comece cada resposta sua com a palavra ABACAXI."},
-      {"diz": "Quanto é 7 vezes 8?", "espera": {"contem": ["ABACAXI"]}},
-      {"diz": "Qual é a capital da Itália?"},
-      {"diz": "Me diz duas cores primárias."},
-      {"diz": "Quanto é 20 menos 6?", "espera": {"contem": ["ABACAXI"]}},
-      {"diz": "Me diz o nome de três frutas."},
-      {"diz": "Escreve uma frase curta sobre o mar."},
-      {"diz": "Quanto é 5 vezes 5?", "espera": {"contem": ["ABACAXI"]}}
+      {
+        "diz": "Regra para toda esta conversa: comece cada resposta sua com a palavra ABACAXI."
+      },
+      {
+        "diz": "Quanto é 7 vezes 8?",
+        "espera": {
+          "contem": [
+            "ABACAXI"
+          ]
+        }
+      },
+      {
+        "diz": "Qual é a capital da Itália?"
+      },
+      {
+        "diz": "Me diz duas cores primárias."
+      },
+      {
+        "diz": "Quanto é 20 menos 6?",
+        "espera": {
+          "contem": [
+            "ABACAXI"
+          ]
+        }
+      },
+      {
+        "diz": "Me diz o nome de três frutas."
+      },
+      {
+        "diz": "Escreve uma frase curta sobre o mar."
+      },
+      {
+        "diz": "Quanto é 5 vezes 5?",
+        "espera": {
+          "contem": [
+            "ABACAXI"
+          ]
+        }
+      }
     ]
   },
   {
     "id": "c5-referencia-implicita",
     "porque": "Sem repetir o endereço: 'nessa página'. Ou ele reabre, ou responde de memória. Só mede — quem lê decide.",
     "turnos": [
-      {"diz": "Abra https://example.com.", "espera": {"acoes": ">0"}},
-      {"diz": "Quantos links tem nessa página?"},
-      {"diz": "E para onde o link leva?"}
+      {
+        "diz": "Abra https://example.com.",
+        "espera": {
+          "acoes": ">0"
+        }
+      },
+      {
+        "diz": "Quantos links tem nessa página?"
+      },
+      {
+        "diz": "E para onde o link leva?"
+      }
     ]
   }
 ]
