@@ -229,14 +229,24 @@ Quatro coisas que essa ponte exigiu, e que falham de formas ilegíveis:
 ## Subir uma mudança
 
 ```bash
-bash tools/deploy.sh                 # tudo
-bash tools/deploy.sh agent-codex     # um serviço
+bash tools/deploy.sh                      # busca a origin, atualiza, sobe tudo
+bash tools/deploy.sh agent-codex          # idem, um serviço
+bash tools/deploy.sh --local agent-codex  # reconstrói o commit de pé, sem falar com a origin
 ```
 
-Faz o build, sobe, espera ficar saudável e roda `tools/smoke-deployment.sh`. Sai diferente de zero
-se o smoke reprovar, porque `docker compose up -d` sair com zero não diz nada sobre capacidade: um
-Bot sem ferramentas inicia, atende e conversa. Todo defeito sério deste fork foi descoberto horas
-depois do deploy que o introduziu, por alguém olhando uma resposta estranha.
+O sync é do script, não é passo manual antes. Ele busca a origin, avança com `--ff-only`, confere
+que o HEAD ficou no commit esperado e só então constrói; no fim, o resultado nomeia o que subiu
+(`SMOKE PASSOU no <hash> <assunto>.`). Existe porque duas vezes um `git pull` feito à mão falhou sem
+ninguém ver — uma por branch errada, outra por arquivo não rastreado no caminho — e este script
+reconstruiu o código velho, o smoke passou (ele prova capacidade, não versão) e o erro só apareceu
+comparando hash à mão. Recusa antes de construir qualquer coisa: fetch falho (sem `--local`), branch
+sem upstream, mudança rastreada não commitada — o build empacota a árvore como ela está, então isso
+não seria commit nenhum — e avanço que não seja rápido.
+
+Depois do sync: build, sobe, espera ficar saudável e roda `tools/smoke-deployment.sh`. Sai diferente
+de zero se o smoke reprovar, porque `docker compose up -d` sair com zero não diz nada sobre
+capacidade: um Bot sem ferramentas inicia, atende e conversa. Todo defeito sério deste fork foi
+descoberto horas depois do deploy que o introduziu, por alguém olhando uma resposta estranha.
 
 O smoke pergunta cinco coisas em menos de um minuto: as ferramentas subiram, as instruções estão no
 lugar, o guarda de destino recusa a rede de dentro, uma página pública ainda abre, e o Bot usa o
