@@ -867,8 +867,18 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
           resultado.respondeu &&
           turnoMereceReforço(perguntaDoTurno(input), resultado.usouFerramenta)
         ) {
+          console.log(
+            `turno ${input.runId}: resposta veio de memória — reforço de leitura aplicado`,
+          );
           say(REPROVAÇÃO_DE_MEMÓRIA);
           const segunda = await executarPassagem(promptDeReforço(prompt));
+          console.log(
+            `turno ${input.runId}: reforço ${
+              segunda.usouFerramenta
+                ? "confirmou a leitura"
+                : "NÃO bastou — turno terminou sem leitura"
+            }`,
+          );
           resultado = {
             usouFerramenta: segunda.usouFerramenta,
             respondeu: segunda.respondeu || resultado.respondeu,
