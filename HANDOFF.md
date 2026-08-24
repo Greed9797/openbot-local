@@ -13,7 +13,7 @@ para o CopilotKit — as duas coisas são requisito do dono, não preferência.
 | Onde | O quê |
 |---|---|
 | `~/dev/openbot-local` | clone de trabalho, branch `local-fork` |
-| `root@179.198.104.210:/opt/openbot-local` | o que está no ar; o deploy é `git pull` + `tools/deploy.sh` |
+| `root@179.198.104.210:/opt/openbot-local` | o que está no ar; o deploy é `tools/deploy.sh` — ele mesmo busca a origin e confere o commit antes de construir |
 | serviços | `openbot`, `agent-codex`, `lightpanda`, `postgres` |
 | credencial do Codex | volume `codex-state`, em `/state/codex-home/auth.json`, chmod 600 |
 
@@ -81,21 +81,26 @@ própria tela do Drive exibe. Depois é colar client id e secret na tela. Passo 
 `docs/vps.md`. O código do lado de cá está pronto e testado (`server/tests/google-oauth.test.ts`);
 a conexão só é salva depois que o Google confirma de quem é a conta.
 
-### 2. `deploy.sh` diz "SMOKE PASSOU" rodando código velho
+### 2. ~~`deploy.sh` diz "SMOKE PASSOU" rodando código velho~~ — resolvido
 
-Aconteceu **duas vezes nesta sessão**: o `git pull` falhou antes (uma vez por branch errado, outra
-por arquivo não rastreado no caminho), o `deploy.sh` reconstruiu o código antigo, e as cinco
-verificações passaram — porque elas testam capacidade, não versão. Só notei comparando o hash à mão.
+Aconteceu **duas vezes na sessão anterior**: o `git pull` falhou antes (uma vez por branch errada,
+outra por arquivo não rastreado no caminho), o `deploy.sh` reconstruiu o código antigo, e as cinco
+verificações passaram — porque elas testam capacidade, não versão. Só se notou comparando hash à mão.
 
-Conserto: o `deploy.sh` imprime o commit que subiu e recusa seguir se ele não for o `HEAD` esperado.
-É a mesma classe de defeito que este fork inteiro tem — algo sobe, responde, e esconde que está
-errado.
+Resolvido em 2026-08-24: o `deploy.sh` passou a ser dono do sync. Busca a origin, avança com
+`--ff-only`, confere que o HEAD ficou no commit esperado **antes de construir qualquer coisa**, e o
+resultado final nomeia o commit que subiu (`SMOKE PASSOU no <hash> <assunto>.`). Recusa de cara:
+fetch falho (sem `--local`), branch sem upstream, mudança rastreada não commitada (o build empacota
+a árvore como ela está, e isso não seria commit nenhum) e avanço que não seja rápido. A dica de
+rollback no fim aponta para o commit exato de antes do deploy. Exercitado em sandbox com 9 cenários
+(atrasado limpo; colisão de arquivo; branch sem upstream; árvore suja; divergência; fetch morto sem
+e com `--local`; já em dia; smoke reprovando de verdade). Falta a primeira execução real na VPS.
 
-### 3. Decidir se as conversas entram no cron
+### 3. ~~Decidir se as conversas entram no cron~~ — decidido
 
-Hoje o cron da VPS roda o smoke de hora em hora (`:17`) e a bateria de tarefas às `4:40`. As conversas
-levam ~5 minutos e não estão lá. **As duas entradas de cron foram instaladas sem perguntar** — estão
-comentadas, saem com `crontab -e`, e o crontab anterior está em `/tmp/cron.bak`.
+Decisão de 2026-08-24: **sim, junto com a bateria** — a entrada das 4:40 roda `rodar-tudo.sh`, que
+já cobre as quatro listas de turno único e as conversas. O smoke continua de hora em hora (`:17`).
+As duas entradas tinham sido instaladas comentadas; o crontab anterior está em `/tmp/cron.bak`.
 
 ### 4. O orçamento de 12k caracteres nunca foi exercitado de verdade
 
@@ -122,10 +127,21 @@ aberta neste turno".
 ```bash
 # testes locais (a suíte avisa sozinha se o banco de teste estiver sem schema)
 cd ~/dev/openbot-local && MANAGED_AGENT_TOKEN=teste bun test
+```
 
-# deploy (na VPS, depois do git pull origin local-fork)
-bash tools/deploy.sh              # tudo
-bash tools/deploy.sh agent-codex  # um serviço
+O banco de teste é o Postgres do compose (`pgvector/pgvector:pg17`, porta 55432 que está no `.env`),
+não um Postgres instalado à mão. Nesta máquina o Docker vem do **colima**: se a suíte falhar em massa
+com `Connection closed` e o log do Postgres não tiver linha nenhuma, é `colima start` +
+`docker compose up -d postgres` e pronto. Armadilha medida em 2026-08-24: contra o Postgres 18
+nativo do Homebrew, toda conexão que o Bun abre por `::1` morre no servidor
+(`setsockopt(TCP_NODELAY) failed`) — por `127.0.0.1` passa. Se um dia o teste rodar contra o banco
+nativo, use IP, não `localhost`.
+
+```bash
+# deploy (na VPS; o script busca a origin e recusa construir código velho)
+bash tools/deploy.sh                      # tudo
+bash tools/deploy.sh agent-codex          # um serviço
+bash tools/deploy.sh --local agent-codex  # reconstrói o commit de pé, sem falar com a origin
 
 # validação inteira (turno único + conversas)
 bash tools/bateria/rodar-tudo.sh general-assistant
