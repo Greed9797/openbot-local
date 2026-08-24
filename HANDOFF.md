@@ -119,13 +119,20 @@ com o comportamento atual medido como correto, não é urgente.
 Na conversa `c5`, "quantos links tem nessa página?" faz o Bot reabrir (15–17 s por turno). Está certo
 e é o que o `AGENTS.md` manda, mas é caro. Se incomodar, é aqui que entra guardar o que foi lido.
 
-### 6. O que continua sendo limitação de modelo, não de código
+### 6. ~~Quem decide chamar a ferramenta é o Codex~~ — agora com uma rede de segurança no código
 
-Quem decide chamar a ferramenta é o Codex. Três alavancas foram testadas: regra no prompt (fraca),
-`AGENTS.md` (forte — levou de 0/3 para 3/3), e bloquear a rede do shell (**quebrou tudo**: com
-`network_access=false` toda chamada MCP volta a pedir aprovação, 40 de 44 tarefas falharam, revertido
-e documentado no código). O que resta é marcar quando acontece, que é o aviso de "nenhuma página foi
-aberta neste turno".
+Quatro alavancas medidas: regra no prompt (fraca), `AGENTS.md` (forte — levou de 0/3 para 3/3),
+bloquear a rede do shell (**quebrou tudo**: com `network_access=false` toda chamada MCP volta a
+pedir aprovação, 40 de 44 tarefas falharam, revertido e documentado no código) e, desde 2026-08-24,
+**o reforço** (`agent-codex/src/index.ts`): turno que termina com pergunta citando endereço,
+resposta dada e nenhuma chamada é rodado **uma segunda vez**, com ordem explícita de abrir a página;
+a resposta de memória sai na tela seguida da marcação "_reprovada_" e da resposta lida. Se a segunda
+passagem também não abrir, o aviso honesto de "nenhuma página foi aberta" permanece. O reforço diz
+no log do container quando disparou e como terminou. De quebra, `avisoDeOutraPagina` (abriu domínio
+errado) estava definida desde o incidente W3bsite mas nunca tinha sido ligada ao fluxo — hoje é
+avaliada sobre as passagens somadas. Medido na VPS: t03 + t28 ×3 = 6/6 com leitura real, nenhum
+aviso. O teto continua sendo o modelo; a diferença é que memória sem leitura virou exceção tratada,
+não resposta silenciosa.
 
 ## Como rodar as coisas
 
