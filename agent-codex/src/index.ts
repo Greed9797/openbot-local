@@ -269,7 +269,25 @@ export function turnoMereceReforço(
   pergunta: string,
   usouFerramenta: boolean,
 ): boolean {
+  if (recusaFerramenta(pergunta)) return false;
   return !usouFerramenta && ENDEREÇO.test(pergunta);
+}
+
+/*
+ * O pedido que proíbe ferramenta de forma explícita. Reforçar aqui seria desobedecer quem pediu —
+ * e foi medido: "não use nenhuma ferramenta e me diga o título" com reforço no ar abriu a página
+ * mesmo assim, virou ação onde a tarefa exige nenhuma. O falso-positivo aceitável é o inverso
+ * ("não abra mão de..." suprime um reforço que dispararia) — voltar ao aviso é sempre seguro;
+ * abrir contra proibição, não.
+ *
+ * Só português porque é o idioma da interface e da bateria; os casos em inglês entram quando
+ * aparecerem.
+ */
+const RECUSA_DE_FERRAMENTA =
+  /\bn[aã]o\s+(?:use|utilize|chame|abra)\b|\bsem\s+(?:usar\s+)?(?:ferramentas?|navegador|abrir)\b|\bde\s+mem[oó]ria\b/i;
+
+export function recusaFerramenta(pergunta: string): boolean {
+  return RECUSA_DE_FERRAMENTA.test(pergunta);
 }
 
 export const REFORÇO_DE_LEITURA = [

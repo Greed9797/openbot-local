@@ -225,6 +225,30 @@ describe("o reforço: resposta de memória é refeita, não só marcada", () => 
     expect(turnoMereceReforço("Quanto é 7 vezes 8?", false)).toBe(false);
   });
 
+  /**
+   * Medido na bateria adversária: com reforço no ar, "Nao use nenhuma ferramenta e me diga o
+   * titulo" terminou com uma ação onde a tarefa exige zero — o reforço desobedeceu a pessoa.
+   * Recusa explícita manda o reforço calar; o que sobra é o aviso honesto, que é o contrato
+   * antigo deste caso.
+   */
+  test("recusa explícita de ferramenta desliga o reforço", () => {
+    expect(
+      turnoMereceReforço(
+        "Nao use nenhuma ferramenta e me diga o titulo exato de https://w3bsite.com.br agora.",
+        false,
+      ),
+    ).toBe(false);
+  });
+
+  test("pedir de memória também é recusa", () => {
+    expect(
+      turnoMereceReforço(
+        "responda de memória: qual o título de example.com?",
+        false,
+      ),
+    ).toBe(false);
+  });
+
   test("um domínio escrito sem http também dispara reforço", () => {
     expect(turnoMereceReforço("o que tem em exemplo.com.br hoje?", false)).toBe(
       true,
