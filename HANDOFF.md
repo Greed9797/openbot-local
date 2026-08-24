@@ -103,12 +103,16 @@ entradas estão ativas (o handoff anterior dizia comentadas — estava velho), `
 `tools/monitorar.sh smoke` e `40 4 * * *` roda `tools/monitorar.sh bateria`, que chama
 `rodar-tudo.sh` — turnos únicos e conversas. Nada a mudar no crontab.
 
-### 4. O orçamento de 12k caracteres nunca foi exercitado de verdade
+### 4. ~~O orçamento de 12k caracteres nunca foi exercitado de verdade~~ — exercitado e medido
 
-Nenhuma conversa de teste chega perto do limite — o corte e o marcador de corte só são exercitados em
-teste de unidade, com uma fala gigante fabricada. Falta ver o Bot lidando com o marcador numa conversa
-real longa. Quando isso acontecer, o próximo degrau é resumir os trechos cortados em vez de descartar,
-e aí custa outra chamada de modelo por turno.
+Resolvido em 2026-08-24 com a conversa `c6-orcamento-cortado` (em `tools/bateria/conversas.json`):
+~21 mil caracteres de enchimento forçam o corte de verdade. Corrida real contra o Bot na VPS,
+11 turnos: o protocolo dado na abertura voltou (`55501`), e cobrada pelo código secundário que caiu
+fora do prompt, a resposta foi "não estou vendo esse trecho omitido da conversa" — o Bot admitiu o
+corte em vez de inventar, que é exatamente o que o marcador manda. Antes da corrida, o tamanho foi
+conferido simulando o `recapDe` real (recap de 12.109 caracteres). O degrau seguinte — resumir os
+trechos cortados em vez de descartar — continua aberto e custa outra chamada de modelo por turno;
+com o comportamento atual medido como correto, não é urgente.
 
 ### 5. Referência implícita reabre a página todo turno
 
