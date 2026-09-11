@@ -139,20 +139,40 @@ Nada aqui é marcado como concluído operacionalmente sem ter rodado de verdade.
 |---|---|---|
 | Tarefa real contra o TikTok | sem conta e sem navegador na VPS a partir desta máquina | instalar e rodar na VPS, com perfil logado |
 | Telegram de verdade | sem token: o canal só sobe com `TELEGRAM_BOT_TOKEN` | token do @BotFather e a allowlist numérica |
-| Modelo pago de visão | sem credencial no `.env` local | uma chave e uma tarefa que exija enxergar |
 | Codex conduzindo `delegated` | o serviço `agent-codex` não estava no ar | subir o `agent-codex` com a assinatura |
-| Captura com navegador | `agent-computer` não estava no ar | subir o computador e pedir "me manda a tela" |
+
+### Medido em 2026-09-11, nesta máquina
+
+Duas linhas saíram da tabela acima e viraram número:
+
+- **Captura com navegador.** `agent-computer` de pé, e o turno real contra ele: o modelo pediu
+  `openbot_ver_a_tela` (log do CLI: 4× `openbot_abrir_pagina`, 2× `openbot_ver_a_tela` em dois
+  turnos) e a tarefa terminou em 1 passo.
+- **Modelo de visão por CLI.** `opencode` com `opencode-go/muse-spark-1.3-contributor`, `variant: high`.
+  A página de teste guardava o valor atrás de que três caminhos não o entregam: o HTML o busca no
+  servidor na carga, o endpoint que o devolve queima o bilhete na primeira leitura, e o valor existe
+  só como pixel num `<canvas>` — sem nó de texto e sem atributo, então snapshot e leitura de página
+  devolvem nada. O turno chamou `openbot_ver_a_tela` (log do CLI) e respondeu o valor desenhado — e o
+  que o servidor de teste registra nesse turno são duas requisições, a página e o `/valor` da própria
+  página, catorze milissegundos depois da primeira. O bilhete que devolve o valor foi servido uma vez
+  ao navegador e queimado nesse intervalo, antes de o turno poder ler a página por qualquer caminho:
+  quem chegasse depois levava `410`. A resposta repete o valor desenhado, e o que o log mede é a
+  queima do bilhete nesses catorze milissegundos — a via de texto posterior, não que a imagem fosse o
+  único canal possível.
+
+O que continua de fora, e é do dono: a VPS (perfil logado e conta) e o Telegram (token).
 
 O caminho exercitado à mão foi o que dá para exercitar aqui: tarefas de verdade no banco (criadas,
 pausadas, retomadas, canceladas, com passo e evento gravados), aprovação decidida, conversa
-respondida, pareamento consumido e captura falhando com a mensagem certa em vez de silêncio.
+respondida, pareamento consumido, captura com navegador de verdade e um turno que enxergou a tela.
 
 ## 11. Riscos que continuam de pé
 
 - **Um navegador para todos os Bots** — `COMPUTER_SUPERVISOR_URL` separa por Bot, mas o padrão é
   compartilhado; duas tarefas no mesmo perfil se esperam pelo lease.
 - **Leitura de página é o gargalo** — o modelo decide sobre o texto do snapshot; página que esconde o
-  essencial atrás de canvas (como o próprio TikTok pode fazer) depende de captura e visão.
+  essencial atrás de canvas depende de captura e visão, e essa parte está medida (acima) com o motor
+  `opencode`: o que falta ali não é o caminho, é o deployment ter um modelo que enxergue.
 - **Codex CLI é uma segunda fronteira** — no modo `delegated` ele tem shell; o runtime não promete
   shell governado, e isso está dito em `security.md`.
 - **VPS pequena** — um run de cada vez, 40 passos, 15 minutos; subir dois é o caminho para a fila
