@@ -84,7 +84,15 @@ def julgar(tarefa, acoes, texto):
     Só o que dá para decidir por máquina entra aqui: quantas ações governadas o turno gerou, e se o
     texto contém (ou não contém) algo. Se a resposta está CERTA continua sendo julgamento de quem lê
     — uma bateria que se declara verde sozinha é a mesma armadilha da tela que dizia "Configurado".
+
+    Turno que falhou nunca passa: o modelo fora do ar devolve `[RUN_ERROR ...]`, e sem a linha
+    abaixo uma tarefa cuja expectativa é "não contém X" era dada como aprovada — medido com a conta
+    do Codex no limite de uso, em que a bateria imprimiu `passa` em tarefas cujo turno não produziu
+    resposta nenhuma.
     """
+    if "[RUN_ERROR" in texto or "[FALHOU" in texto:
+        return "FALHA", "o turno não completou"
+
     espera = tarefa.get("espera")
     if not espera:
         return "", ""
