@@ -251,6 +251,9 @@ services:
       # Dentro do container, `./.artifacts` vive no sistema de arquivos efêmero: um `docker compose
       # up --build` apagaria as evidências de todas as tarefas, que é justamente o que a retenção por
       # linha promete guardar. O diretório é do volume, e a retenção continua sendo uma coluna.
+      #
+      # O dono de um volume novo vem do diretório da imagem (`Dockerfile`): a API roda como `pwuser`,
+      # e sem aquele `chown` a primeira captura falharia com EACCES.
       AGENT_ARTIFACTS_DIR: /app/.artifacts
     volumes:
       - agent-artifacts:/app/.artifacts

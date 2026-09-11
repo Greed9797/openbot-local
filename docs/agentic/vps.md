@@ -35,8 +35,10 @@ as tarefas falham com `PROVIDER_UNAVAILABLE`, dito assim.
 
 - `agent-artifacts:/app/.artifacts` (`docker-compose.yml`, serviço `openbot`): sem o volume,
   `./.artifacts` vive no sistema efêmero e um `up --build` apaga as evidências que a
-  retenção por linha promete guardar. Permissões: as do processo/volume, sem `chmod`
-  próprio no código.
+  retenção por linha promete guardar. Um volume novo herda o dono do diretório da imagem, e é
+  por isso que o `Dockerfile` cria `/app/.artifacts` como `pwuser` — sem esse `chown` o volume
+  nasceria de root e a API, que roda como `pwuser`, falharia a primeira captura com EACCES.
+  O código não faz `chmod` próprio: grava 0600 em diretório 0700.
 - Migrações do Postgres (`server/drizzle/`): o serviço `migrate` do compose
   (`drizzle-kit migrate`) aplica antes de subir. Tabelas novas: `agent_runs`,
   `agent_run_steps`, `agent_run_events`, `run_artifacts`, `agent_run_messages`,

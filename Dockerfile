@@ -188,12 +188,18 @@ ENV AGENT_COMPUTER_ALLOW_PRIVATE_HOSTS=true
 # keeps a Bot signed in between turns. Owned here, because a non-root process cannot create them at
 # the root of the filesystem and the failure surfaces as EACCES on the first navigation.
 #
-# Só os dois diretórios novos. O `/app` sai das COPY acima já com o dono certo, e mudá-lo aqui
+# `/app/.artifacts` is here for the same reason, one step removed: the captures of a task land in a
+# named volume mounted at that path, and a fresh volume inherits the ownership of the image's own
+# directory. Without the directory in the image the volume arrives owned by root, and the API — which
+# runs as `pwuser` — cannot write the first capture. The volume's contents are the audit evidence the
+# retention column promises to keep, so the failure would be silent until someone asked for a screen.
+#
+# Só estes diretórios novos. O `/app` sai das COPY acima já com o dono certo, e mudá-lo aqui
 # significava um `chown -R` sobre o node_modules do Playwright inteiro — centenas de milhares de
 # arquivos numa camada overlay, que nesta VPS passou de quarenta e cinco minutos preso em I/O a 1%
 # de CPU. Definir o dono durante a cópia é de graça; recursar depois, não.
-RUN mkdir -p /workspace /profiles \
-  && chown pwuser:pwuser /workspace /profiles
+RUN mkdir -p /workspace /profiles /app/.artifacts \
+  && chown pwuser:pwuser /workspace /profiles /app/.artifacts
 
 # Where the embedded database answers, when there is one. Overridden by whatever you set, so an
 # external database needs no special case: set DATABASE_URL and EMBEDDED_POSTGRES stays off.
