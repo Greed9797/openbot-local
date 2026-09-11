@@ -22,3 +22,6 @@ app/src/lib/generated/application-config.ts
 # TanStack Router scratch output
 app/.tanstack/
 __pycache__/
+
+# Skills da pessoa, instaladas nos containers por tools/skills.sh — dado de quem opera, não do fork.
+/skills/

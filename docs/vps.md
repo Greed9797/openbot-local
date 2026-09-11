@@ -184,6 +184,41 @@ printf 'GEMINI_API_KEY=%s\nAGENT_GEMINI_MODEL=gemini-3.8-flash\n' "$SUA_CHAVE" >
 
 Nada de rebuild: a lista de modelos é lida do ambiente no boot.
 
+## As suas skills, dentro do Bot
+
+O Bot dirige o navegador com dois motores, e cada CLI lê as skills do próprio diretório. O
+`tools/skills.sh` leva um diretório de skills até os dois, sem passar pelo repositório: skill é dado
+de quem opera, não código do fork, e um push não deveria publicar as suas.
+
+Do seu computador, onde as skills estão:
+
+```sh
+tar -C ~/.codex/skills --exclude=.system --exclude=.DS_Store -cf - . \
+  | ssh root@your-vps 'rm -rf /opt/openbot-local/skills && mkdir -p /opt/openbot-local/skills && tar -C /opt/openbot-local/skills -xf -'
+```
+
+Na VPS:
+
+```sh
+cd /opt/openbot-local
+bash tools/skills.sh          # lê ./skills e instala nos dois motores
+bash tools/skills.sh --limpar # tira o que ele instalou
+```
+
+Ele diz quantas skills chegaram em cada motor e falha se o número não fechar. Onde cada um lê:
+
+| Motor | Caminho no container | Volume |
+|---|---|---|
+| Codex | `/state/codex-home/skills/<nome>/SKILL.md` | `codex-state` |
+| OpenCode | `/state/home/.config/opencode/skills/<nome>/SKILL.md` | `agent-cli-state` |
+
+Uma conversa nova já enxerga as skills; a que está aberta, não — a lista entra no começo do turno.
+
+O `.system` fica de fora, e não é esquecimento: é o catálogo que a conta do ChatGPT sincroniza
+sozinha, e o serviço do Codex apaga ele a cada boot. Medido em bateria, o Bot gastou turno abrindo
+o `SKILL.md` de um plugin antes de responder sobre uma página — a pasta da conta é ruído para quem
+dirige navegador, e as suas skills são o oposto disso.
+
 ## Staying up
 
 Every long-lived service carries `restart: unless-stopped`, so they come back after a crash and after
