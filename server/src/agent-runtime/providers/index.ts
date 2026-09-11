@@ -15,6 +15,7 @@ import type { AgentModelProvider, ModelCapabilities } from "../contracts";
 import { createAnthropicProvider } from "./anthropic";
 import type { CodexDelegatedOptions } from "./codex-delegated";
 import { createCodexDelegatedProvider } from "./codex-delegated";
+import { createGeminiProvider } from "./gemini";
 import { createOpenAICompatibleProvider } from "./openai-compatible";
 import { createOpenAIResponsesProvider } from "./openai-responses";
 
@@ -29,7 +30,7 @@ export function createProviderFor(
     vision: config.vision,
     tools: config.tools,
     streaming: false,
-    mode: config.transport === "codex" ? "delegated" : "step",
+    mode: config.transport === "delegated" ? "delegated" : "step",
   };
   const common = {
     id: config.id,
@@ -39,7 +40,7 @@ export function createProviderFor(
   };
 
   switch (config.transport) {
-    case "codex":
+    case "delegated":
       return createCodexDelegatedProvider({
         id: config.id,
         endpoint: config.baseUrl ?? "",
@@ -61,6 +62,14 @@ export function createProviderFor(
     case "messages":
       return config.apiKey
         ? createAnthropicProvider({
+            ...common,
+            apiKey: config.apiKey,
+            ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
+          })
+        : undefined;
+    case "gemini":
+      return config.apiKey
+        ? createGeminiProvider({
             ...common,
             apiKey: config.apiKey,
             ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
@@ -95,6 +104,7 @@ export type CodexSignRun = NonNullable<CodexDelegatedOptions["signRun"]>;
 
 export {
   createAnthropicProvider,
+  createGeminiProvider,
   createCodexDelegatedProvider,
   createOpenAICompatibleProvider,
   createOpenAIResponsesProvider,

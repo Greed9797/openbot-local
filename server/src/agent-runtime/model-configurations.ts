@@ -25,7 +25,7 @@ export function createModelConfigurationStore(database: Database) {
         const capabilities = {
           vision: config.vision,
           tools: config.tools,
-          mode: config.transport === "codex" ? "delegated" : "step",
+          mode: config.transport === "delegated" ? "delegated" : "step",
         };
         await database
           .insert(modelConfigurations)

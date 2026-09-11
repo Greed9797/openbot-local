@@ -8,7 +8,7 @@ process.env.OPENBOT_AGENT_TOKEN ??= "token-de-teste";
 process.env.OPENBOT_RUN ??= "declaracao-de-teste";
 process.env.OPENBOT_BOT_ID ??= "self";
 
-const { tools, handle } = await import("../src/mcp-computer");
+const { tools, handle } = await import("../../shared/mcp-computer");
 
 /** Captura o que o servidor escreveria em stdout. */
 function capture() {

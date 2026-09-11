@@ -21,6 +21,9 @@ import {
   createCodexDelegatedProvider,
 } from "../src/agent-runtime/providers/codex-delegated";
 import {
+  createGeminiProvider,
+} from "../src/agent-runtime/providers/gemini";
+import {
   mintRunAssertion,
   readRunAssertion,
 } from "../src/agents/callback-token";
@@ -605,5 +608,171 @@ describe("Codex delegado > turno recusado", () => {
     });
 
     expect(result.kind).toBe("invalid");
+  });
+});
+
+/**
+ * O Gemini, no fio.
+ *
+ * As duas coisas que este adaptador existe para fazer e que um teste de unidade frouxo deixaria
+ * passar: a imagem chega como bytes (`inlineData`), nunca como texto, e a chamada de ferramenta é
+ * lida de dentro das partes, com os argumentos já em JSON.
+ */
+describe("Gemini", () => {
+  test("o pedido leva instruções, ferramentas e a imagem como bytes", async () => {
+    const { sent, fetchImpl } = capture({
+      candidates: [{ content: { parts: [{ text: "pronto" }] }, finishReason: "STOP" }],
+    });
+    await createGeminiProvider({
+      model: "gemini-3.8-flash",
+      apiKey: "chave-gemini",
+      capabilities: capabilities(),
+      fetchImpl,
+    }).run(input(), context);
+
+    expect(sent[0]?.url).toContain(
+      "/v1beta/models/gemini-3.8-flash:generateContent",
+    );
+    const body = bodyOf(sent);
+    expect(JSON.stringify(body.systemInstruction)).toContain("Você");
+    const parts = (
+      (body.contents as { parts: Record<string, unknown>[] }[])[0] as {
+        parts: Record<string, unknown>[];
+      }
+    ).parts;
+    expect(String(parts[0]?.text)).toContain("Preencher o formulário de produto.");
+    expect(parts[1]?.inlineData).toEqual({
+      mimeType: "image/png",
+      data: IMAGE_DATA,
+    });
+    const declarations = (
+      (body.tools as { functionDeclarations: Record<string, unknown>[] }[])[0] as {
+        functionDeclarations: Record<string, unknown>[];
+      }
+    ).functionDeclarations;
+    expect(declarations[0]?.name).toBe("click");
+    expect(declarations[0]?.parameters).toEqual(
+      (input().tools[0] as { parameters: unknown }).parameters,
+    );
+  });
+
+  test("um modelo sem visão não recebe imagem nenhuma", async () => {
+    const { sent, fetchImpl } = capture({
+      candidates: [{ content: { parts: [{ text: "ok" }] }, finishReason: "STOP" }],
+    });
+    await createGeminiProvider({
+      model: "gemini-3.8-flash",
+      apiKey: "chave-gemini",
+      capabilities: capabilities({ vision: false }),
+      fetchImpl,
+    }).run(input({ capabilities: capabilities({ vision: false }) }), context);
+
+    const parts = (
+      (bodyOf(sent).contents as { parts: Record<string, unknown>[] }[])[0] as {
+        parts: Record<string, unknown>[];
+      }
+    ).parts;
+    expect(parts).toHaveLength(1);
+    expect(JSON.stringify(parts)).not.toContain(IMAGE_DATA);
+  });
+
+  test("a chamada de ferramenta vira a decisão do passo", async () => {
+    const { fetchImpl } = capture({
+      candidates: [
+        {
+          content: {
+            parts: [
+              { text: "Vou clicar." },
+              {
+                functionCall: {
+                  name: "click",
+                  args: { ref: "e1" },
+                  id: "fc-1",
+                },
+              },
+            ],
+          },
+          finishReason: "STOP",
+        },
+      ],
+    });
+
+    const result = await createGeminiProvider({
+      model: "gemini-3.8-flash",
+      apiKey: "chave-gemini",
+      capabilities: capabilities(),
+      fetchImpl,
+    }).run(input(), context);
+
+    expect(result.kind).toBe("tool_call");
+    expect(
+      (result as { call: { name: string; arguments: unknown; callId?: string } }).call,
+    ).toEqual({ name: "click", arguments: { ref: "e1" }, callId: "fc-1" });
+  });
+
+  test("texto sem ferramenta é a tarefa dada por concluída", async () => {
+    const { fetchImpl } = capture({
+      candidates: [
+        {
+          content: { parts: [{ text: "O relatório foi baixado." }] },
+          finishReason: "STOP",
+        },
+      ],
+    });
+
+    const result = await createGeminiProvider({
+      model: "gemini-3.8-flash",
+      apiKey: "chave-gemini",
+      capabilities: capabilities(),
+      fetchImpl,
+    }).run(input(), context);
+
+    expect(result).toEqual({ kind: "final", message: "O relatório foi baixado." });
+  });
+
+  test("bloqueio de conteúdo é dito com o motivo, não como resposta vazia", async () => {
+    const { fetchImpl } = capture({
+      promptFeedback: {
+        blockReason: "SAFETY",
+        blockReasonMessage: "Pedido bloqueado por política.",
+      },
+    });
+
+    const result = await createGeminiProvider({
+      model: "gemini-3.8-flash",
+      apiKey: "chave-gemini",
+      capabilities: capabilities(),
+      fetchImpl,
+    }).run(input(), context);
+
+    expect(result.kind).toBe("invalid");
+    expect((result as { error: string }).error).toContain("SAFETY");
+  });
+
+  test("uma recusa do provedor não é resposta vazia", async () => {
+    const { fetchImpl } = capture({ error: { message: "model not found" } }, 404);
+    const failure = await createGeminiProvider({
+      model: "gemini-inexistente",
+      apiKey: "chave-gemini",
+      capabilities: capabilities(),
+      fetchImpl,
+    })
+      .run(input(), context)
+      .catch((error) => error);
+
+    expect(failure).toBeInstanceOf(ProviderRejectedError);
+    expect((failure as Error).message).toContain("model not found");
+  });
+
+  test("sem chave, o adaptador diz isso em vez de chamar a API", async () => {
+    const failure = await createGeminiProvider({
+      model: "gemini-3.8-flash",
+      apiKey: "",
+      capabilities: capabilities(),
+    })
+      .run(input(), context)
+      .catch((error) => error);
+
+    expect(failure).toBeInstanceOf(ProviderRejectedError);
   });
 });

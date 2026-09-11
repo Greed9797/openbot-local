@@ -117,6 +117,73 @@ docker compose exec agent-codex codex login status
 A deployment meant to stay up needs either something that refreshes it or somebody who notices when
 turns start failing — watch the `agent-codex` logs for a non-zero exit mentioning authentication.
 
+## Um CLI de agente como motor (OpenCode, MiMo Code)
+
+O runtime fala com modelos de duas maneiras: ele conduz o ciclo (observe → decida → aja) com um
+provedor de API, ou entrega a tarefa inteira a um serviço que conduz o próprio ciclo. O `agent-cli` é
+da segunda família, e o modelo dele É um CLI — o mesmo que você já usa no terminal, com a conta que
+você já paga.
+
+Serve para três coisas concretas:
+
+- **Usar um plano já pago** como motor do Bot, sem chave de fornecedor no runtime. O "OpenCode Go",
+  por exemplo: quem autentica é o CLI, no formato dele.
+- **Usar um modelo gratuito** para as tarefas do dia a dia, e reservar o modelo caro para o que
+  precisa dele.
+- **Testar o mesmo Bot em motores diferentes** sem mexer no servidor: é uma variável de ambiente.
+
+O que **não** muda: o navegador. O CLI recebe o navegador do Bot por MCP — o mesmo
+`shared/mcp-computer.ts` que o Codex usa —, então cada página aberta passa pelo gateway, pela política
+de `/admin/boundaries` e vira linha em `/admin/audit`. A busca embutida do CLI (`webfetch`,
+`websearch`) fica **negada** pela configuração que o serviço escreve no workspace: a web só entra pelo
+caminho auditado.
+
+### Ligar
+
+```sh
+cd /opt/openbot-local
+
+# A conta do CLI, em base64 — o mesmo arquivo que o login escreve.
+#   OpenCode:  base64 -i ~/.local/share/opencode/auth.json | tr -d '\n'
+#   MiMo Code: base64 -i ~/.local/share/mimocode/auth.json | tr -d '\n'
+printf 'AGENT_CLI=opencode\nAGENT_CLI_MODEL=opencode-go/deepseek-v4.1-flash\nAGENT_CLI_AUTH_JSON=%s\n' "$(base64 -i ~/.local/share/opencode/auth.json | tr -d '\n')" >> .env
+printf 'AGENT_OPENCODE_URL=http://agent-cli:4210/ag-ui\nAGENT_OPENCODE_MODEL=opencode-go/deepseek-v4.1-flash\n' >> .env
+
+bash tools/deploy.sh
+```
+
+A `AGENT_OPENCODE_URL` é o que faz o runtime enxergar o serviço como modelo; sem ela o container
+sobe e ninguém o usa. Confira os dois lados:
+
+```sh
+docker compose exec agent-cli opencode --version
+curl -s localhost:4210/health         # {"status":"ok","cli":"opencode","ferramentas":true}
+curl -s "localhost:3001/api/models"   # o modelo `opencode` na lista
+```
+
+`ferramentas: true` é a metade que importa: um CLI sem o MCP responde bem, de memória, e é a mesma
+assinatura de todo defeito caro deste fork.
+
+### Outro CLI, mesma imagem
+
+Um CLI por serviço. Para rodar o MiMo Code ao lado do OpenCode, duplique o bloco `agent-cli` no
+`docker-compose.yml` com `AGENT_CLI=mimo`, outra porta (`CLI_BOT_PORT=4211`) e outros volumes, e
+aponte `AGENT_MIMO_URL=http://<serviço>:4211/ag-ui` no `.env`. O serviço sabe dirigir `opencode` e
+`mimo`; um CLI novo é um adaptador em `agent-cli/src/cli.ts` — binário, arquivo de config e a flag de
+auto-aprovação (o OpenCode diz `--auto`, o MiMo diz `--yolo`), que é onde um adaptador copiado do
+outro trava em silêncio.
+
+### Gemini, e outros provedores de API
+
+Um provedor de API continua sendo o caminho para um modelo com visão e sem CLI no meio. O Gemini é
+nativo (imagem como bytes, ferramenta como `functionCall`):
+
+```sh
+printf 'GEMINI_API_KEY=%s\nAGENT_GEMINI_MODEL=gemini-3.8-flash\n' "$SUA_CHAVE" >> .env
+```
+
+Nada de rebuild: a lista de modelos é lida do ambiente no boot.
+
 ## Staying up
 
 Every long-lived service carries `restart: unless-stopped`, so they come back after a crash and after

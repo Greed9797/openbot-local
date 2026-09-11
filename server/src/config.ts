@@ -64,7 +64,7 @@ export type ComputerConfig = DockerComputerConfig | SharedComputerConfig;
  */
 export type AgentModelConfig = {
   id: string;
-  transport: "responses" | "messages" | "chat-completions" | "codex";
+  transport: "responses" | "messages" | "chat-completions" | "gemini" | "delegated";
   model: string;
   baseUrl?: string;
   apiKey?: string;
@@ -753,6 +753,24 @@ function agentModels(environment: Environment): AgentModelConfig[] {
     });
   }
 
+  const geminiKey =
+    optional(environment, "AGENT_GEMINI_API_KEY") ??
+    optional(environment, "GEMINI_API_KEY") ??
+    optional(environment, "GOOGLE_API_KEY");
+  if (geminiKey) {
+    const model = optional(environment, "AGENT_GEMINI_MODEL") ?? "gemini-3.8-flash";
+    const baseUrl = optional(environment, "AGENT_GEMINI_BASE_URL");
+    models.push({
+      id: "gemini",
+      transport: "gemini",
+      model,
+      ...(baseUrl ? { baseUrl } : {}),
+      apiKey: geminiKey,
+      vision: visionFor("gemini", model),
+      tools: true,
+    });
+  }
+
   const localBaseUrl = optional(environment, "AGENT_LOCAL_BASE_URL");
   if (localBaseUrl) {
     const model = optional(environment, "AGENT_LOCAL_MODEL") ?? "llama3.1";
@@ -770,22 +788,42 @@ function agentModels(environment: Environment): AgentModelConfig[] {
     });
   }
 
+  /*
+   * Os agentes delegados: serviços próprios que conduzem o ciclo inteiro e falam AG-UI.
+   *
+   * Um por CLI, porque cada um tem o seu jeito de ganhar ferramentas e a sua conta — o Codex, o
+   * OpenCode, o MiMo. Do lado do runtime são o mesmo adaptador: o que muda é o endereço, e é por
+   * isso que acrescentar um CLI novo é uma variável de ambiente e não um caminho de código.
+   */
+  const agentToken = optional(environment, "MANAGED_AGENT_TOKEN");
+  const delegated = (
+    id: string,
+    prefix: string,
+    url: string,
+  ): AgentModelConfig => ({
+    id,
+    transport: "delegated",
+    model: optional(environment, `${prefix}_MODEL`) ?? `${id} default`,
+    baseUrl: url,
+    // O mesmo token que os nossos serviços validam do outro lado. Ausente num deployment que aponta
+    // para um AG-UI de terceiro: aí o cabeçalho não vai, e quem exigir autenticação diz isso.
+    ...(agentToken ? { agentToken } : {}),
+    // Presumida, e negável: quem roda o CLI é que sabe se o modelo dele enxerga a página.
+    vision: flag(environment, `${prefix}_VISION`, true),
+    tools: true,
+  });
+
   const codexUrl =
     optional(environment, "AGENT_CODEX_URL") ??
     optional(environment, "MANAGED_AGENT_AG_UI_URL");
-  if (codexUrl) {
-    const codexToken = optional(environment, "MANAGED_AGENT_TOKEN");
-    models.push({
-      id: "codex",
-      transport: "codex",
-      model: optional(environment, "AGENT_CODEX_MODEL") ?? "codex default",
-      baseUrl: codexUrl,
-      // O mesmo token que o serviço do Codex valida do outro lado. Vazio num deployment que aponta
-      // para um AG-UI de terceiro: aí o cabeçalho não vai, e quem exigir autenticação diz isso.
-      ...(codexToken ? { agentToken: codexToken } : {}),
-      vision: true,
-      tools: true,
-    });
+  if (codexUrl) models.push(delegated("codex", "AGENT_CODEX", codexUrl));
+
+  for (const [id, prefix] of [
+    ["opencode", "AGENT_OPENCODE"],
+    ["mimo", "AGENT_MIMO"],
+  ] as const) {
+    const url = optional(environment, `${prefix}_URL`);
+    if (url) models.push(delegated(id, prefix, url));
   }
 
   return models;

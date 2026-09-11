@@ -26,7 +26,7 @@ $COMPOSE exec -T agent-codex bun -e \
 echo
 echo "3. O servidor de ferramentas sobe agora, falado pelo protocolo?"
 $COMPOSE exec -T agent-codex sh -c \
-  'printf "%s\n" "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"d\",\"version\":\"1\"}}}" "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}" | OPENBOT_AGENT_TOKEN=probe OPENBOT_RUN=probe OPENBOT_BOT_ID=self timeout 15 bun /app/agent-codex/src/mcp-computer.ts 2>&1 | grep -o "\"name\":\"[a-z_]*\"" | wc -l' \
+  'printf "%s\n" "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"d\",\"version\":\"1\"}}}" "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}" | OPENBOT_AGENT_TOKEN=probe OPENBOT_RUN=probe OPENBOT_BOT_ID=self timeout 15 bun /app/shared/mcp-computer.ts 2>&1 | grep -o "\"name\":\"[a-z_]*\"" | wc -l' \
   2>/dev/null | sed "s/^/   ferramentas oferecidas: /"
 
 echo

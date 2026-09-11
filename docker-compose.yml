@@ -361,6 +361,58 @@ services:
       start_period: 45s
 
   # The same Bot behavior on a framework, exposed as another AG-UI endpoint and registry row.
+  # Um CLI de agente como Bot: o modelo É o CLI, escolhido por `AGENT_CLI`.
+  #
+  # Existe porque um CLI já traz conta, modelo e laço de ferramentas prontos — o "OpenCode Go" de
+  # alguém, um modelo gratuito, o MiMo Code — e o runtime só precisa entregar a tarefa e ler o
+  # resultado. Mesmo desenho do agent-codex; o que muda é que aqui o CLI é dado de configuração.
+  #
+  # Dois CLIs, dois serviços: quem quiser os dois sobe dois blocos iguais a este com `AGENT_CLI`
+  # diferente e portas diferentes.
+  agent-cli:
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: agent-cli/Dockerfile
+    ports:
+      # Loopback, for the same reason as agent-bot above.
+      - "127.0.0.1:${CLI_BOT_PORT:-4210}:4210"
+    # O .env inteiro, pela mesma razão do openbot: a conta do CLI e as chaves de provedor que ele
+    # conhece entram por aqui (`OPENCODE_API_KEY`, `MINIMAX_API_KEY`, ...), sem uma lista enumerada
+    # que envelhece. O bloco abaixo só sobrescreve o que muda por se estar dentro de um container.
+    env_file:
+      - .env
+    environment:
+      # Same server-to-Bot request boundary as agent-bot above.
+      MANAGED_AGENT_TOKEN: ${MANAGED_AGENT_TOKEN:-}
+      # Qual CLI este processo dirige: opencode | mimo.
+      AGENT_CLI: ${AGENT_CLI:-opencode}
+      # O modelo, no formato do CLI (`provider/model`). Vazio deixa o CLI escolher o padrão dele.
+      AGENT_CLI_MODEL: ${AGENT_CLI_MODEL:-}
+      AGENT_CLI_TURN_TIMEOUT_MS: ${AGENT_CLI_TURN_TIMEOUT_MS:-900000}
+      # A conta do CLI em base64 — o mesmo arquivo que `opencode auth login` escreve. Nunca é
+      # impressa; vira o arquivo de credencial no volume, com permissão 600.
+      AGENT_CLI_AUTH_JSON: ${AGENT_CLI_AUTH_JSON:-}
+      # O que dá ao CLI o navegador do Bot, via MCP, com cada chamada passando pela política e pela
+      # auditoria. Ausente, o CLI só conversa.
+      OPENBOT_AGENT_TOKEN: ${AGENT_TOOL_TOKEN:-}
+      # O gateway, alcançado pelo nome do serviço: dentro deste container `localhost` é ele mesmo.
+      OPENBOT_API_URL: http://openbot:3001
+    volumes:
+      # A credencial e as sessões do CLI: sobrevive a um rebuild, e é o que faz o segundo turno
+      # lembrar do primeiro.
+      - agent-cli-state:/state
+      # Onde o Bot escreve o que a pessoa recebe — relatórios, planilhas, o que a tarefa pediu.
+      - agent-cli-workspace:/workspace
+    healthcheck:
+      # 503 quando o CLI ainda não confirmou as ferramentas, e não 200 por estar de pé: um Bot sem
+      # navegador conversa, e é a assinatura dos defeitos caros deste fork.
+      test: ["CMD-SHELL", "bun -e \"const r = await fetch('http://localhost:4210/health'); process.exit(r.ok ? 0 : 1)\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
   agent-langgraph:
     # Long-lived: comes back after a crash and after the host reboots. This deployment is
     # meant to stay up.
@@ -398,6 +450,8 @@ services:
       retries: 5
 
 volumes:
+  agent-cli-state:
+  agent-cli-workspace:
   postgres-data:
   codex-state:
   codex-workspace:

@@ -28,7 +28,7 @@ for arg in "$@"; do
     *) SERVICOS+=("$arg") ;;
   esac
 done
-[ ${#SERVICOS[@]} -eq 0 ] && SERVICOS=(openbot agent-codex)
+[ ${#SERVICOS[@]} -eq 0 ] && SERVICOS=(openbot agent-codex agent-cli)
 
 recusar() {
   echo >&2

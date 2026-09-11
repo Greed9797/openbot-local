@@ -71,7 +71,7 @@ let ferramentasProntas: boolean | null = null;
 
 const MCP_SERVER_PATH =
   process.env.OPENBOT_MCP_PATH?.trim() ||
-  "/app/agent-codex/src/mcp-computer.ts";
+  "/app/shared/mcp-computer.ts";
 
 /**
  * Se o Codex pode dirigir o navegador do Bot.
