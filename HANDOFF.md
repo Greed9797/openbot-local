@@ -31,11 +31,30 @@ Travas que já custaram caro e continuam valendo:
 
 ## Estado atual
 
-- **984 testes locais, 0 falhas** (`MANAGED_AGENT_TOKEN=teste bun test` na raiz).
+- **1147 testes locais, 5 pulados, 0 falhas** (`bun run test:ci` na raiz; 116 arquivos).
 - **Bateria de turno único: 44/44** (`tools/bateria/rodar-tudo.sh`).
 - **Bateria de conversa: 5/5** (`tools/bateria/conversa.py`, incluída no `rodar-tudo.sh`).
 - Smoke do deploy passa nas 5 verificações, incluindo a que prova que o guarda de destino recusa a
   rede interna e ainda deixa passar página pública.
+
+## O runtime agêntico (2026-09-11)
+
+O fork ganhou tarefas duráveis e um ciclo observar → decidir → agir com modelos intercambiáveis,
+controlável pelo painel e pelo Telegram. O que existe, onde, com que evidência e o que ainda não foi
+homologado está em `docs/agentic/delivery-report.md`; o vocabulário do ciclo de vida, em
+`docs/agentic/tasks.md`.
+
+| Onde | O quê |
+|---|---|
+| `server/src/agent-runs/` | persistência, serviço, rotas HTTP, captura — o ciclo de vida da tarefa |
+| `server/src/agent-runtime/` | loop, contratos, provedores, ferramentas de navegador, formulário |
+| `server/src/telegram/` | o segundo canal: caixa de entrada/saída, comandos, notificação de aprovação |
+| `app/src/routes/_authed/_app/tasks.*` | as telas de tarefas e o pareamento do Telegram |
+| `docs/agentic/` | arquitetura, provedores, tarefas, Telegram, segurança, VPS, relatório |
+
+Duas regras que valem para quem mexer: toda ação de navegador continua passando pelo
+`ComputerGateway` (o modelo nunca fala Playwright), e o Telegram não tem caminho próprio para o
+computador — ele cria tarefas no mesmo runtime que o painel usa.
 
 ## O que esta sessão fez
 
@@ -114,7 +133,15 @@ conferido simulando o `recapDe` real (recap de 12.109 caracteres). O degrau segu
 trechos cortados em vez de descartar — continua aberto e custa outra chamada de modelo por turno;
 com o comportamento atual medido como correto, não é urgente.
 
-### 5. Referência implícita reabre a página todo turno
+### 5. Homologar o runtime agêntico na VPS
+
+O que falta é ambiente, não código: subir `agent-computer` e `agent-codex`, definir
+`TELEGRAM_BOT_TOKEN` + `TELEGRAM_ALLOWED_USER_IDS`, e rodar uma tarefa real de ponta a ponta
+(pedir "me manda a tela" no Telegram, aprovar uma ação sensível pelo painel). Sem isso, o que está
+provado é a suíte e o painel local — o resto está marcado como **implementado sem homologação** em
+`docs/agentic/delivery-report.md`, seção 10.
+
+### 6. Referência implícita reabre a página todo turno
 
 Na conversa `c5`, "quantos links tem nessa página?" faz o Bot reabrir (15–17 s por turno). Está certo
 e é o que o `AGENTS.md` manda, mas é caro. Se incomodar, é aqui que entra guardar o que foi lido.

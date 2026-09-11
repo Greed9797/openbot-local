@@ -127,6 +127,7 @@ as one replica for now.
 | `/channel/:id`       | Converse with one coworker, watch its screen, and see what it ran. |
 | `/bot`               | Direct chat with a Bot; `?agent=<id>` selects one.                 |
 | `/skills`            | Create and enable personal skills.                                 |
+| `/tasks`             | Give a Bot an objective, follow its steps, and answer it mid-run.  |
 | `/settings`          | User preferences.                                                  |
 | `/admin/connectors`  | Configure deployment knowledge sources.                            |
 | `/admin/credentials` | Store write-only encrypted credentials.                            |
@@ -139,6 +140,9 @@ as one replica for now.
 
 ## Features
 
+- **Durable tasks, not one long turn**: `/tasks` takes an objective and runs it as a persisted loop — observe, decide, act, observe again — with steps, events, usage and a lease in Postgres. A pause, a cancel or a crash leaves a row you can read and resume, not a lost conversation; a budget caps what a run may spend.
+- **The same task from a chat**: with a Telegram bot configured, a paired chat drives the same runtime — same tasks, same policy, same audit. Pairing starts in the panel with a one-use code, screenshots come back as photos, and a sensitive action arrives as an approval with buttons rather than as a fait accompli.
+- **Interchangeable models, verified capabilities**: a task names its provider and model; a provider without vision is not handed a task that needs to see, and the Codex CLI on a subscription remains one of the transports rather than the only one.
 - **A computer per Bot**: the supervisor gives each Bot its own container, its own `/workspace` volume and its own browser profile. Set `COMPUTER_RUNTIME=runsc` to run them under gVisor where the host supports it.
 - **A shell, not just a browser**: a Bot can run a command in its workspace, install what it needs, and process a file it saved. Through the same gate as everything else, so a rule can refuse a shell outright or refuse particular commands, and the command is on the record either way. The command inherits PATH, locale, terminal and proxy variables, not the rest of the deployment's environment.
 - **The gateway is the only way in**: it resolves the target from a server-held snapshot, evaluates the policy, writes the audit row, and only then calls the computer. There is no path that acts without the record existing first.
@@ -324,6 +328,10 @@ Use `bash scripts/start.sh` for the whole stack. Use `bun run dev` only when you
 - [docs/coworkers.md](docs/coworkers.md)
 - [docs/deployment.md](docs/deployment.md)
 - [docs/releasing.md](docs/releasing.md)
+- [docs/agentic/architecture.md](docs/agentic/architecture.md) — the task runtime, from request to action
+- [docs/agentic/tasks.md](docs/agentic/tasks.md) — the task lifecycle, states and recovery
+- [docs/agentic/telegram.md](docs/agentic/telegram.md) — the chat channel that drives the same runtime
+- [docs/agentic/providers.md](docs/agentic/providers.md) — interchangeable models and what each one can do
 
 ## Contributing
 

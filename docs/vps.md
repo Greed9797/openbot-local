@@ -315,6 +315,26 @@ O que fez o Bot passar a usar o navegador, medido de 0/3 para 3/3:
 Mesmo assim, quem decide chamar a ferramenta é o modelo. Por isso a rede: quando o pedido cita um
 endereço e nenhuma ferramenta foi usada, a resposta termina dizendo que nada foi aberto.
 
+## As tarefas agênticas não têm navegador próprio
+
+As tarefas duráveis (a tarefa "entre no TikTok, preencha o formulário e me avise") rodam no processo
+do servidor, com o mesmo `agent-computer` que o chat usa. O que muda no deploy é pouco, e o que muda
+importa:
+
+| O quê | Por quê |
+|---|---|
+| Um worker por fila: `AGENT_WORKER_ENABLED=true` só na réplica que conduz | Dois workers significam duas tentativas da mesma tarefa; o lease protege, mas o desenho é um. O Telegram também sobe só onde o worker roda. |
+| `agent-artifacts` é volume nomeado no compose | A captura de cada passo é evidência de auditoria; sem volume, um `--build` apaga o que a retenção prometeu guardar. |
+| `AGENT_ARTIFACTS_DIR=/app/.artifacts` dentro do container | O padrão `./.artifacts` cairia no sistema de arquivos efêmero do container. |
+| Um navegador ativo por vez | O `browser_profile_leases` serializa: duas tarefas do mesmo Bot não dirigem o mesmo Chromium. Numa VPS de 2 vCPU, é essa conta que governa o paralelismo real. |
+| `AGENT_MAX_STEPS`, `AGENT_MAX_RUN_MS` | O teto do que uma tarefa pode consumir sozinha. Padrão: 40 passos, 15 minutos. |
+| Migração `0009` | `agent_run_messages` (a conversa com a tarefa) e o enum `run_message_author`. |
+
+O detalhamento — env novas, fluxo, o que conferir depois de subir — está em `docs/agentic/vps.md`. O
+que ainda **não** foi homologado em ambiente real: o fluxo de ponta a ponta numa conta TikTok, um bot
+de Telegram de verdade e os modelos pagos. Está implementado e testado como unidade; a homologação é
+a próxima sessão.
+
 ## What was given up with Intelligence
 
 - **Memory.** Cross-thread recall was an Intelligence feature. A busca nos documentos dos conectores

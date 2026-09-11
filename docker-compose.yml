@@ -246,6 +246,14 @@ services:
       TENANT_PACKAGE_DIR: ${TENANT_PACKAGE_DIR:-/app/examples/fintech}
       # Onde o motor sem pixels atende. Ausente, a ação fetch responde que não pôde ser alcançado.
       LIGHTPANDA_CDP_URL: ${LIGHTPANDA_CDP_URL:-ws://lightpanda:9222}
+      # As capturas de uma tarefa, num volume nomeado.
+      #
+      # Dentro do container, `./.artifacts` vive no sistema de arquivos efêmero: um `docker compose
+      # up --build` apagaria as evidências de todas as tarefas, que é justamente o que a retenção por
+      # linha promete guardar. O diretório é do volume, e a retenção continua sendo uma coluna.
+      AGENT_ARTIFACTS_DIR: /app/.artifacts
+    volumes:
+      - agent-artifacts:/app/.artifacts
     depends_on:
       postgres:
         condition: service_healthy
@@ -396,3 +404,4 @@ volumes:
   spire-agent-socket:
   spire-agent-data:
   agent-profiles:
+  agent-artifacts:
