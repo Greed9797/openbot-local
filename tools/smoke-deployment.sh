@@ -64,7 +64,7 @@ echo "5. O Bot usa o navegador quando pedem uma página?"
 resposta=$(curl -sS -N -m 200 -X POST "$API/api/copilotkit/agent/$AGENTE/run" \
   -H "content-type: application/json" \
   -d "{\"threadId\":\"smoke-$(date +%s)\",\"runId\":\"smoke\",\"messages\":[{\"id\":\"u1\",\"role\":\"user\",\"content\":\"Abra https://httpbin.org/uuid e diga o valor do campo uuid.\"}],\"tools\":[],\"context\":[],\"state\":{},\"forwardedProps\":{}}" 2>/dev/null)
-motivo=$(printf '%s' "$resposta" | tr ',' '\n' | sed -n 's/.*"message":"\([^"]*\)".*/\1/p' | head -1)
+motivo=$(printf '%s' "$resposta" | grep -oE '"message":"[^"]*"' | head -1 | sed 's/^"message":"//; s/"$//')
 uuid=$(printf '%s' "$resposta" | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)
 case "$resposta" in
   *RUN_ERROR*)                   reprovar "o turno falhou: ${motivo:-sem motivo no fluxo}" ;;
