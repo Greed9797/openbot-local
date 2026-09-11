@@ -30,6 +30,8 @@ import { Route as AuthedSettingsIndexRouteImport } from './routes/_authed/settin
 import { Route as AuthedAppAgentsIndexRouteImport } from './routes/_authed/_app/agents/index'
 import { Route as AuthedAppChannelChannelIdRouteImport } from './routes/_authed/_app/channel/$channelId'
 import { Route as AuthedAppChannelNewRouteImport } from './routes/_authed/_app/channel/new'
+import { Route as AuthedAppTasksIndexRouteImport } from './routes/_authed/_app/tasks.index'
+import { Route as AuthedAppTasksRunIdRouteImport } from './routes/_authed/_app/tasks.$runId'
 import { Route as AuthedAdminComponentsIndexRouteImport } from './routes/_authed/admin/components/index'
 import { Route as AuthedAdminComponentsNameRouteImport } from './routes/_authed/admin/components/$name'
 import { Route as AuthedAdminConnectorsIndexRouteImport } from './routes/_authed/admin/connectors/index'
@@ -142,6 +144,16 @@ const AuthedAppChannelNewRoute = AuthedAppChannelNewRouteImport.update({
   path: '/channel/new',
   getParentRoute: () => AuthedAppRoute,
 } as any)
+const AuthedAppTasksIndexRoute = AuthedAppTasksIndexRouteImport.update({
+  id: '/tasks/',
+  path: '/tasks/',
+  getParentRoute: () => AuthedAppRoute,
+} as any)
+const AuthedAppTasksRunIdRoute = AuthedAppTasksRunIdRouteImport.update({
+  id: '/tasks/$runId',
+  path: '/tasks/$runId',
+  getParentRoute: () => AuthedAppRoute,
+} as any)
 const AuthedAdminComponentsIndexRoute =
   AuthedAdminComponentsIndexRouteImport.update({
     id: '/components/',
@@ -198,10 +210,12 @@ export interface FileRoutesByFullPath {
   '/settings/': typeof AuthedSettingsIndexRoute
   '/channel/$channelId': typeof AuthedAppChannelChannelIdRoute
   '/channel/new': typeof AuthedAppChannelNewRoute
+  '/tasks/$runId': typeof AuthedAppTasksRunIdRoute
   '/admin/components/$name': typeof AuthedAdminComponentsNameRoute
   '/admin/connectors/google-drive': typeof AuthedAdminConnectorsGoogleDriveRoute
   '/settings/components-gallery/$name': typeof AuthedSettingsComponentsGalleryNameRoute
   '/agents/': typeof AuthedAppAgentsIndexRoute
+  '/tasks/': typeof AuthedAppTasksIndexRoute
   '/admin/components/': typeof AuthedAdminComponentsIndexRoute
   '/admin/connectors/': typeof AuthedAdminConnectorsIndexRoute
   '/settings/components-gallery/': typeof AuthedSettingsComponentsGalleryIndexRoute
@@ -223,10 +237,12 @@ export interface FileRoutesByTo {
   '/settings': typeof AuthedSettingsIndexRoute
   '/channel/$channelId': typeof AuthedAppChannelChannelIdRoute
   '/channel/new': typeof AuthedAppChannelNewRoute
+  '/tasks/$runId': typeof AuthedAppTasksRunIdRoute
   '/admin/components/$name': typeof AuthedAdminComponentsNameRoute
   '/admin/connectors/google-drive': typeof AuthedAdminConnectorsGoogleDriveRoute
   '/settings/components-gallery/$name': typeof AuthedSettingsComponentsGalleryNameRoute
   '/agents': typeof AuthedAppAgentsIndexRoute
+  '/tasks': typeof AuthedAppTasksIndexRoute
   '/admin/components': typeof AuthedAdminComponentsIndexRoute
   '/admin/connectors': typeof AuthedAdminConnectorsIndexRoute
   '/settings/components-gallery': typeof AuthedSettingsComponentsGalleryIndexRoute
@@ -253,10 +269,12 @@ export interface FileRoutesById {
   '/_authed/settings/': typeof AuthedSettingsIndexRoute
   '/_authed/_app/channel/$channelId': typeof AuthedAppChannelChannelIdRoute
   '/_authed/_app/channel/new': typeof AuthedAppChannelNewRoute
+  '/_authed/_app/tasks/$runId': typeof AuthedAppTasksRunIdRoute
   '/_authed/admin/components/$name': typeof AuthedAdminComponentsNameRoute
   '/_authed/admin/connectors/google-drive': typeof AuthedAdminConnectorsGoogleDriveRoute
   '/_authed/settings/components-gallery/$name': typeof AuthedSettingsComponentsGalleryNameRoute
   '/_authed/_app/agents/': typeof AuthedAppAgentsIndexRoute
+  '/_authed/_app/tasks/': typeof AuthedAppTasksIndexRoute
   '/_authed/admin/components/': typeof AuthedAdminComponentsIndexRoute
   '/_authed/admin/connectors/': typeof AuthedAdminConnectorsIndexRoute
   '/_authed/settings/components-gallery/': typeof AuthedSettingsComponentsGalleryIndexRoute
@@ -282,10 +300,12 @@ export interface FileRouteTypes {
     | '/settings/'
     | '/channel/$channelId'
     | '/channel/new'
+    | '/tasks/$runId'
     | '/admin/components/$name'
     | '/admin/connectors/google-drive'
     | '/settings/components-gallery/$name'
     | '/agents/'
+    | '/tasks/'
     | '/admin/components/'
     | '/admin/connectors/'
     | '/settings/components-gallery/'
@@ -307,10 +327,12 @@ export interface FileRouteTypes {
     | '/settings'
     | '/channel/$channelId'
     | '/channel/new'
+    | '/tasks/$runId'
     | '/admin/components/$name'
     | '/admin/connectors/google-drive'
     | '/settings/components-gallery/$name'
     | '/agents'
+    | '/tasks'
     | '/admin/components'
     | '/admin/connectors'
     | '/settings/components-gallery'
@@ -336,10 +358,12 @@ export interface FileRouteTypes {
     | '/_authed/settings/'
     | '/_authed/_app/channel/$channelId'
     | '/_authed/_app/channel/new'
+    | '/_authed/_app/tasks/$runId'
     | '/_authed/admin/components/$name'
     | '/_authed/admin/connectors/google-drive'
     | '/_authed/settings/components-gallery/$name'
     | '/_authed/_app/agents/'
+    | '/_authed/_app/tasks/'
     | '/_authed/admin/components/'
     | '/_authed/admin/connectors/'
     | '/_authed/settings/components-gallery/'
@@ -499,6 +523,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedAppChannelNewRouteImport
       parentRoute: typeof AuthedAppRoute
     }
+    '/_authed/_app/tasks/': {
+      id: '/_authed/_app/tasks/'
+      path: '/tasks'
+      fullPath: '/tasks/'
+      preLoaderRoute: typeof AuthedAppTasksIndexRouteImport
+      parentRoute: typeof AuthedAppRoute
+    }
+    '/_authed/_app/tasks/$runId': {
+      id: '/_authed/_app/tasks/$runId'
+      path: '/tasks/$runId'
+      fullPath: '/tasks/$runId'
+      preLoaderRoute: typeof AuthedAppTasksRunIdRouteImport
+      parentRoute: typeof AuthedAppRoute
+    }
     '/_authed/admin/components/': {
       id: '/_authed/admin/components/'
       path: '/components'
@@ -602,7 +640,9 @@ interface AuthedAppRouteChildren {
   AuthedAppIndexRoute: typeof AuthedAppIndexRoute
   AuthedAppChannelChannelIdRoute: typeof AuthedAppChannelChannelIdRoute
   AuthedAppChannelNewRoute: typeof AuthedAppChannelNewRoute
+  AuthedAppTasksRunIdRoute: typeof AuthedAppTasksRunIdRoute
   AuthedAppAgentsIndexRoute: typeof AuthedAppAgentsIndexRoute
+  AuthedAppTasksIndexRoute: typeof AuthedAppTasksIndexRoute
 }
 
 const AuthedAppRouteChildren: AuthedAppRouteChildren = {
@@ -611,7 +651,9 @@ const AuthedAppRouteChildren: AuthedAppRouteChildren = {
   AuthedAppIndexRoute: AuthedAppIndexRoute,
   AuthedAppChannelChannelIdRoute: AuthedAppChannelChannelIdRoute,
   AuthedAppChannelNewRoute: AuthedAppChannelNewRoute,
+  AuthedAppTasksRunIdRoute: AuthedAppTasksRunIdRoute,
   AuthedAppAgentsIndexRoute: AuthedAppAgentsIndexRoute,
+  AuthedAppTasksIndexRoute: AuthedAppTasksIndexRoute,
 }
 
 const AuthedAppRouteWithChildren = AuthedAppRoute._addFileChildren(

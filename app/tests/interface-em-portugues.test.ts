@@ -47,8 +47,11 @@ const TEXTO_SOLTO = />\s*([A-Z][A-Za-z0-9 ,.'’\-?!]{6,})\s*</g;
  * Uma varredura que reprova por 185 coisas certas é uma varredura que alguém desliga.
  */
 
-/** Endereços de exemplo. São endereços, não frases, e traduzir um quebra o exemplo. */
-const EXEMPLOS = /^(https?:\/\/|[\w.+-]+@[\w-]+\.)/;
+/**
+ * Endereços de exemplo, e comandos. São endereços e ordens, não frases, e traduzir um quebra o
+ * exemplo: `/start CODIGO` é o que se digita no Telegram, em qualquer idioma.
+ */
+const EXEMPLOS = /^(https?:\/\/|[\w.+-]+@[\w-]+\.|\/\w)/;
 
 /**
  * Palavras que denunciam sozinhas.

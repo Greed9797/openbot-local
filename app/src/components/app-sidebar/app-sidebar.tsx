@@ -1,6 +1,7 @@
 import {
   IconBolt,
   IconBox,
+  IconListCheck,
   IconLogout,
   IconPlus,
   IconSearch,
@@ -300,6 +301,26 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <IconBolt />
               </div>
               <span className="text-sm trackint-tight">Agentes</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            {/* Ao lado de Agentes e Habilidades: tarefa é o trabalho do Bot, não admin. */}
+            <SidebarMenuButton
+              className="hover:bg-foreground/5 h-10"
+              render={(props) => (
+                <Link
+                  {...props}
+                  to="/tasks"
+                  activeProps={{
+                    className: "bg-foreground/5",
+                  }}
+                />
+              )}
+            >
+              <div className="size-[28px] flex items-center justify-center">
+                <IconListCheck />
+              </div>
+              <span className="text-sm trackint-tight">Tarefas</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
