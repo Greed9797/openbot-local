@@ -40,6 +40,10 @@ export function createProviderFor(
         id: config.id,
         endpoint: config.baseUrl ?? "",
         model: config.model,
+        // O token do Bot gerenciado, não a chave de um fornecedor: quem valida é o outro lado, e o
+        // que ele aceita é este cabeçalho.
+        ...(config.agentToken ? { token: config.agentToken } : {}),
+        ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
       });
     case "responses":
       return config.apiKey

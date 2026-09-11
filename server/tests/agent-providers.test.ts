@@ -18,6 +18,9 @@ import {
   createOpenAIResponsesProvider,
 } from "../src/agent-runtime/providers/openai-responses";
 import {
+  createCodexDelegatedProvider,
+} from "../src/agent-runtime/providers/codex-delegated";
+import {
   postJson,
   ProviderRejectedError,
   ProviderUnavailableError,
@@ -386,5 +389,75 @@ describe("erros de provedor", () => {
       fetchImpl,
     }).catch((error) => error);
     expect(failure).toBeInstanceOf(ProviderUnavailableError);
+  });
+});
+
+/**
+ * O Codex delegado, no fio.
+ *
+ * Este adaptador não tinha teste de fio, e a falta apareceu no primeiro deploy real: o runtime levava
+ * 401 do próprio serviço do Codex, porque o cabeçalho que aquele serviço exige nunca era enviado. A
+ * tarefa falhava com PROVIDER_UNAVAILABLE e o motivo não estava no lugar que ele apontava.
+ *
+ * O que se prova aqui: o pedido chega com `x-openbot-agent-token` quando há token, chega sem ele
+ * quando não há, e um fluxo AG-UI bem formado vira a resposta delegada de sempre.
+ */
+describe("Codex delegado", () => {
+  /** Um fluxo AG-UI mínimo, com um texto e o fim do run. */
+  function streamOf(text: string): Response {
+    const events = [
+      { type: "RUN_STARTED", threadId: "t", runId: "run-1" },
+      { type: "TEXT_MESSAGE_START", messageId: "m1", role: "assistant" },
+      { type: "TEXT_MESSAGE_CONTENT", messageId: "m1", delta: text },
+      { type: "TEXT_MESSAGE_END", messageId: "m1" },
+      { type: "RUN_FINISHED", threadId: "t", runId: "run-1" },
+    ];
+    return new Response(
+      events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""),
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    );
+  }
+
+  async function call(
+    options: { token?: string; text?: string },
+  ): Promise<{ headers: Headers; body: unknown; result: unknown }> {
+    let seen: Headers | undefined;
+    let body: unknown;
+    const provider = createCodexDelegatedProvider({
+      id: "codex",
+      endpoint: "http://agent-codex.test/ag-ui",
+      model: "codex default",
+      ...(options.token ? { token: options.token } : {}),
+      fetchImpl: (async (_url: string, init?: RequestInit) => {
+        seen = new Headers(init?.headers);
+        body = init?.body ? JSON.parse(String(init.body)) : undefined;
+        return streamOf(options.text ?? "Abri a página e li o título.");
+      }) as unknown as typeof fetch,
+    });
+    const result = await provider.run(input(), {
+      signal: new AbortController().signal,
+    });
+    if (!seen) throw new Error("o provedor não chegou a falar com o serviço");
+    return { headers: seen, body, result };
+  }
+
+  test("o pedido leva o token do Bot gerenciado", async () => {
+    const { headers, result } = await call({ token: "token-do-deployment" });
+    expect(headers.get("x-openbot-agent-token")).toBe("token-do-deployment");
+    expect(result).toMatchObject({
+      kind: "delegated",
+      message: "Abri a página e li o título.",
+    });
+  });
+
+  test("sem token configurado, o cabeçalho não vai", async () => {
+    const { headers } = await call({});
+    expect(headers.get("x-openbot-agent-token")).toBeNull();
+  });
+
+  test("o objetivo vai no corpo, com o que já aconteceu", async () => {
+    const { body } = await call({ text: "tudo certo" });
+    const payload = body as { messages?: { content?: string }[] };
+    expect(JSON.stringify(payload)).toContain("Preencher o formulário de produto.");
   });
 });

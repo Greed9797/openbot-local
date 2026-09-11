@@ -68,6 +68,13 @@ export type AgentModelConfig = {
   model: string;
   baseUrl?: string;
   apiKey?: string;
+  /**
+   * O token que este deployment apresenta a um Bot gerenciado (transporte `codex`).
+   *
+   * Separado de `apiKey` porque não é uma chave de fornecedor: é a identidade deste deployment diante
+   * do serviço que ele mesmo hospeda, e quem a valida é o `hasManagedAgentToken` do outro lado.
+   */
+  agentToken?: string;
   /** Presumida pelo nome do modelo até o teste de canvas homologá-la. Ver providers/index.ts. */
   vision: boolean;
   tools: boolean;
@@ -767,11 +774,15 @@ function agentModels(environment: Environment): AgentModelConfig[] {
     optional(environment, "AGENT_CODEX_URL") ??
     optional(environment, "MANAGED_AGENT_AG_UI_URL");
   if (codexUrl) {
+    const codexToken = optional(environment, "MANAGED_AGENT_TOKEN");
     models.push({
       id: "codex",
       transport: "codex",
       model: optional(environment, "AGENT_CODEX_MODEL") ?? "codex default",
       baseUrl: codexUrl,
+      // O mesmo token que o serviço do Codex valida do outro lado. Vazio num deployment que aponta
+      // para um AG-UI de terceiro: aí o cabeçalho não vai, e quem exigir autenticação diz isso.
+      ...(codexToken ? { agentToken: codexToken } : {}),
       vision: true,
       tools: true,
     });

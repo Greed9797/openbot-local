@@ -21,6 +21,16 @@ export type CodexDelegatedOptions = {
   endpoint: string;
   /** Só informativo: quem escolhe o modelo é o serviço do Codex. Fica registrado no run. */
   model: string;
+  /**
+   * O token que este deployment apresenta ao Bot gerenciado.
+   *
+   * O serviço do Codex recusa quem chega sem ele (`x-openbot-agent-token`, o mesmo contrato do
+   * `hasManagedAgentToken`). Sem isto o runtime levava 401 do próprio serviço que ele deveria estar
+   * conduzindo — descoberto no primeiro deploy real, porque este adaptador não tinha teste de fio.
+   */
+  token?: string;
+  /** Para o teste de fio: o `fetch` que o transporte HTTP usa por baixo. */
+  fetchImpl?: typeof fetch;
   timeoutMs?: number;
 };
 
@@ -47,6 +57,13 @@ export function createCodexDelegatedProvider(
       const agent = new HttpAgent({
         url: options.endpoint,
         agentId: "codex",
+        // O serviço do Codex é um Bot gerenciado: ele valida o token do deployment antes de aceitar
+        // qualquer coisa. Sem este cabeçalho a resposta é 401, e o erro aparece como
+        // PROVIDER_UNAVAILABLE na tarefa — que é honesto, mas aponta para o lugar errado.
+        ...(options.token
+          ? { headers: { "x-openbot-agent-token": options.token } }
+          : {}),
+        ...(options.fetchImpl ? { fetch: options.fetchImpl } : {}),
         // Uma thread por tarefa: é assim que o serviço do Codex retoma a sessão dele em vez de
         // começar de novo a cada run.
         threadId: input.runId,
