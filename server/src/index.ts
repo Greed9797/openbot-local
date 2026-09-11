@@ -3,6 +3,7 @@ import { mintRunAssertion } from "./agents/callback-token";
 import { createAgentProfileStore } from "./agents/profile-store";
 import { createRuntimeAgentLoader } from "./agents/runtime-agents";
 import { createAgentRunRepository } from "./agent-runs/repository";
+import { createApprovalGate } from "./agent-runs/approvals";
 import { createAgentRunService } from "./agent-runs/service";
 import { createAgentRunWorker } from "./agent-runs/worker";
 import { createArtifactStore } from "./agent-runtime/artifact-store";
@@ -537,6 +538,17 @@ if (agentRunService && computerGateway && config.agentRuntime.workerEnabled) {
       retentionDays: config.agentRuntime.artifactRetentionDays,
     }),
     tools: createBrowserTools({ gateway: computerGateway }),
+    /*
+     * O portão que pergunta antes de publicar, comprar ou apagar.
+     *
+     * Construído com o mesmo repositório do runtime, porque a aprovação é uma linha presa à tarefa e
+     * ao hash da ação: quem aprova não autoriza "o modelo", autoriza aquele clique.
+     */
+    approvals: createApprovalGate({
+      repository: agentRunRepository,
+      ttlMs: config.agentRuntime.approvalTtlMs,
+      extraPatterns: config.agentRuntime.approvalPatterns,
+    }),
     leaseTtlMs: config.agentRuntime.leaseTtlMs,
     maxCorrections: config.agentRuntime.maxCorrections,
     maxRefusals: 2,
@@ -552,6 +564,19 @@ if (agentRunService && computerGateway && config.agentRuntime.workerEnabled) {
     concurrency: 1,
     housekeeping: async () => {
       await artifactStore.deleteExpired();
+      /*
+       * Aprovações vencidas viram `expired` no relógio do worker, e não quando alguém olha. Uma
+       * aprovação de ontem que continuasse `pending` deixaria o painel pedindo uma decisão que já não
+       * vale, e o modelo esperando por ela.
+       */
+      const expired = await agentRunRepository.expireApprovals(new Date());
+      if (expired > 0) {
+        await recordAuditEvent(bootAuditStore, {
+          eventType: "agent_run.recovered",
+          targetType: "agent_run",
+          payload: { approvalsExpired: expired },
+        }).catch(() => undefined);
+      }
     },
   });
   worker.start();

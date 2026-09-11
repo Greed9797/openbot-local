@@ -13,12 +13,16 @@ import type {
   AgentRunRepository,
   AgentRunRow,
   AgentRunStepRow,
+  RunApprovalRow,
+  RunMessageRow,
 } from "./repository";
 import type {
   CreateRunInput,
+  RunApprovalView,
   RunBudget,
   RunError,
   RunEventView,
+  RunMessageView,
   RunStatus,
   RunStepView,
   RunUsage,
@@ -98,6 +102,28 @@ export interface AgentRunService {
   }): Promise<AgentRunRow[]>;
   steps(runId: string): Promise<AgentRunStepRow[]>;
   events(runId: string, afterSeq: number): Promise<AgentRunEventRow[]>;
+  messages(runId: string, afterSeq?: number): Promise<RunMessageView[]>;
+  /**
+   * O que uma pessoa disse à tarefa.
+   *
+   * Uma tarefa que parou pedindo gente volta para a fila com esta mensagem: é a resposta que a
+   * pessoa deu, e é ela que o modelo lê no próximo passo. `waiting_approval` NÃO volta sozinho — a
+   * aprovação é uma decisão explícita, e uma frase no meio dela não é um sim.
+   */
+  appendMessage(
+    runId: string,
+    actor: RunActor,
+    input: { text: string; source: string; kind?: string },
+  ): Promise<{ run: AgentRunRow; message: RunMessageRow }>;
+  approvals(runId: string): Promise<RunApprovalView[]>;
+  /** A decisão de uma pessoa sobre uma ação que esperava por ela. */
+  decideApproval(
+    runId: string,
+    approvalId: string,
+    actor: RunActor,
+    decision: "approved" | "denied",
+    note?: string,
+  ): Promise<{ run: AgentRunRow; approval: RunApprovalRow }>;
   pause(id: string, actor: RunActor): Promise<AgentRunRow>;
   resume(id: string, actor: RunActor): Promise<AgentRunRow>;
   cancel(id: string, actor: RunActor): Promise<AgentRunRow>;
@@ -191,6 +217,39 @@ export function eventView(row: AgentRunEventRow): RunEventView {
   };
 }
 
+export function messageView(row: RunMessageRow): RunMessageView {
+  return {
+    seq: row.seq,
+    author: row.author,
+    kind: row.kind,
+    text: row.text,
+    source: row.source,
+    deliveredAt: row.deliveredAt?.toISOString() ?? null,
+    stepSeq: row.stepSeq,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+export function approvalView(row: RunApprovalRow): RunApprovalView {
+  const action = (row.action as Record<string, unknown> | null) ?? {};
+  const name = typeof action.name === "string" ? action.name : null;
+  return {
+    id: row.id,
+    status: row.status,
+    actionName: name,
+    action,
+    destination: row.destination,
+    expectedEffect: row.expectedEffect,
+    expiresAt: row.expiresAt.toISOString(),
+    decidedBy: row.decidedBy,
+    decidedAt: row.decidedAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+/** A message a person sends is bounded: an instruction, not a document. */
+const MESSAGE_LIMIT = 4_000;
+
 export function createAgentRunService(options: {
   repository: AgentRunRepository;
   auditStore: AuditStore;
@@ -282,6 +341,137 @@ export function createAgentRunService(options: {
 
     events(runId: string, afterSeq: number) {
       return repository.events(runId, afterSeq);
+    },
+
+    async messages(runId: string, afterSeq = 0) {
+      requireRun(await repository.get(runId), runId);
+      const rows = await repository.messages(runId, afterSeq);
+      return rows.map(messageView);
+    },
+
+    async appendMessage(runId, actor, input) {
+      const run = requireRun(await repository.get(runId), runId);
+      const text = input.text.trim();
+      if (!text) {
+        throw new AgentRunError("INVALID_STATE", "A message needs text.");
+      }
+      const message = await repository.appendMessage({
+        runId,
+        author: "person",
+        kind: input.kind ?? "instruction",
+        text: text.slice(0, MESSAGE_LIMIT),
+        source: input.source,
+        actorUserId: actor.id,
+      });
+      await repository.appendEvent(runId, "run.message", {
+        seq: message.seq,
+        from: input.source,
+        by: actor.id,
+        preview: message.text.slice(0, 200),
+      });
+      /*
+       * Uma tarefa que parou pedindo uma pessoa volta a andar com a resposta dela. As demais ficam
+       * onde estão: uma mensagem para uma tarefa em `waiting_approval` é uma observação, não o sim,
+       * e uma tarefa pausada foi pausada de propósito.
+       */
+      let current = run;
+      if (run.status === "waiting_human") {
+        const moved = await repository.updateStatus(
+          runId,
+          ["waiting_human"],
+          "queued",
+        );
+        if (moved) {
+          current = moved;
+          await repository.appendEvent(runId, "run.status_changed", {
+            from: run.status,
+            to: moved.status,
+            by: actor.id,
+            reason: "answered",
+          });
+        }
+      }
+      return { run: current, message };
+    },
+
+    async approvals(runId) {
+      requireRun(await repository.get(runId), runId);
+      const rows = await repository.approvals(runId);
+      return rows.map(approvalView);
+    },
+
+    async decideApproval(runId, approvalId, actor, decision, note) {
+      const run = requireRun(await repository.get(runId), runId);
+      const approval = await repository.approval(approvalId);
+      if (!approval || approval.runId !== runId) {
+        throw new AgentRunError("NOT_FOUND", `No approval ${approvalId}.`);
+      }
+      const decided = await repository.decideApproval({
+        id: approvalId,
+        decision,
+        decidedBy: actor.id,
+      });
+      if (!decided) {
+        throw new AgentRunError(
+          "INVALID_STATE",
+          "Esta aprovação já foi decidida, expirou ou não existe mais.",
+        );
+      }
+      const verb = decision === "approved" ? "aprovada" : "negada";
+      const actionName =
+        typeof (decided.action as { name?: unknown } | null)?.name === "string"
+          ? String((decided.action as { name: string }).name)
+          : "a ação";
+      await repository.appendMessage({
+        runId,
+        author: "system",
+        kind: decision === "approved" ? "approval_granted" : "approval_denied",
+        text: note?.trim()
+          ? `A pessoa ${verb} "${actionName}": ${note.trim()}`
+          : `A pessoa ${verb} "${actionName}".`,
+        source: "runner",
+        actorUserId: actor.id,
+      });
+      await repository.appendEvent(runId, "run.approval_decided", {
+        approval: approvalId,
+        decision,
+        by: actor.id,
+        ...(note ? { note: note.slice(0, 500) } : {}),
+      });
+      await recordAuditEvent(auditStore, {
+        eventType: `agent_run.approval_${decision}`,
+        targetType: "agent_run",
+        targetId: runId,
+        actorUserId: actor.id,
+        payload: {
+          approval: approvalId,
+          action: (decided.action as { name?: string } | null)?.name ?? null,
+          ...(note ? { note: note.slice(0, 500) } : {}),
+        },
+      });
+      /*
+       * A tarefa volta a andar nos dois casos. Um "não" não é o fim da tarefa: o modelo precisa ler
+       * a recusa e decidir outra coisa — parar aqui deixaria a decisão da pessoa sem consequência, e
+       * a tarefa presa num estado que ninguém pediu.
+       */
+      let current = run;
+      if (run.status === "waiting_approval") {
+        const moved = await repository.updateStatus(
+          runId,
+          ["waiting_approval"],
+          "queued",
+        );
+        if (moved) {
+          current = moved;
+          await repository.appendEvent(runId, "run.status_changed", {
+            from: run.status,
+            to: moved.status,
+            by: actor.id,
+            reason: `approval_${decision}`,
+          });
+        }
+      }
+      return { run: current, approval: decided };
     },
 
     async pause(id: string, actor: RunActor) {

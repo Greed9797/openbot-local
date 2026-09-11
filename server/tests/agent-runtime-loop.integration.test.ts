@@ -393,4 +393,109 @@ describe("the agent loop", () => {
     expect(provider.inputs.length).toBe(0);
     expect((await repository.get(run.id))?.status).toBe("cancelled");
   });
+
+  test("a resposta que uma pessoa deu chega ao modelo no passo seguinte", async () => {
+    const run = await newRun();
+    await repository.updateStatus(run.id, ["queued"], "waiting_human");
+    await service.appendMessage(
+      run.id,
+      { id: "loop-user" },
+      { text: "O código é 4821.", source: "telegram" },
+    );
+
+    const provider = scriptedProvider([
+      { kind: "final", message: "Pronto." },
+    ]);
+    await drive(run.id, executorFor({ provider }));
+
+    expect(provider.inputs[0]?.messages?.map((message) => message.text)).toEqual([
+      "O código é 4821.",
+    ]);
+    // Entregue uma vez: a segunda decisão não a repete.
+    expect(provider.inputs[1]?.messages).toBeUndefined();
+  });
+
+  test("uma negação é informação: o modelo decide outra coisa", async () => {
+    const run = await newRun();
+    let asked = 0;
+    const provider = scriptedProvider(() => {
+      asked += 1;
+      return asked === 1
+        ? {
+            kind: "tool_call",
+            call: { name: "click", arguments: { ref: "e2" } },
+          }
+        : { kind: "final", message: "Entendi, não publiquei." };
+    });
+    const tools = toolCatalog();
+    const executor = createAgentRunExecutor({
+      repository,
+      auditStore: createAuditStore(database),
+      providers: createProviderRegistry([provider]),
+      observations: observationSource(),
+      tools,
+      leaseTtlMs: 30_000,
+      maxCorrections: 1,
+      maxRefusals: 1,
+      maxProviderRetries: 1,
+      approvals: {
+        async review() {
+          return {
+            decision: "denied" as const,
+            approvalId: crypto.randomUUID(),
+            reason: "O rótulo contém 'enviar'.",
+          };
+        },
+        async consume() {
+          return true;
+        },
+      },
+    });
+    await drive(run.id, executor);
+
+    const row = await repository.get(run.id);
+    expect(row?.status).toBe("succeeded");
+    // A ação negada nunca chegou ao navegador.
+    expect(tools.calls.length).toBe(0);
+    const steps = await service.steps(run.id);
+    expect(steps[0]?.status).toBe("refused");
+    expect(steps[0]?.policyDecision).toMatchObject({ rule: "approval" });
+  });
+
+  test("insistir numa ação negada gasta a paciência do loop", async () => {
+    const run = await newRun();
+    const provider = scriptedProvider(() => ({
+      kind: "tool_call",
+      call: { name: "click", arguments: { ref: "e2" } },
+    }));
+    const executor = createAgentRunExecutor({
+      repository,
+      auditStore: createAuditStore(database),
+      providers: createProviderRegistry([provider]),
+      observations: observationSource(),
+      tools: toolCatalog(),
+      leaseTtlMs: 30_000,
+      maxCorrections: 1,
+      maxRefusals: 1,
+      maxProviderRetries: 1,
+      approvals: {
+        async review() {
+          return {
+            decision: "denied" as const,
+            approvalId: crypto.randomUUID(),
+            reason: "O rótulo contém 'enviar'.",
+          };
+        },
+        async consume() {
+          return true;
+        },
+      },
+    });
+    await drive(run.id, executor);
+    const row = await repository.get(run.id);
+    expect(row?.status).toBe("failed");
+    expect((row?.error as { code?: string } | null)?.code).toBe(
+      "POLICY_DENIED",
+    );
+  });
 });

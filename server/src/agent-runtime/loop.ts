@@ -420,12 +420,37 @@ export function createAgentRunExecutor(
         });
 
         const earlier = await repository.steps(request.runId);
+        /*
+         * O que uma pessoa disse desde o último passo.
+         *
+         * Lido aqui, e não no começo da execução, porque uma mensagem pode chegar enquanto a tarefa
+         * já está andando — e marcada como entregue antes de o modelo ser chamado, no mesmo passo que
+         * a levou. Se o worker morrer depois disso, a mensagem não é repetida no próximo passo; o
+         * passo registrado é quem conta o que foi feito com ela.
+         */
+        const pending = await repository.undeliveredMessages(request.runId, 10);
+        if (pending.length) {
+          await repository.markMessagesDelivered(
+            request.runId,
+            pending.map((row) => row.id),
+            seq,
+          );
+        }
         const input: AgentRunInput = {
           runId: request.runId,
           botId: loaded.botId,
           objective: loaded.objective,
           observation,
           history: historyOf(earlier.filter((row) => row.seq < seq)),
+          ...(pending.length
+            ? {
+                messages: pending.map((row) => ({
+                  author: row.author,
+                  text: row.text,
+                  kind: row.kind,
+                })),
+              }
+            : {}),
           tools: options.tools.definitions(),
           budget,
           usage: used,
@@ -543,7 +568,48 @@ export function createAgentRunExecutor(
 
         // A tool call. Decide whether it needs a person before anything reaches the browser.
         const call: ToolCall = decision.call;
-        const review = await options.approvals?.review(call, observation);
+        const review = await options.approvals?.review(call, observation, {
+          runId: request.runId,
+          stepSeq: seq,
+          actorUserId: loaded.userId,
+          destination: observation.url,
+        });
+        if (review?.decision === "denied") {
+          /*
+           * A pessoa negou esta ação. O modelo é informado e decide outra coisa — tentar o mesmo
+           * caminho de novo conta como recusa e é limitado como qualquer recusa de política.
+           */
+          refusals += 1;
+          await repository.finishStep(request.runId, seq, {
+            status: "refused",
+            modelDecision: { kind: "tool_call", call },
+            proposedAction: { name: call.name, arguments: call.arguments },
+            policyDecision: {
+              allowed: false,
+              rule: "approval",
+              approvalId: review.approvalId,
+            },
+            executionResult: {
+              ok: false,
+              summary: `negado pela pessoa: ${call.name}`,
+              refused: { rule: "approval", reason: review.reason },
+            },
+          });
+          await repository.appendEvent(request.runId, "run.approval_denied", {
+            approval: review.approvalId,
+            tool: call.name,
+          });
+          if (refusals > options.maxRefusals) {
+            await settle(request, "failed", {
+              error: {
+                code: "POLICY_DENIED",
+                message: review.reason,
+              },
+            });
+            return;
+          }
+          continue;
+        }
         if (review?.decision === "requested") {
           await repository.finishStep(request.runId, seq, {
             status: "waiting_approval",

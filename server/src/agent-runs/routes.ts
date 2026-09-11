@@ -13,7 +13,13 @@ import type { ComputerGateway } from "../computer/gateway";
 import type { AppVariables } from "../auth/guards";
 import type { AgentRunRow } from "./repository";
 import type { AgentRunService } from "./service";
-import { AgentRunError, eventView, runView, stepView } from "./service";
+import {
+  AgentRunError,
+  approvalView,
+  eventView,
+  runView,
+  stepView,
+} from "./service";
 import type { CreateRunInput, RunStatus } from "./types";
 
 export type RunRoutesService = AgentRunService;
@@ -373,6 +379,87 @@ export function createAgentRunRoutes(
         "cache-control": "no-store",
       },
     });
+  });
+
+  routes.post("/:id/messages", requireUser, async (context) => {
+    try {
+      await loadVisible(context.req.param("id"), context);
+      const body = (await context.req.json().catch(() => ({}))) as {
+        text?: unknown;
+      };
+      if (typeof body.text !== "string" || !body.text.trim()) {
+        return context.json({ error: "Uma mensagem precisa de texto." }, 400);
+      }
+      const { run } = await service.appendMessage(
+        context.req.param("id"),
+        { id: context.var.actor.id },
+        { text: body.text, source: "web" },
+      );
+      return context.json({ run: runView(run) });
+    } catch (error) {
+      const { status, body } = statusOf(error);
+      return context.json(body, status);
+    }
+  });
+
+  routes.get("/:id/messages", requireUser, async (context) => {
+    try {
+      await loadVisible(context.req.param("id"), context);
+      const after = Number.parseInt(context.req.query("after") ?? "0", 10);
+      const messages = await service.messages(
+        context.req.param("id"),
+        Number.isFinite(after) ? after : 0,
+      );
+      return context.json({ messages });
+    } catch (error) {
+      const { status, body } = statusOf(error);
+      return context.json(body, status);
+    }
+  });
+
+  routes.get("/:id/approvals", requireUser, async (context) => {
+    try {
+      await loadVisible(context.req.param("id"), context);
+      const approvals = await service.approvals(context.req.param("id"));
+      return context.json({ approvals });
+    } catch (error) {
+      const { status, body } = statusOf(error);
+      return context.json(body, status);
+    }
+  });
+
+  /**
+   * O sim e o não de uma pessoa.
+   *
+   * A decisão é sobre uma aprovação, e a aprovação é sobre uma ação exata: o serviço prende as duas
+   * pelo hash, e o executor só gasta o sim que ainda vale para aquela ação. Aprovar por engano é,
+   * portanto, um erro de uma ação só.
+   */
+  routes.post("/:id/approvals/:approvalId", requireUser, async (context) => {
+    try {
+      await loadVisible(context.req.param("id"), context);
+      const body = (await context.req.json().catch(() => ({}))) as {
+        decision?: unknown;
+        note?: unknown;
+      };
+      if (body.decision !== "approve" && body.decision !== "deny") {
+        return context.json(
+          { error: 'A decisão precisa ser "approve" ou "deny".' },
+          400,
+        );
+      }
+      const { run, approval } = await service.decideApproval(
+        context.req.param("id"),
+        context.req.param("approvalId"),
+        { id: context.var.actor.id },
+        body.decision === "approve" ? "approved" : "denied",
+        typeof body.note === "string" ? body.note : undefined,
+      );
+      return context.json({ run: runView(run), approval: approvalView(approval) });
+    } catch (error) {
+      const { status, body } = statusOf(error);
+      return context.json(body, status);
+    }
   });
 
   routes.post("/:id/pause", requireUser, async (context) => {

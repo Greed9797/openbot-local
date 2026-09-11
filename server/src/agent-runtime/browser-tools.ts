@@ -29,6 +29,7 @@ import type {
   ToolOutcome,
 } from "./contracts";
 import type { SnapshotElement } from "../computer/schema";
+import { extractForm, planFill } from "./form-extract";
 
 /** Quanto uma espera pode durar. Acima disto, a tarefa está presa e quem decide é a pessoa. */
 const MAX_WAIT_MS = 30_000;
@@ -179,6 +180,34 @@ export function createBrowserTools(options: BrowserToolOptions): ToolCatalog {
       ),
       acting: false,
     },
+    {
+      name: "read_form",
+      description:
+        "Lê o formulário da página como uma lista de campos: rótulo, tipo, se é obrigatório, se já está preenchido e as opções de cada seleção. Use antes de preencher — cada campo vem com o ref e o snapshotId que as ações precisam.",
+      parameters: object({}),
+      acting: false,
+    },
+    {
+      name: "plan_form",
+      description:
+        "Monta o preenchimento a partir dos valores que você tem: casa cada valor com um campo pelo rótulo (aceita sinônimos como nome/name, preço/valor) e devolve a lista de ações a executar, o que ficou sem valor e o que não encontrou campo. Só planeja; quem preenche é você, com `type_text`, `select_option` ou `click`.",
+      parameters: object(
+        {
+          values: array(
+            object(
+              {
+                label: string("O rótulo do campo, como aparece na página"),
+                value: string("O valor a preencher"),
+              },
+              ["label", "value"],
+            ),
+            "Os valores que você tem, na ordem em que devem ser aplicados",
+          ),
+        },
+        ["values"],
+      ),
+      acting: false,
+    },
   ];
 
   const acting = new Set(
@@ -311,6 +340,38 @@ export function createBrowserTools(options: BrowserToolOptions): ToolCatalog {
             return await requestScreenshot(botId);
           case "wait_for":
             return await waitFor(call, context);
+          case "read_form": {
+            const snapshot = await gateway.snapshot(botId);
+            const form = extractForm(snapshot);
+            return ok(
+              {
+                url: snapshot.url,
+                title: snapshot.title,
+                fields: form.fields,
+                required: form.required,
+                unfilled: form.unfilled,
+                buttons: form.buttons,
+                elementCount: snapshot.elements.length,
+              },
+              { snapshotId: snapshot.snapshotId },
+            );
+          }
+          case "plan_form": {
+            const values = pairsOf(call);
+            const snapshot = await gateway.snapshot(botId);
+            const form = extractForm(snapshot);
+            const plan = planFill(form, values);
+            return ok(
+              {
+                url: snapshot.url,
+                assignments: plan.assignments,
+                missing: plan.missing,
+                unknown: plan.unknown,
+                fieldCount: form.fields.length,
+              },
+              { snapshotId: snapshot.snapshotId },
+            );
+          }
           case "request_help": {
             const reason = textOf(call, "reason");
             const state = await gateway.requestHelp(botId, actor, reason);
@@ -541,6 +602,37 @@ function numberOf(call: ToolCall, field: string): number {
   return value;
 }
 
+/**
+ * Os pares rótulo/valor que o modelo mandou, na ordem.
+ *
+ * Lista de pares, e não um objeto livre, porque é assim que um modelo acerta: a chave passa a ter um
+ * lugar nomeado, e o rótulo não se confunde com o nome do campo. O último valor de um rótulo repetido
+ * vence — quem escreveu duas vezes quis a segunda.
+ */
+function pairsOf(call: ToolCall): Record<string, string> {
+  const raw = call.arguments.values;
+  if (!Array.isArray(raw)) {
+    throw new ToolArgumentError(
+      `A ferramenta ${call.name} precisa de uma lista em "values".`,
+    );
+  }
+  const values: Record<string, string> = {};
+  for (const item of raw) {
+    const pair = item as { label?: unknown; value?: unknown } | null;
+    const label = typeof pair?.label === "string" ? pair.label.trim() : "";
+    if (!label) {
+      throw new ToolArgumentError("Cada item de values precisa de um label.");
+    }
+    values[label] =
+      typeof pair?.value === "string"
+        ? pair.value
+        : pair?.value === undefined || pair?.value === null
+          ? ""
+          : String(pair.value);
+  }
+  return values;
+}
+
 /** Argumento faltando é resposta inválida do modelo, e vale como tal. */
 class ToolArgumentError extends Error {}
 
@@ -561,6 +653,11 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 const string = (description: string) => ({ type: "string", description });
 const integer = (description: string) => ({ type: "integer", description });
 const boolean = (description: string) => ({ type: "boolean", description });
+
+/** Uma lista de itens iguais, que é como os modelos acertam um par rótulo/valor. */
+function array(items: Record<string, unknown>, description: string) {
+  return { type: "array", items, description };
+}
 
 function object(
   properties: Record<string, unknown>,

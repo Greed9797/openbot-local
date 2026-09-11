@@ -130,6 +130,37 @@ export type RunEventView = {
   createdAt: string;
 };
 
+/** O que uma pessoa (ou o sistema) disse à tarefa, e quando isso chegou ao modelo. */
+export type RunMessageView = {
+  seq: number;
+  author: "person" | "system";
+  kind: string;
+  text: string;
+  source: string;
+  deliveredAt: string | null;
+  stepSeq: number | null;
+  createdAt: string;
+};
+
+/**
+ * Uma ação que esperou por uma pessoa.
+ *
+ * O que a superfície precisa mostrar é o que foi proposto e o que se espera que aconteça, não o
+ * hash: ele existe para prender o sim à ação exata, e quem lê a tela não decide por hash.
+ */
+export type RunApprovalView = {
+  id: string;
+  status: "pending" | "approved" | "denied" | "expired" | "consumed";
+  actionName: string | null;
+  action: Record<string, unknown>;
+  destination: string | null;
+  expectedEffect: string | null;
+  expiresAt: string;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+};
+
 export type CreateRunInput = {
   botId: string;
   userId: string | null;

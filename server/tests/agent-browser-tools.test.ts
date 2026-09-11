@@ -48,6 +48,8 @@ describe("browser tools", () => {
       "screenshot",
       "wait_for",
       "request_help",
+      "read_form",
+      "plan_form",
     ]);
     for (const forbidden of ["exec", "shell", "evaluate", "javascript"]) {
       expect(names).not.toContain(forbidden);
@@ -64,6 +66,87 @@ describe("browser tools", () => {
       .definitions()
       .find((definition) => definition.name === "click");
     expect(click?.parameters.required).toEqual(["ref", "snapshotId"]);
+  });
+
+  test("ler e planejar um formulário não toca no navegador além do snapshot", async () => {
+    const snapshots = { calls: 0 };
+    const tools = toolsWith({
+      snapshot: async () => {
+        snapshots.calls += 1;
+        return {
+          snapshotId: 12,
+          url: "https://loja.test/produtos/novo",
+          title: "Novo produto",
+          truncated: false,
+          viewport: { width: 1280, height: 800 },
+          elements: [
+            { ref: "e1", role: "textbox", name: "Nome do produto" },
+            { ref: "e2", role: "textbox", name: "Preço *" },
+            { ref: "e3", role: "combobox", name: "Categoria" },
+            { ref: "e4", role: "option", name: "Eletrônicos" },
+            { ref: "e5", role: "button", name: "Salvar" },
+          ],
+        };
+      },
+    });
+
+    const read = await tools.execute({ name: "read_form", arguments: {} }, context);
+    expect(read.ok).toBe(true);
+    const readResult = read.result as {
+      snapshotId: number;
+      fields: { ref: string; label: string; kind: string; required: boolean }[];
+      required: string[];
+      buttons: { ref: string; label: string }[];
+    };
+    expect(readResult.snapshotId).toBe(12);
+    expect(readResult.fields.map((field) => field.ref)).toEqual(["e1", "e2", "e3"]);
+    expect(readResult.fields.find((field) => field.ref === "e3")?.options).toEqual([
+      "Eletrônicos",
+    ]);
+    expect(readResult.required).toEqual(["e2"]);
+    expect(readResult.buttons).toEqual([{ ref: "e5", label: "Salvar", role: "button" }]);
+
+    const plan = await tools.execute(
+      {
+        name: "plan_form",
+        arguments: {
+          values: [
+            { label: "Nome do produto", value: "Caderno" },
+            { label: "Preço", value: "29.90" },
+            { label: "Fornecedor", value: "ACME" },
+          ],
+        },
+      },
+      context,
+    );
+    expect(plan.ok).toBe(true);
+    const planResult = plan.result as {
+      snapshotId: number;
+      assignments: { ref: string; how: string; value: string }[];
+      unknown: string[];
+    };
+    expect(planResult.snapshotId).toBe(12);
+    expect(planResult.assignments).toEqual([
+      { ref: "e1", label: "Nome do produto", kind: "text", how: "fill", value: "Caderno" },
+      { ref: "e2", label: "Preço *", kind: "text", how: "fill", value: "29.90" },
+    ]);
+    expect(planResult.unknown).toEqual(["Fornecedor"]);
+    // Duas leituras, dois snapshots: são ações diferentes, e o modelo recebe o id de cada uma.
+    expect(snapshots.calls).toBe(2);
+  });
+
+  test("plan_form sem valores é resposta inválida, não um plano vazio", async () => {
+    const tools = toolsWith({
+      snapshot: async () => {
+        throw new Error("não deveria chegar ao navegador");
+      },
+    });
+    const outcome = await tools.execute(
+      { name: "plan_form", arguments: {} },
+      context,
+    );
+    expect(outcome.ok).toBe(false);
+    expect(outcome.error?.code).toBe("INVALID_ARGUMENTS");
   });
 
   test("uma recusa de política chega como recusa, com a regra", async () => {

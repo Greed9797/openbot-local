@@ -5,10 +5,22 @@
  * enforce them: a claim is conditional (so two workers cannot both win the same run) and a lease
  * update carries its generation (so an old worker cannot act after losing its lease).
  */
-import { and, asc, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNull,
+  lt,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { Database } from "../db/client";
 import {
   agentRunEvents,
+  agentRunMessages,
   agentRunSteps,
   agentRuns,
   browserProfileLeases,
@@ -22,6 +34,7 @@ export type AgentRunStepRow = typeof agentRunSteps.$inferSelect;
 export type AgentRunEventRow = typeof agentRunEvents.$inferSelect;
 export type RunArtifactRow = typeof runArtifacts.$inferSelect;
 export type RunApprovalRow = typeof runApprovals.$inferSelect;
+export type RunMessageRow = typeof agentRunMessages.$inferSelect;
 export type ProfileLeaseRow = typeof browserProfileLeases.$inferSelect;
 
 export type NewRunRow = {
@@ -117,6 +130,15 @@ export type NewApprovalInput = {
   expiresAt: Date;
 };
 
+export type NewMessageInput = {
+  runId: string;
+  author: RunMessageRow["author"];
+  kind: string;
+  text: string;
+  source: string;
+  actorUserId: string | null;
+};
+
 export interface AgentRunRepository {
   create(input: NewRunRow): Promise<{ run: AgentRunRow; created: boolean }>;
   byIdempotencyKey(key: string): Promise<AgentRunRow | undefined>;
@@ -177,6 +199,12 @@ export interface AgentRunRepository {
   insertApproval(input: NewApprovalInput): Promise<RunApprovalRow>;
   approval(id: string): Promise<RunApprovalRow | undefined>;
   pendingApprovals(runId: string): Promise<RunApprovalRow[]>;
+  approvals(runId: string): Promise<RunApprovalRow[]>;
+  /** A aprovação mais recente para exatamente esta ação, seja qual for o estado dela. */
+  approvalForAction(
+    runId: string,
+    actionHash: string,
+  ): Promise<RunApprovalRow | undefined>;
   decideApproval(input: {
     id: string;
     decision: "approved" | "denied";
@@ -187,6 +215,16 @@ export interface AgentRunRepository {
     actionHash: string,
   ): Promise<RunApprovalRow | undefined>;
   expireApprovals(now: Date): Promise<number>;
+  /** Acrescenta uma mensagem à conversa da tarefa, com o próximo seq livre. */
+  appendMessage(input: NewMessageInput): Promise<RunMessageRow>;
+  messages(runId: string, afterSeq?: number): Promise<RunMessageRow[]>;
+  /** As que ainda não foram levadas a um modelo, em ordem. */
+  undeliveredMessages(runId: string, limit: number): Promise<RunMessageRow[]>;
+  markMessagesDelivered(
+    runId: string,
+    ids: string[],
+    stepSeq: number | null,
+  ): Promise<number>;
 }
 
 export function createAgentRunRepository(
@@ -725,6 +763,111 @@ export function createAgentRunRepository(
     return rows.length;
   }
 
+  async function approvals(runId: string): Promise<RunApprovalRow[]> {
+    return database
+      .select()
+      .from(runApprovals)
+      .where(eq(runApprovals.runId, runId))
+      .orderBy(desc(runApprovals.createdAt));
+  }
+
+  async function approvalForAction(
+    runId: string,
+    actionHash: string,
+  ): Promise<RunApprovalRow | undefined> {
+    const [row] = await database
+      .select()
+      .from(runApprovals)
+      .where(
+        and(
+          eq(runApprovals.runId, runId),
+          eq(runApprovals.actionHash, actionHash),
+        ),
+      )
+      .orderBy(desc(runApprovals.createdAt))
+      .limit(1);
+    return row;
+  }
+
+  /**
+   * A próxima mensagem da conversa da tarefa.
+   *
+   * O `for update` na linha da tarefa é o que serializa duas pessoas (ou uma pessoa e o Telegram) às
+   * voltas com o mesmo seq: o índice único (run_id, seq) recusaria a segunda, e uma recusa em cima de
+   * uma mensagem de gente é o tipo de erro que ninguém sabe explicar depois.
+   */
+  async function appendMessage(input: NewMessageInput): Promise<RunMessageRow> {
+    return database.transaction(async (tx) => {
+      await tx.execute(
+        sql`select id from agent_runs where id = ${input.runId} for update`,
+      );
+      const [next] = await tx
+        .select({
+          seq: sql<number>`coalesce(max(${agentRunMessages.seq}), 0) + 1`,
+        })
+        .from(agentRunMessages)
+        .where(eq(agentRunMessages.runId, input.runId));
+      const [row] = await tx
+        .insert(agentRunMessages)
+        .values({ ...input, seq: Number(next?.seq ?? 1) })
+        .returning();
+      return row;
+    });
+  }
+
+  async function messages(
+    runId: string,
+    afterSeq = 0,
+  ): Promise<RunMessageRow[]> {
+    return database
+      .select()
+      .from(agentRunMessages)
+      .where(
+        and(
+          eq(agentRunMessages.runId, runId),
+          gt(agentRunMessages.seq, afterSeq),
+        ),
+      )
+      .orderBy(asc(agentRunMessages.seq));
+  }
+
+  async function undeliveredMessages(
+    runId: string,
+    limit: number,
+  ): Promise<RunMessageRow[]> {
+    return database
+      .select()
+      .from(agentRunMessages)
+      .where(
+        and(
+          eq(agentRunMessages.runId, runId),
+          isNull(agentRunMessages.deliveredAt),
+        ),
+      )
+      .orderBy(asc(agentRunMessages.seq))
+      .limit(limit);
+  }
+
+  async function markMessagesDelivered(
+    runId: string,
+    ids: string[],
+    stepSeq: number | null,
+  ): Promise<number> {
+    if (!ids.length) return 0;
+    const rows = await database
+      .update(agentRunMessages)
+      .set({ deliveredAt: new Date(), stepSeq })
+      .where(
+        and(
+          eq(agentRunMessages.runId, runId),
+          inArray(agentRunMessages.id, ids),
+          isNull(agentRunMessages.deliveredAt),
+        ),
+      )
+      .returning({ id: agentRunMessages.id });
+    return rows.length;
+  }
+
   return {
     create,
     byIdempotencyKey,
@@ -755,8 +898,14 @@ export function createAgentRunRepository(
     insertApproval,
     approval,
     pendingApprovals,
+    approvals,
+    approvalForAction,
     decideApproval,
     consumeApproval,
     expireApprovals,
+    appendMessage,
+    messages,
+    undeliveredMessages,
+    markMessagesDelivered,
   };
 }

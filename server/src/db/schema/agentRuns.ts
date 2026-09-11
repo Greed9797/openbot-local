@@ -96,6 +96,18 @@ export const notificationChannel = pgEnum("notification_channel", [
 ]);
 
 /**
+ * Quem escreveu numa tarefa.
+ *
+ * `person` é uma pessoa — no painel ou no Telegram. `system` é o próprio runtime dizendo o que
+ * decidiu (uma aprovação negada, uma retomada). O modelo lê as duas, e nenhuma delas é confundida
+ * com o que ele mesmo disse: o texto do modelo não é guardado aqui, o passo dele é.
+ */
+export const runMessageAuthor = pgEnum("run_message_author", [
+  "person",
+  "system",
+]);
+
+/**
  * One task, from receipt to result.
  *
  * `idempotencyKey` is unique when present: a retried Telegram update or a retried API call carries
@@ -243,6 +255,44 @@ export const runArtifacts = pgTable(
   (table) => [
     index("run_artifacts_run_idx").on(table.runId),
     index("run_artifacts_retention_idx").on(table.retentionUntil),
+  ],
+);
+
+/**
+ * O que uma pessoa disse a uma tarefa em andamento, e o que o sistema respondeu.
+ *
+ * Sem isto, uma tarefa que para em `waiting_human` só pode ser retomada do zero: o modelo não tem
+ * onde ler a resposta que a pessoa deu. `deliveredAt` é o que impede que a mesma instrução seja
+ * entregue duas vezes quando o worker reinicia no meio — a mensagem é marcada como entregue no passo
+ * que a levou ao modelo, e o passo é quem guarda o que foi feito com ela.
+ */
+export const agentRunMessages = pgTable(
+  "agent_run_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => agentRuns.id, { onDelete: "cascade" }),
+    /** Posição na conversa da tarefa, começando em 1. */
+    seq: integer("seq").notNull(),
+    author: runMessageAuthor("author").notNull(),
+    /** `instruction`, `answer`, `approval_denied`, `note` — o que o texto é, não o que ele diz. */
+    kind: text("kind").notNull(),
+    text: text("text").notNull(),
+    /** De onde veio: `web`, `telegram`, `api`, `runner`. */
+    source: text("source").notNull(),
+    actorUserId: text("actor_user_id"),
+    /** O passo em que ela foi levada ao modelo, quando já foi. */
+    stepSeq: integer("step_seq"),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("agent_run_messages_run_seq_idx").on(table.runId, table.seq),
+    index("agent_run_messages_pending_idx").on(
+      table.runId,
+      table.deliveredAt,
+    ),
   ],
 );
 

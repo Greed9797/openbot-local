@@ -104,6 +104,20 @@ export type AgentRuntimeConfig = {
    * ficar retida para revisão em vez de seguir para o provedor. Ver NFR-05.
    */
   sensitiveHosts: string[];
+  /**
+   * Quanto tempo uma aprovação espera antes de expirar.
+   *
+   * Um sim é para uma ação e para um momento: uma aprovação de ontem que valesse hoje autorizaria uma
+   * página que já mudou. Vencida, o modelo precisa pedir de novo.
+   */
+  approvalTtlMs: number;
+  /**
+   * Termos que este deployment considera sensíveis além dos verbos conhecidos.
+   *
+   * O classificador cobre publicar, comprar, enviar e apagar em português e inglês; isto é para o que
+   * só faz sentido na operação de alguém — o nome do ERP, o botão de fechamento de competência.
+   */
+  approvalPatterns: string[];
   waitingHumanMinutes: number;
   idleBrowserMinutes: number;
 };
@@ -784,6 +798,9 @@ function agentRuntimeConfig(environment: Environment): AgentRuntimeConfig {
     sensitiveHosts: commaSeparated(environment, "AGENT_SENSITIVE_HOSTS").map(
       (host) => host.toLowerCase(),
     ),
+    approvalTtlMs:
+      wholeNumber(environment, "AGENT_APPROVAL_TTL_MINUTES", 30, 1) * 60_000,
+    approvalPatterns: commaSeparated(environment, "AGENT_APPROVAL_PATTERNS"),
     waitingHumanMinutes: wholeNumber(
       environment,
       "AGENT_WAITING_HUMAN_MINUTES",

@@ -120,6 +120,13 @@ export type AgentRunInput = {
   observation: AgentObservation | null;
   /** Older steps, oldest first. */
   history: AgentStepSummary[];
+  /**
+   * O que uma pessoa disse desde o último passo, na ordem, e ainda não tinha sido levado ao modelo.
+   *
+   * Uma tarefa que parou pedindo ajuda não recomeça do zero: a resposta que a pessoa deu chega aqui,
+   * como ela escreveu. É a única entrada que não veio do próprio modelo ou da página.
+   */
+  messages?: { author: "person" | "system"; text: string; kind: string }[];
   tools: ToolDefinition[];
   budget: RunBudget;
   usage: RunUsage;
@@ -213,15 +220,24 @@ export interface ApprovalGate {
   /**
    * Decide whether the call needs a person, and if so, record the request.
    *
-   * `approved` means the gate already holds a consumed-once yes for exactly this action.
+   * `approved` means the gate already holds a consumed-once yes for exactly this action. `denied`
+   * means a person said no to this exact action: the loop tells the model so and carries on, because
+   * a refusal is information, not the end of the task.
    */
   review(
     call: { name: string; arguments: Record<string, unknown> },
     observation: AgentObservation,
+    request: {
+      runId: string;
+      stepSeq: number;
+      actorUserId: string | null;
+      destination?: string | null;
+    },
   ): Promise<
     | { decision: "run" }
     | { decision: "approved"; approvalId: string }
     | { decision: "requested"; approvalId: string }
+    | { decision: "denied"; approvalId: string; reason: string }
   >;
   /** Spend the yes on this exact action. False means it is no longer valid. */
   consume(approvalId: string, actionHash: string): Promise<boolean>;

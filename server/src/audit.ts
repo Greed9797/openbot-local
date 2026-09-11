@@ -132,6 +132,10 @@ export const auditEventTypes = [
   "agent_run.completed",
   "agent_run.cancelled",
   "agent_run.recovered",
+  /* Quem disse sim, para qual ação, e quando: a decisão mais consequente que alguém toma sobre uma
+   * tarefa, e a única que autoriza o navegador a fazer o que o modelo pediu. */
+  "agent_run.approval_approved",
+  "agent_run.approval_denied",
 
   /*
    * What a Bot may answer with, decided per Bot and recorded like anything else it is trusted with.
