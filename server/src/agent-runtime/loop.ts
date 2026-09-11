@@ -313,7 +313,9 @@ export function createAgentRunExecutor(
       const current = await repository.get(request.runId);
       if (!current) return undefined;
       const workerOwnsState =
-        current.status === "running" || current.status === "waiting_model";
+        current.status === "running" ||
+        current.status === "waiting_model" ||
+        current.status === "executing";
       return repository.updateOwned(
         request.runId,
         request.owner,
@@ -325,7 +327,9 @@ export function createAgentRunExecutor(
     try {
       while (true) {
         const latest = await repository.get(request.runId);
-        if (latest?.status !== "running") return;
+        // `executing` é um passo em andamento deste mesmo worker: voltar ao topo do laço depois de
+        // uma ação não é outra pessoa ter assumido a tarefa.
+        if (latest?.status !== "running" && latest?.status !== "executing") return;
 
         const budget = budgetOf(latest);
         const used = usageOf(latest);
@@ -655,10 +659,15 @@ export function createAgentRunExecutor(
           }
         }
 
-        // Last look before the browser: a pause or a cancel that arrived while the model was
-        // answering must cost nothing, and no action may run after the run stopped being active.
-        const beforeActing = await repository.get(request.runId);
-        if (beforeActing?.status !== "running") {
+        /*
+         * Última olhada antes do navegador, e o estado que a pessoa vê enquanto a ação acontece.
+         *
+         * Uma pausa ou um cancelamento que chegou enquanto o modelo respondia custa zero: `advance`
+         * não sobrescreve o estado de quem assumiu a tarefa, e o passo fica `skipped`. O mesmo
+         * mecanismo é o que faz o painel mostrar `executing` em vez de `running` durante a ação.
+         */
+        const acting = await advance("executing", {});
+        if (acting?.status !== "executing") {
           await repository.finishStep(request.runId, seq, { status: "skipped" });
           return;
         }

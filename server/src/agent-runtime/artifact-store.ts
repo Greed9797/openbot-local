@@ -90,8 +90,16 @@ export function createArtifactStore(options: {
        * linha, que é lixo invisível que o faxineiro do sistema de arquivos pode recolher, e não um
        * artefato mentiroso.
        */
-      await mkdir(dirname(storagePath), { recursive: true });
-      await writeFile(storagePath, bytes);
+      /*
+       * `0o600` e `0o700`, e não os padrões.
+       *
+       * Uma captura de uma página autenticada é conteúdo de sessão: com o modo padrão (0644/0755) ela
+       * é legível por qualquer usuário do host, e o dono do diretório não é a fronteira — o modo do
+       * arquivo é. Em container o diretório é um volume e o usuário é único; a permissão está aqui
+       * para o dia em que não for.
+       */
+      await mkdir(dirname(storagePath), { recursive: true, mode: 0o700 });
+      await writeFile(storagePath, bytes, { mode: 0o600 });
 
       const retentionUntil =
         input.retentionDays === null

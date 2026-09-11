@@ -153,7 +153,8 @@ export function extractForm(snapshot: Pick<FormSnapshot, "elements">): FormExtra
     // `option` pendura no select acima e quebra corrida de rádio: opção não é campo.
     if (role === "option") {
       if (label !== "" && openSelect) {
-        (openSelect.options ??= []).push(label);
+        if (!openSelect.options) openSelect.options = [];
+        openSelect.options.push(label);
       }
       openRadio = undefined;
       continue;
