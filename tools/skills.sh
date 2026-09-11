@@ -58,6 +58,27 @@ done
 ESTAGIO=$(mktemp -d)
 trap 'rm -rf "$ESTAGIO"' EXIT
 
+# Copia uma skill seguindo links simbólicos, sem tropeçar em link quebrado e sem trazer lixo de
+# sistema operacional.
+#
+# `-L`/`-h` porque skill pode ser link (para ~/.claude/skills, por exemplo): copiar o link sem
+# seguir deixa um link quebrado, e o motor lista a skill enquanto o modelo não acha o SKILL.md — a
+# falha que parece do modelo. `--ignore-failed-read` porque link quebrado existe DENTRO de catálogo
+# de verdade (medido: 33 num catálogo, links que apontam para o próprio diretório): sem ele, a
+# instalação para no meio e o que sobra é uma árvore pela metade.
+copiar() { # origem destino
+  mkdir -p "$2"
+  tar -h --ignore-failed-read \
+    --exclude='._*' --exclude='.DS_Store' --exclude='__pycache__' --exclude='.git' --exclude='node_modules' \
+    -C "$1" -cf - . 2>/dev/null | tar -C "$2" -xf -
+}
+
+quebrados=0
+for origem in "${ORIGENS[@]}"; do
+  n=$(find "$origem" -xtype l 2>/dev/null | wc -l | tr -d ' ')
+  quebrados=$((quebrados + n))
+done
+
 # Um diretório por nome de skill, com a cópia mais recente dentro.
 colisoes=0
 for origem in "${ORIGENS[@]}"; do
@@ -72,7 +93,7 @@ for origem in "${ORIGENS[@]}"; do
       colisoes=$((colisoes + 1))
       continue
     fi
-    cp -RL "$(dirname "$arquivo")" "$destino"
+    copiar "$(dirname "$arquivo")" "$destino"
   done < <(find "$origem" -mindepth 2 -maxdepth 2 -name SKILL.md -not -path '*/.system/*' -print0)
 done
 
@@ -87,6 +108,7 @@ if [ "$instaladas" -eq 0 ]; then
 fi
 
 echo "== instalando $instaladas skills de ${#ORIGENS[@]} catálogo(s), $colisoes colisões resolvidas"
+[ "$quebrados" -gt 0 ] && echo "   $quebrados links quebrados dentro dos catálogos foram ignorados (nenhum SKILL.md dependia deles)"
 
 for i in "${!SERVICOS[@]}"; do
   servico="${SERVICOS[$i]}"
