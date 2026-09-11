@@ -15,7 +15,7 @@ import { createAgentRunService } from "../src/agent-runs/service";
 import { createArtifactStore } from "../src/agent-runtime/artifact-store";
 import { createAuditStore } from "../src/audit";
 import { createDatabase } from "../src/db/client";
-import { runArtifacts } from "../src/db/schema";
+import { agentRuns, runArtifacts } from "../src/db/schema";
 import { TEST_POOL } from "./support/database";
 
 const database = createDatabase(
@@ -53,8 +53,13 @@ async function newRun(): Promise<string> {
 }
 
 afterAll(async () => {
+  /*
+   * As capturas saem junto com as tarefas: a chave estrangeira é `cascade`, e apagar a tarefa é o que
+   * basta. Enquanto só `run_artifacts` era apagado, cada corrida da suíte deixava uma dúzia de
+   * tarefas na base de quem roda os testes — e a tela de Tarefas enchia de "Uma página qualquer.".
+   */
   if (created.length) {
-    await database.delete(runArtifacts).where(inArray(runArtifacts.runId, created));
+    await database.delete(agentRuns).where(inArray(agentRuns.id, created));
   }
 });
 
