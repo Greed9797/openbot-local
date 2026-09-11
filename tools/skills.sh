@@ -49,7 +49,9 @@ if [ "${1:-}" = "--limpar" ]; then
 fi
 
 ORIGENS=("$@")
-[ ${#ORIGENS[@]} -eq 0 ] && ORIGENS=("./skills")
+if [ ${#ORIGENS[@]} -eq 0 ]; then
+  ORIGENS=("./skills")
+fi
 
 for origem in "${ORIGENS[@]}"; do
   [ -d "$origem" ] || { echo "não há '$origem' para instalar." >&2; exit 1; }
@@ -108,7 +110,9 @@ if [ "$instaladas" -eq 0 ]; then
 fi
 
 echo "== instalando $instaladas skills de ${#ORIGENS[@]} catálogo(s), $colisoes colisões resolvidas"
-[ "$quebrados" -gt 0 ] && echo "   $quebrados links quebrados dentro dos catálogos foram ignorados (nenhum SKILL.md dependia deles)"
+if [ "$quebrados" -gt 0 ]; then
+  echo "   $quebrados links quebrados dentro dos catálogos foram ignorados (nenhum SKILL.md dependia deles)"
+fi
 
 for i in "${!SERVICOS[@]}"; do
   servico="${SERVICOS[$i]}"
