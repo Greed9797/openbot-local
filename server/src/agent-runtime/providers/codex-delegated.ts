@@ -29,6 +29,23 @@ export type CodexDelegatedOptions = {
    * conduzindo — descoberto no primeiro deploy real, porque este adaptador não tinha teste de fio.
    */
   token?: string;
+  /**
+   * Assina a declaração de execução desta tarefa — ver `server/src/agents/callback-token.ts`.
+   *
+   * O serviço do Codex repassa o resultado ao servidor MCP, que o devolve em cada chamada de
+   * ferramenta; é assim que o deployment sabe qual Bot e qual pessoa estão agindo. Sem isso o
+   * servidor MCP sai no boot, o `codex exec` termina em erro e a tarefa morre sem nunca tocar a
+   * página — descoberto no primeiro run delegado de verdade, com o log do serviço dizendo
+   * "declaração de execução AUSENTE".
+   *
+   * Vive aqui como função, e não como chave: quem tem a chave é o processo que monta o provedor, e
+   * este módulo não guarda segredo nenhum.
+   */
+  signRun?: (run: {
+    botId: string;
+    runId: string;
+    actorId: string;
+  }) => string;
   /** Para o teste de fio: o `fetch` que o transporte HTTP usa por baixo. */
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
@@ -94,7 +111,25 @@ export function createCodexDelegatedProvider(
             // Ferramentas vazias de propósito: o Codex usa as dele, via MCP, e não as deste runtime.
             tools: [],
             context: [],
-            forwardedProps: { objective: input.objective, botId: input.botId },
+            /*
+             * `openbotRun` é o que faz o servidor MCP subir do outro lado: ele autentica cada
+             * chamada de ferramenta contra este deployment, e é de dentro dele que saem o Bot e a
+             * pessoa da linha de auditoria. Sem a assinatura, o ciclo do Codex roda sem ferramenta
+             * nenhuma e a tarefa "termina" sem ter aberto página alguma.
+             */
+            forwardedProps: {
+              objective: input.objective,
+              botId: input.botId,
+              ...(options.signRun && input.actorId
+                ? {
+                    openbotRun: options.signRun({
+                      botId: input.botId,
+                      runId: input.runId,
+                      actorId: input.actorId,
+                    }),
+                  }
+                : {}),
+            },
             abortController: controller,
           },
           {

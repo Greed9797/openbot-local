@@ -13,13 +13,17 @@
 import type { AgentModelConfig } from "../../config";
 import type { AgentModelProvider, ModelCapabilities } from "../contracts";
 import { createAnthropicProvider } from "./anthropic";
+import type { CodexDelegatedOptions } from "./codex-delegated";
 import { createCodexDelegatedProvider } from "./codex-delegated";
 import { createOpenAICompatibleProvider } from "./openai-compatible";
 import { createOpenAIResponsesProvider } from "./openai-responses";
 
 export function createProviderFor(
   config: AgentModelConfig,
-  options: { fetchImpl?: typeof fetch } = {},
+  options: {
+    fetchImpl?: typeof fetch;
+    signRun?: CodexSignRun;
+  } = {},
 ): AgentModelProvider | undefined {
   const capabilities: ModelCapabilities = {
     vision: config.vision,
@@ -43,6 +47,7 @@ export function createProviderFor(
         // O token do Bot gerenciado, não a chave de um fornecedor: quem valida é o outro lado, e o
         // que ele aceita é este cabeçalho.
         ...(config.agentToken ? { token: config.agentToken } : {}),
+        ...(options.signRun ? { signRun: options.signRun } : {}),
         ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
       });
     case "responses":
@@ -74,12 +79,19 @@ export function createProviderFor(
 
 export function createConfiguredProviders(
   configs: AgentModelConfig[],
-  options: { fetchImpl?: typeof fetch } = {},
+  options: {
+    fetchImpl?: typeof fetch;
+    /** Ver `CodexDelegatedOptions.signRun`: só o provedor delegado tem o que assinar. */
+    signRun?: CodexSignRun;
+  } = {},
 ): AgentModelProvider[] {
   return configs
     .map((config) => createProviderFor(config, options))
     .filter((provider): provider is AgentModelProvider => Boolean(provider));
 }
+
+/** O que o provedor delegado assina, do lado de quem tem a chave. */
+export type CodexSignRun = NonNullable<CodexDelegatedOptions["signRun"]>;
 
 export {
   createAnthropicProvider,

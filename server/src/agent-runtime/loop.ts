@@ -443,6 +443,9 @@ export function createAgentRunExecutor(
         const input: AgentRunInput = {
           runId: request.runId,
           botId: loaded.botId,
+          // A declaração de execução que um provedor delegado apresenta em nome desta tarefa precisa
+          // dizer de quem ela é: a pessoa vem da linha do run, nunca do que o modelo escrever.
+          ...(loaded.userId ? { actorId: loaded.userId } : {}),
           objective: loaded.objective,
           observation,
           history: historyOf(earlier.filter((row) => row.seq < seq)),

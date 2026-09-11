@@ -50,7 +50,7 @@ export function visionProvider(
 
 export async function analyzeImage(options: {
   provider: AgentModelProvider;
-  run: Pick<AgentRunRow, "id" | "botId" | "objective">;
+  run: Pick<AgentRunRow, "id" | "botId" | "objective" | "userId">;
   question: string;
   image: ObservationImage;
   signal: AbortSignal;
@@ -62,6 +62,11 @@ export async function analyzeImage(options: {
     {
       runId: run.id,
       botId: run.botId,
+      /*
+       * A mesma declaração da tarefa: um provedor delegado entrega até a pergunta sobre a captura ao
+       * serviço do Codex, que sem ela não sobe o servidor MCP e termina em erro.
+       */
+      ...(run.userId ? { actorId: run.userId } : {}),
       objective: question,
       observation: {
         observationId: `analysis-${image.artifactId}`,

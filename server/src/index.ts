@@ -297,7 +297,17 @@ const artifactStore = createArtifactStore({
  * isso, em vez de o servidor não subir.
  */
 const providers = createProviderRegistry(
-  createConfiguredProviders(config.agentRuntime.providers),
+  createConfiguredProviders(config.agentRuntime.providers, {
+    /*
+     * Assinado aqui, onde a chave mora.
+     *
+     * Um provedor delegado entrega a tarefa inteira a outro processo, que age em nome desta pessoa
+     * pelo navegador; a declaração é o que ele apresenta em cada chamada de ferramenta. Sem ela o
+     * serviço do Codex roda sem servidor MCP e a tarefa termina sem ter aberto página nenhuma.
+     */
+    signRun: ({ botId, runId, actorId }) =>
+      mintRunAssertion({ botId, actorId, runId }, config.keyEncryptionKey),
+  }),
 );
 if (config.agentRuntime.enabled && config.agentRuntime.providers.length === 0) {
   console.warn(

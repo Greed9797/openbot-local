@@ -21,12 +21,19 @@ import {
   createCodexDelegatedProvider,
 } from "../src/agent-runtime/providers/codex-delegated";
 import {
+  mintRunAssertion,
+  readRunAssertion,
+} from "../src/agents/callback-token";
+import {
   postJson,
   ProviderRejectedError,
   ProviderUnavailableError,
 } from "../src/agent-runtime/providers/http";
 
 const IMAGE_DATA = "QUJD";
+
+/** A chave do deployment nestes testes: só existe aqui dentro. */
+const KEY = "chave-de-teste";
 
 function capabilities(overrides: Partial<ModelCapabilities> = {}): ModelCapabilities {
   return { vision: true, tools: true, streaming: false, mode: "step", ...overrides };
@@ -459,5 +466,79 @@ describe("Codex delegado", () => {
     const { body } = await call({ text: "tudo certo" });
     const payload = body as { messages?: { content?: string }[] };
     expect(JSON.stringify(payload)).toContain("Preencher o formulário de produto.");
+  });
+});
+
+/**
+ * A declaração de execução no pedido delegado.
+ *
+ * O serviço do Codex entrega esta declaração ao servidor MCP, que a devolve em cada chamada de
+ * ferramenta — é dela que saem o Bot e a pessoa da linha de auditoria. O primeiro run delegado de
+ * verdade mostrou o custo de não mandá-la: o servidor MCP saía no boot, o `codex exec` terminava em
+ * erro e a tarefa morria sem ter aberto página nenhuma.
+ */
+describe("Codex delegado > declaração de execução", () => {
+  /** O corpo que o pedido levou, com um fluxo AG-UI de resposta. */
+  async function requestBody(
+    options: {
+      signRun?: (run: { botId: string; runId: string; actorId: string }) => string;
+      run?: Partial<AgentRunInput>;
+    } = {},
+  ): Promise<Record<string, unknown>> {
+    let body: Record<string, unknown> = {};
+    const provider = createCodexDelegatedProvider({
+      endpoint: "http://agent-codex.test/ag-ui",
+      model: "codex default",
+      token: "t",
+      ...(options.signRun ? { signRun: options.signRun } : {}),
+      // O transporte do cliente só aceita um Response; o corpo que importa é o do pedido.
+      fetchImpl: (async (_url: string, init?: RequestInit) => {
+        body = JSON.parse(String(init?.body));
+        return new Response(
+          [
+            { type: "RUN_STARTED", threadId: "run-1", runId: "run-1" },
+            { type: "TEXT_MESSAGE_START", messageId: "m1", role: "assistant" },
+            { type: "TEXT_MESSAGE_CONTENT", messageId: "m1", delta: "pronto" },
+            { type: "TEXT_MESSAGE_END", messageId: "m1" },
+            { type: "RUN_FINISHED", threadId: "run-1", runId: "run-1" },
+          ]
+            .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+            .join(""),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        );
+      }) as unknown as typeof fetch,
+    });
+
+    await provider
+      .run(input(options.run ?? {}), { signal: new AbortController().signal })
+      .catch(() => {});
+    return body;
+  }
+
+  test("o pedido leva a declaração que este deployment assina", async () => {
+    const body = await requestBody({
+      signRun: ({ botId, runId, actorId }) =>
+        mintRunAssertion({ botId, actorId, runId }, KEY),
+      run: { actorId: "pessoa-1" },
+    });
+
+    const forwarded = body.forwardedProps as { openbotRun?: string };
+    expect(typeof forwarded.openbotRun).toBe("string");
+    // Exatamente o que o servidor MCP faz do outro lado: abre com a chave do deployment.
+    expect(readRunAssertion(forwarded.openbotRun, KEY)).toEqual({
+      botId: "bot-1",
+      actorId: "pessoa-1",
+      runId: "run-1",
+    });
+  });
+
+  test("sem assinante, o pedido não leva declaração nenhuma", async () => {
+    const body = await requestBody({ run: { actorId: "pessoa-1" } });
+    expect(body.forwardedProps).not.toHaveProperty("openbotRun");
+  });
+
+  test("tarefa sem dono não vira declaração de ninguém", async () => {
+    const body = await requestBody({ signRun: () => "nunca chamado" });
+    expect(body.forwardedProps).not.toHaveProperty("openbotRun");
   });
 });

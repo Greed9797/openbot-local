@@ -115,6 +115,14 @@ export type AgentStepSummary = {
 export type AgentRunInput = {
   runId: string;
   botId: string;
+  /**
+   * A pessoa dona da tarefa.
+   *
+   * Só interessa ao provedor que delega: a declaração de execução que ele apresenta em nome desta
+   * tarefa diz de quem ela é, e é daí que a auditoria tira o nome — não do corpo do pedido. Ausente
+   * numa tarefa sem dono (um agendamento, por exemplo), e aí não há o que assinar.
+   */
+  actorId?: string;
   objective: string;
   /** Present unless the provider is expected to act blind on its first step. */
   observation: AgentObservation | null;
