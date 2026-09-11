@@ -385,6 +385,12 @@ services:
     environment:
       # Same server-to-Bot request boundary as agent-bot above.
       MANAGED_AGENT_TOKEN: ${MANAGED_AGENT_TOKEN:-}
+      # A porta DESTE serviço, fixada aqui de propósito.
+      #
+      # O `.env` do deployment tem PORT=3001, do servidor, e o `env_file` o traz para dentro. Medido:
+      # sem esta linha o CLI sobe ouvindo na porta do outro serviço e o healthcheck morre onde nada
+      # escuta — um container de pé que ninguém alcança.
+      PORT: 4210
       # Qual CLI este processo dirige: opencode | mimo.
       AGENT_CLI: ${AGENT_CLI:-opencode}
       # O modelo, no formato do CLI (`provider/model`). Vazio deixa o CLI escolher o padrão dele.
