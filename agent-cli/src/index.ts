@@ -34,6 +34,14 @@ const CLI = (process.env.AGENT_CLI?.trim() || "opencode").toLowerCase();
 const MODEL = process.env.AGENT_CLI_MODEL?.trim() ?? "";
 
 /**
+ * O degrau de raciocínio, repassado ao CLI sem interpretação.
+ *
+ * O serviço não sabe quais degraus existem — isso é do fornecedor do modelo, e muda com ele. Só
+ * repassa o que o deployment escreveu; vazio deixa o CLI no padrão dele.
+ */
+const VARIANT = process.env.AGENT_CLI_VARIANT?.trim() ?? "";
+
+/**
  * O diretório de trabalho do CLI, e o único lugar onde ele escreve.
  *
  * É volume no compose: o que o Bot baixar ou gerar num turno está lá no próximo, e é de onde a
@@ -193,7 +201,15 @@ async function executarPassagem(
 ): Promise<TurnResult> {
   const adapter = adapterFor(adapterId);
   const child = Bun.spawn(
-    [adapter.binary, ...adapter.args({ prompt, workspace: WORKSPACE, model: MODEL })],
+    [
+      adapter.binary,
+      ...adapter.args({
+        prompt,
+        workspace: WORKSPACE,
+        model: MODEL,
+        variant: VARIANT,
+      }),
+    ],
     {
       cwd: WORKSPACE,
       stdout: "pipe",
@@ -460,6 +476,7 @@ if (import.meta.main) {
               : "ok",
             cli: CLI,
             model: MODEL || `${CLI} default`,
+            variant: VARIANT || "padrão do CLI",
             ferramentas: ready,
           },
           { status: sick ? 503 : 200 },

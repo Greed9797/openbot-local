@@ -152,12 +152,24 @@ printf 'AGENT_OPENCODE_URL=http://agent-cli:4210/ag-ui\nAGENT_OPENCODE_MODEL=ope
 bash tools/deploy.sh
 ```
 
+Qual modelo a conta tem é pergunta para o CLI, não para este deployment:
+
+```sh
+docker compose exec agent-cli opencode models      # provider/model, um por linha
+```
+
+`AGENT_CLI_MODEL` (o que o CLI roda) e `AGENT_OPENCODE_MODEL` (o que o runtime registra) são o mesmo
+nome visto dos dois lados: o runtime não escolhe, ele só diz qual é no catálogo e no passo da tarefa.
+O **degrau de raciocínio** é `AGENT_CLI_VARIANT` (`high`, `max`, `minimal` — o vocabulário é do
+fornecedor, e o serviço apenas repassa). Ele muda custo e latência de cada passo, e numa tarefa de
+navegador cada passo é uma chamada de modelo: vale escolher com o número na mão, não no escuro.
+
 A `AGENT_OPENCODE_URL` é o que faz o runtime enxergar o serviço como modelo; sem ela o container
 sobe e ninguém o usa. Confira os dois lados:
 
 ```sh
 docker compose exec agent-cli opencode --version
-curl -s localhost:4210/health         # {"status":"ok","cli":"opencode","ferramentas":true}
+curl -s localhost:4210/health         # {"status":"ok","cli":"opencode","model":"…","variant":"high","ferramentas":true}
 curl -s "localhost:3001/api/models"   # {"default":"opencode","models":[{"id":"opencode", …}]}
 ```
 

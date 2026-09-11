@@ -395,6 +395,9 @@ services:
       AGENT_CLI: ${AGENT_CLI:-opencode}
       # O modelo, no formato do CLI (`provider/model`). Vazio deixa o CLI escolher o padrão dele.
       AGENT_CLI_MODEL: ${AGENT_CLI_MODEL:-}
+      # O degrau de raciocínio do modelo (`high`, `max`, `minimal`), no vocabulário do fornecedor.
+      # Vazio deixa o CLI no padrão dele.
+      AGENT_CLI_VARIANT: ${AGENT_CLI_VARIANT:-}
       AGENT_CLI_TURN_TIMEOUT_MS: ${AGENT_CLI_TURN_TIMEOUT_MS:-900000}
       # A conta do CLI em base64 — o mesmo arquivo que `opencode auth login` escreve. Nunca é
       # impressa; vira o arquivo de credencial no volume, com permissão 600.
@@ -402,8 +405,13 @@ services:
       # O que dá ao CLI o navegador do Bot, via MCP, com cada chamada passando pela política e pela
       # auditoria. Ausente, o CLI só conversa.
       OPENBOT_AGENT_TOKEN: ${AGENT_TOOL_TOKEN:-}
-      # O gateway, alcançado pelo nome do serviço: dentro deste container `localhost` é ele mesmo.
-      OPENBOT_API_URL: http://openbot:3001
+      # Onde fica o gateway. Dentro de um compose inteiro é o nome do serviço; com o servidor rodando
+      # na máquina (o fluxo do `scripts/start.sh`), é `host.docker.internal`, e por isso a variável
+      # existe em vez de o endereço estar escrito aqui — o mesmo motivo da linha do agent-codex.
+      OPENBOT_API_URL: ${OPENBOT_API_URL:-http://openbot:3001}
+    extra_hosts:
+      # Para o caso do servidor na máquina, que é como o deployment local roda.
+      - "host.docker.internal:host-gateway"
     volumes:
       # A credencial e as sessões do CLI: sobrevive a um rebuild, e é o que faz o segundo turno
       # lembrar do primeiro.

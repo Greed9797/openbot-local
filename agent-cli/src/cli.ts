@@ -33,6 +33,15 @@ export type CliAdapter = {
     prompt: string;
     workspace: string;
     model: string;
+    /**
+     * O esforço de raciocínio, no vocabulário do fornecedor (`high`, `max`, `minimal`).
+     *
+     * Vazio deixa o CLI no padrão dele, que é o certo para quem não pediu nada. Existe porque a
+     * escolha é por modelo e não por CLI: o mesmo binário roda um modelo que pensa em degraus e
+     * outro que não, e o degrau muda custo e latência de cada passo — numa tarefa de navegador, que
+     * é uma chamada por passo, isso é a diferença entre dez segundos e um minuto.
+     */
+    variant: string;
   }) => string[];
   /** A linha crua do `--format json` traduzida, ou nada quando ela não interessa. */
   read: (line: string) => CliEvent | undefined;
@@ -124,7 +133,7 @@ export const OPENCODE: CliAdapter = {
   id: "opencode",
   binary: "opencode",
   configPath: "opencode.json",
-  args: ({ prompt, workspace, model }) => [
+  args: ({ prompt, workspace, model, variant }) => [
     "run",
     "--format",
     "json",
@@ -134,6 +143,9 @@ export const OPENCODE: CliAdapter = {
     "--dir",
     workspace,
     ...(model ? ["-m", model] : []),
+    // O degrau de raciocínio, quando o deployment escolheu um. Antes do prompt: depois dele o CLI
+    // lê como parte da mensagem.
+    ...(variant ? ["--variant", variant] : []),
     prompt,
   ],
   read: readOpencodeEvent,
@@ -145,7 +157,7 @@ export const MIMO: CliAdapter = {
   // O fork guardou o formato e trocou os nomes: `.mimocode/mimocode.jsonc` é onde ele lê a config
   // do projeto, e a auto-aprovação se chama `--yolo`.
   configPath: ".mimocode/mimocode.jsonc",
-  args: ({ prompt, workspace, model }) => [
+  args: ({ prompt, workspace, model, variant }) => [
     "run",
     "--format",
     "json",
@@ -153,6 +165,7 @@ export const MIMO: CliAdapter = {
     "--dir",
     workspace,
     ...(model ? ["-m", model] : []),
+    ...(variant ? ["--variant", variant] : []),
     prompt,
   ],
   read: readOpencodeEvent,

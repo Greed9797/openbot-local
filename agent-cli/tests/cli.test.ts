@@ -21,6 +21,7 @@ describe("adaptadores", () => {
       prompt: "Abra o TikTok",
       workspace: "/workspace",
       model: "opencode-go/deepseek-v4.1-flash",
+      variant: "",
     });
     expect(args).toEqual([
       "run",
@@ -42,13 +43,66 @@ describe("adaptadores", () => {
     expect(MIMO.binary).toBe("mimo");
     expect(MIMO.configPath).toBe(".mimocode/mimocode.jsonc");
     expect(
-      MIMO.args({ prompt: "Abra o TikTok", workspace: "/workspace", model: "" }),
+      MIMO.args({
+        prompt: "Abra o TikTok",
+        workspace: "/workspace",
+        model: "",
+        variant: "",
+      }),
     ).toContain("--yolo");
   });
 
   test("sem modelo escolhido, nenhuma flag de modelo vai", () => {
-    const args = OPENCODE.args({ prompt: "oi", workspace: "/w", model: "" });
+    const args = OPENCODE.args({
+      prompt: "oi",
+      workspace: "/w",
+      model: "",
+      variant: "",
+    });
     expect(args).not.toContain("-m");
+  });
+
+  test("o degrau de raciocínio vai como --variant, antes do prompt", () => {
+    // O `high` é do modelo, não do CLI: o mesmo binário roda modelo que pensa em degraus e modelo
+    // que não. Depois do prompt, o CLI leria a flag como parte da mensagem.
+    const args = OPENCODE.args({
+      prompt: "Leia a tela e me diga o valor",
+      workspace: "/workspace",
+      model: "opencode-go/muse-spark-1.3-contributor",
+      variant: "high",
+    });
+
+    expect(args).toEqual([
+      "run",
+      "--format",
+      "json",
+      "--auto",
+      "--dir",
+      "/workspace",
+      "-m",
+      "opencode-go/muse-spark-1.3-contributor",
+      "--variant",
+      "high",
+      "Leia a tela e me diga o valor",
+    ]);
+    expect(
+      MIMO.args({
+        prompt: "oi",
+        workspace: "/w",
+        model: "",
+        variant: "max",
+      }),
+    ).toContain("max");
+  });
+
+  test("sem degrau escolhido, nenhuma flag de degrau vai", () => {
+    const args = OPENCODE.args({
+      prompt: "oi",
+      workspace: "/w",
+      model: "",
+      variant: "",
+    });
+    expect(args).not.toContain("--variant");
   });
 
   test("CLI desconhecido é recusado com a lista do que existe", () => {
