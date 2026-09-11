@@ -531,6 +531,15 @@ type CodexEvent = {
   type?: string;
   thread_id?: string;
   item?: CodexItem;
+  /**
+   * O motivo, nos eventos de topo.
+   *
+   * `error` e `turn.failed` chegam assim, e não como item: é por onde o CLI diz que a cota acabou ou
+   * que o modelo não existe. Sem ler daqui, o turno morria com "Codex exited with code 1" e nada
+   * mais — medido no primeiro dia em que a conta bateu no limite de uso.
+   */
+  message?: string;
+  error?: { message?: string };
 };
 
 async function runAgent(input: RunAgentInput): Promise<Response> {
@@ -688,6 +697,8 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
           let timedOut = false;
           /** Recoverable problems Codex reported mid-turn. Shown only if nothing else was. */
           const notices: string[] = [];
+          /** Por que o CLI recusou o turno, quando disse: cota, modelo, credencial. */
+          let turnFailure = "";
           let answered = false;
           let usouFerramenta = false;
           /** Os hosts que o Bot mandou abrir, para comparar com os que a pessoa pediu. */
@@ -783,6 +794,16 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
                   continue;
                 }
 
+                /*
+                 * O motivo de topo: "cota esgotada", "modelo inexistente", e o que mais o CLI
+                 * recusar antes de o turno existir. Fica guardado para ser a explicação do erro —
+                 * a alternativa medida foi um "exited with code 1" sem causa em lugar nenhum.
+                 */
+                if (!event.item) {
+                  const razão = event.error?.message ?? event.message;
+                  if (razão) turnFailure = razão;
+                }
+
                 if (event.type === "thread.started" && event.thread_id) {
                   // Written as soon as it is known, not at the end: a turn that dies half way has still
                   // created a Codex session, and the next turn should continue it rather than orphan the
@@ -858,8 +879,9 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
                * correct rather than by anything readable here.
                */
               const tail = stderrTail.trim().split("\n").slice(-3).join(" ");
+              const reason = turnFailure || tail;
               throw new Error(
-                `Codex exited with code ${exitCode}. ${tail}`.trim(),
+                `Codex exited with code ${exitCode}.${reason ? ` ${reason}` : ""}`,
               );
             }
 

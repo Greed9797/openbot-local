@@ -13,7 +13,7 @@
 import { HttpAgent } from "@ag-ui/client";
 import type { AgentModelProvider, AgentRunInput, AgentRunResult } from "../contracts";
 import { historyBlock } from "../prompt";
-import { ProviderRejectedError } from "./http";
+import { ProviderRejectedError, ProviderUnavailableError } from "./http";
 
 export type CodexDelegatedOptions = {
   id?: string;
@@ -99,6 +99,15 @@ export function createCodexDelegatedProvider(
 
       let text = "";
       let toolCalls = 0;
+      /**
+       * O motivo que o serviço deu para o turno ter falhado, quando deu algum.
+       *
+       * O cliente AG-UI trata `RUN_ERROR` como fim normal do fluxo: sem esta assinatura, uma recusa
+       * do Codex — cota esgotada, por exemplo — chegava aqui como um run que "terminou sem texto", e
+       * a tarefa morria em `INVALID_ACTION` sem dizer o que aconteceu. O motivo do fornecedor é a
+       * única explicação que a pessoa tem; ele vai para o erro do run.
+       */
+      let failure = "";
       const timeout = setTimeout(
         () => controller.abort(),
         options.timeoutMs ?? 900_000,
@@ -136,6 +145,9 @@ export function createCodexDelegatedProvider(
             onTextMessageContentEvent: ({ event }) => {
               if (typeof event.delta === "string") text += event.delta;
             },
+            onRunErrorEvent: ({ event }) => {
+              failure = event.message;
+            },
             onToolCallStartEvent: () => {
               toolCalls += 1;
             },
@@ -154,6 +166,11 @@ export function createCodexDelegatedProvider(
       }
 
       const message = text.trim();
+      if (failure && !message) {
+        throw new ProviderUnavailableError(
+          `O serviço do Codex não completou a tarefa: ${failure}`,
+        );
+      }
       if (!message) {
         return {
           kind: "invalid",

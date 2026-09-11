@@ -542,3 +542,68 @@ describe("Codex delegado > declaração de execução", () => {
     expect(body.forwardedProps).not.toHaveProperty("openbotRun");
   });
 });
+
+/**
+ * O turno que o serviço recusou.
+ *
+ * O cliente AG-UI encerra o fluxo sem erro quando recebe `RUN_ERROR`, e o adaptador — que só olhava
+ * texto — transformava a recusa num "terminou sem texto". A causa que a pessoa lia na tarefa era
+ * `INVALID_ACTION`, e o motivo real (cota esgotada, modelo inexistente) não aparecia em lugar
+ * nenhum. Agora ele é o erro do run.
+ */
+describe("Codex delegado > turno recusado", () => {
+  test("o motivo do serviço vira o erro da tarefa", async () => {
+    const provider = createCodexDelegatedProvider({
+      endpoint: "http://agent-codex.test/ag-ui",
+      model: "codex default",
+      token: "t",
+      fetchImpl: (async () =>
+        new Response(
+          [
+            { type: "RUN_STARTED", threadId: "run-1", runId: "run-1" },
+            {
+              type: "RUN_ERROR",
+              message:
+                "You've hit your usage limit. Try again at Sep 15th, 2026 2:05 AM.",
+            },
+          ]
+            .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+            .join(""),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        )) as unknown as typeof fetch,
+    });
+
+    const failure = await provider
+      .run(input({ actorId: "pessoa-1" }), {
+        signal: new AbortController().signal,
+      })
+      .catch((error) => error);
+
+    expect(failure).toBeInstanceOf(ProviderUnavailableError);
+    expect((failure as Error).message).toContain("usage limit");
+  });
+
+  test("o silêncio sem recusa continua sendo silêncio", async () => {
+    const provider = createCodexDelegatedProvider({
+      endpoint: "http://agent-codex.test/ag-ui",
+      model: "codex default",
+      token: "t",
+      fetchImpl: (async () =>
+        new Response(
+          [
+            { type: "RUN_STARTED", threadId: "run-1", runId: "run-1" },
+            { type: "RUN_FINISHED", threadId: "run-1", runId: "run-1" },
+          ]
+            .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+            .join(""),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        )) as unknown as typeof fetch,
+    });
+
+    const result = await provider.run(input({}), {
+      signal: new AbortController().signal,
+    });
+
+    expect(result.kind).toBe("invalid");
+  });
+});
