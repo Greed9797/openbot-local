@@ -15,12 +15,14 @@ modelos pagos ou VPS).
 | Executor | `server/src/agent-runtime/loop.ts` (`createAgentRunExecutor`) | Loop observar→decidir→agir; montado em `server/src/index.ts` |
 | Observação | `server/src/agent-runtime/observation.ts` (`createGatewayObservationSource`) | Snapshot + texto + captura classificada |
 | Catálogo | `server/src/agent-runtime/browser-tools.ts` (`createBrowserTools`) | 13 ferramentas (`navigate`, `read_page`, `snapshot_page`, `click`, `type_text`, `press_key`, `scroll`, `select_option`, `screenshot`, `wait_for`, `request_help`, `read_form`, `plan_form`); só ele executa |
-| Provedores | `server/src/agent-runtime/providers/*`, `registry.ts` | OpenAI Responses, Anthropic Messages, `/v1/chat/completions` local, Codex delegado |
+| Provedores | `server/src/agent-runtime/providers/*`, `registry.ts` | OpenAI Responses, Anthropic Messages, Gemini (API nativa), `/v1/chat/completions` local e o transporte `delegated` — Codex e os CLIs de agente |
+| Catálogo de modelos | `server/src/agent-runtime/model-catalog.ts`, `GET /api/models` em `app.ts` | O que este deployment alcança: id, modelo, transporte, `capabilities` e o padrão |
 | Portão de aprovação | `server/src/agent-runs/approvals.ts` (`createApprovalGate`) + `server/src/agent-runtime/sensitive-actions.ts` (`classifyAction`) | Sensível exige pessoa antes do navegador |
 | Gateway | `server/src/computer/gateway.ts` (`govern`, `resolve`) | Política CEL, auditoria antes da ação, resolução de ref contra geração do snapshot |
 | Navegador | `agent-computer/src/index.ts` | Chromium/Playwright por Bot, máscaras de screenshot, segredos, controle humano |
 | Leitura barata | `computer_fetch` via gateway → `agent-computer/src/lightpanda.ts` | Texto sem pixels, sem sessão |
-| Codex delegado | `agent-codex/src/mcp-computer.ts` (`abrir_pagina`, `ler_url_rapido`, `ler_pagina`, `mapear_pagina`, `clicar`, `digitar`, `tecla`, `rolar`, `ver_a_tela`, `pedir_ajuda`, `escolher_opcao`) | Servidor MCP stdio; as ferramentas de navegador passam pelo mesmo gateway |
+| Codex delegado | `agent-codex/src/index.ts` + `shared/mcp-computer.ts` (`abrir_pagina`, `ler_url_rapido`, `ler_pagina`, `mapear_pagina`, `clicar`, `digitar`, `tecla`, `rolar`, `ver_a_tela`, `pedir_ajuda`, `escolher_opcao`) | O CLI conduz o próprio ciclo; o servidor MCP stdio é o mesmo que os CLIs de agente usam, e as ferramentas de navegador passam pelo gateway |
+| CLI de agente | `agent-cli/src/{index,cli}.ts` | Um serviço por CLI (OpenCode, MiMo Code); entrega a tarefa inteira ao binário e o navegador chega pelo mesmo `shared/mcp-computer.ts` |
 | Imagens | `server/src/agent-runtime/{artifact-store,image-input}.ts`, `server/src/agent-runs/capture.ts` (`captureRunScreen`) | Arquivo no disco + linha em `run_artifacts` com classificação e destinos |
 
 ## O caminho de um passo
@@ -79,7 +81,7 @@ estado partindo de `running`/`waiting_model`, e o heartbeat (1–2 s) aborta o p
                   +--------------------------------------+
                     |                |              |
               providers/     approvals.ts     browser-tools.ts
-           (4 adaptadores)  (run_approvals)         |
+       (5 transportes)  (run_approvals)         |
                                                     v
                                     +------------------------------+
                                     | ComputerGateway.govern       |

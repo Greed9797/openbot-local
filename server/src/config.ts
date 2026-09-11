@@ -59,8 +59,9 @@ export type ComputerConfig = DockerComputerConfig | SharedComputerConfig;
  * Um modelo configurado neste deployment.
  *
  * `transport` é o dialeto, não a marca: `responses`, `messages` e `chat-completions` são três APIs
- * diferentes, e duas empresas podem usar o mesmo dialeto. `codex` é o modo delegado, em que a tarefa
- * inteira é entregue ao serviço do Codex.
+ * diferentes, e duas empresas podem usar o mesmo dialeto. `gemini` é a API nativa do Google, onde a
+ * imagem vai como bytes. `delegated` é o modo em que a tarefa inteira é entregue a um serviço que
+ * conduz o próprio ciclo — o do Codex, o de um CLI de agente.
  */
 export type AgentModelConfig = {
   id: string;
@@ -69,7 +70,7 @@ export type AgentModelConfig = {
   baseUrl?: string;
   apiKey?: string;
   /**
-   * O token que este deployment apresenta a um Bot gerenciado (transporte `codex`).
+   * O token que este deployment apresenta a um Bot gerenciado (transporte `delegated`).
    *
    * Separado de `apiKey` porque não é uma chave de fornecedor: é a identidade deste deployment diante
    * do serviço que ele mesmo hospeda, e quem a valida é o `hasManagedAgentToken` do outro lado.

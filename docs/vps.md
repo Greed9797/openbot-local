@@ -158,11 +158,18 @@ sobe e ninguém o usa. Confira os dois lados:
 ```sh
 docker compose exec agent-cli opencode --version
 curl -s localhost:4210/health         # {"status":"ok","cli":"opencode","ferramentas":true}
-curl -s "localhost:3001/api/models"   # o modelo `opencode` na lista
+curl -s "localhost:3001/api/models"   # {"default":"opencode","models":[{"id":"opencode", …}]}
 ```
 
 `ferramentas: true` é a metade que importa: um CLI sem o MCP responde bem, de memória, e é a mesma
-assinatura de todo defeito caro deste fork.
+assinatura de todo defeito caro deste fork. `/api/models` é a outra: uma variável que não chegou ao
+runtime — nome errado, `AGENT_OPENCODE_URL` ausente — não vira linha nenhuma na lista, em vez de
+esperar a primeira tarefa para se manifestar. A rota pede sessão, como as de tarefa: num deployment
+single-user o `curl` acima já responde; num com login, vale o cookie da sessão.
+
+O que a lista **não** pega é endereço que existe e aponta para o serviço errado: esse provedor aparece,
+porque foi construído, e falha na primeira tarefa. Para esse, o `/health` do serviço acima é a
+conferência.
 
 ### Outro CLI, mesma imagem
 

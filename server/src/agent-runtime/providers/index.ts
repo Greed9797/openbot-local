@@ -45,6 +45,11 @@ export function createProviderFor(
         id: config.id,
         endpoint: config.baseUrl ?? "",
         model: config.model,
+        // Se o modelo que roda lá dentro enxerga a página é o deployment que sabe: o CLI é dado de
+        // configuração, e o modelo dele também. Sem isto o `AGENT_OPENCODE_VISION=off` seria uma
+        // linha no `.env` sem efeito nenhum — o adaptador presumiria visão e todo passo pediria
+        // captura a um modelo de texto.
+        vision: config.vision,
         // O token do Bot gerenciado, não a chave de um fornecedor: quem valida é o outro lado, e o
         // que ele aceita é este cabeçalho.
         ...(config.agentToken ? { token: config.agentToken } : {}),

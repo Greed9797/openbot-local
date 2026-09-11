@@ -16,6 +16,10 @@ conferência pós-subida. Implementado sem homologação em VPS real.
 | `AGENT_ANTHROPIC_API_KEY` (+`_MODEL`, default `claude-sonnet-4-5`) | — | Provedor `anthropic` |
 | `AGENT_LOCAL_BASE_URL` (+`_MODEL` default `llama3.1`, `_API_KEY`, `_TOOLS` on) | — | Provedor `local` (`/v1/chat/completions`) |
 | `AGENT_CODEX_URL` (ou `MANAGED_AGENT_AG_UI_URL`) | — | Provedor `codex` delegado |
+| `AGENT_GEMINI_API_KEY` (+`_MODEL` default `gemini-3.8-flash`, `_BASE_URL`) | — | Provedor `gemini` pela API nativa (`GEMINI_API_KEY`/`GOOGLE_API_KEY` também servem) |
+| `AGENT_OPENCODE_URL` / `AGENT_MIMO_URL` (+`_MODEL`) | — | Provedores delegados `opencode`/`mimo`, um serviço `agent-cli` cada. Sem a URL o container sobe e ninguém o usa |
+| `AGENT_CODEX_VISION` / `AGENT_OPENCODE_VISION` / `AGENT_MIMO_VISION` | on | Se o modelo que roda dentro do CLI enxerga imagem. Decisão do deployment: negue para um CLI de texto, senão todo passo pede captura |
+| `AGENT_CLI` / `AGENT_CLI_MODEL` / `AGENT_CLI_AUTH_JSON` / `AGENT_CLI_TURN_TIMEOUT_MS` / `CLI_BOT_PORT` | `opencode` / — / — / 900000 / 4210 | Lidos pelo serviço **agent-cli**, não pelo runtime: qual CLI ele dirige, o modelo, a conta em base64, o teto do turno e a porta publicada |
 | `AGENT_DEFAULT_PROVIDER` / `AGENT_DEFAULT_MODEL` | primeiro configurado | Explícito e ausente = boot recusado |
 | `AGENT_VISION_PROVIDERS` / `AGENT_TEXT_ONLY_PROVIDERS` | presunção por nome | Correção da capacidade de visão até o teste de canvas |
 | `AGENT_ARTIFACTS_DIR` | `./.artifacts` (no compose: `/app/.artifacts`) | Onde ficam as capturas |
@@ -71,15 +75,19 @@ as tarefas falham com `PROVIDER_UNAVAILABLE`, dito assim.
 
 1. Boot sem erro de `AGENT_DEFAULT_PROVIDER` e sem o aviso de zero provedores; `GET
    /api/agent-runs?limit=1` responde (runtime montado).
-2. `model_configurations` tem uma linha por provedor configurado, com `testedAt` nulo
+2. `GET /api/models` lista cada provedor configurado — id, modelo, transporte, `capabilities`
+   e qual é o padrão. É aqui que se confere se um serviço recém-subido (um CLI de agente, um
+   provedor novo) chegou ao runtime: o que não foi construído não aparece, e um id que
+   deveria estar na lista e não está é o defeito que esta conferência existe para pegar.
+3. `model_configurations` tem uma linha por provedor configurado, com `testedAt` nulo
    até o teste de canvas (AT-01) — rodá-lo é o que transforma visão presumida em
    homologada.
-3. Criar tarefa de fumaça (ex.: "abra example.com e me diga o título"), acompanhar em
+4. Criar tarefa de fumaça (ex.: "abra example.com e me diga o título"), acompanhar em
    `GET /:id/events/stream` até `succeeded`; conferir passos em `/:id/steps`.
-4. Com Telegram: gerar código em `POST /api/telegram/pairing-codes`, `/start CODIGO` no
+5. Com Telegram: gerar código em `POST /api/telegram/pairing-codes`, `/start CODIGO` no
    privado, `/tela` devolve foto sem gastar modelo; `TELEGRAM_ALLOWED_USER_IDS` com os
    ids certos (vazio = bot que só recusa).
-5. `agent-artifacts` com arquivos por tarefa; linhas vencidas sumindo após a retenção.
-6. Aprovação: ação sensível (ex. clique em "publicar") estaciona em `waiting_approval`,
+6. `agent-artifacts` com arquivos por tarefa; linhas vencidas sumindo após a retenção.
+7. Aprovação: ação sensível (ex. clique em "publicar") estaciona em `waiting_approval`,
    botão "Aprovar" no Telegram conclui, e `run_approvals` mostra a linha `consumed`.
-7. Não homologado aqui: fluxo TikTok real, Telegram real, modelos pagos, carga na VPS.
+8. Não homologado aqui: fluxo TikTok real, Telegram real, modelos pagos, carga na VPS.

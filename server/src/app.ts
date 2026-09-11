@@ -33,6 +33,7 @@ import type { PolicyStore } from "./computer/policy-store";
 import { createComputerRoutes } from "./computer/routes";
 import { configuredAuthProviders, type DeploymentConfig } from "./config";
 import { createAgentRunRoutes, type RunVision } from "./agent-runs/routes";
+import type { ModelCatalog } from "./agent-runtime/model-catalog";
 import { createTelegramRoutes } from "./telegram/routes";
 import type { TelegramStore } from "./telegram/store";
 import type { AgentRunService } from "./agent-runs/service";
@@ -175,6 +176,11 @@ export function createApp(
    * uma tela para gerar códigos que não levam a lugar nenhum.
    */
   telegramStore?: TelegramStore,
+  /**
+   * Os modelos que este deployment tem, para quem precisa conferir o que foi configurado sem abrir o
+   * `.env` de ninguém. Ausente desmonta a rota, junto com o runtime que ela descreve.
+   */
+  modelCatalog?: ModelCatalog,
 ) {
   const app = new Hono<{ Variables: AppVariables }>();
 
@@ -919,6 +925,18 @@ export function createApp(
         authoriseAgent,
       ),
     );
+  }
+
+  /*
+   * Quais modelos este deployment tem.
+   *
+   * Mesma barreira das tarefas: quem pergunta isso já está dentro. Não é segredo de estado — é a
+   * conferência que o deploy precisa fazer, "o serviço que eu subi chegou ao runtime?", e ela é
+   * feita por quem opera, não por quem passa na porta. O que a resposta não carrega é a credencial;
+   * ver `buildModelCatalog`.
+   */
+  if (modelCatalog) {
+    app.get("/api/models", requireUser, (context) => context.json(modelCatalog));
   }
 
   if (agentRunService) {

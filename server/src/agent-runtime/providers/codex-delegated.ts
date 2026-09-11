@@ -46,6 +46,18 @@ export type CodexDelegatedOptions = {
     runId: string;
     actorId: string;
   }) => string;
+  /**
+   * Se o modelo que roda dentro do CLI enxerga a página.
+   *
+   * Vem do deployment (`AGENT_CODEX_VISION`, `AGENT_OPENCODE_VISION`, `AGENT_MIMO_VISION`), e não
+   * daqui, porque é a única parte das capacidades que este arquivo não pode saber: o CLI é dado de
+   * configuração, e o modelo dele também. Presumido verdadeiro, que é o caso da maioria.
+   *
+   * O que fica sendo decisão deste adaptador é o resto: `tools: false` porque o runtime não entrega
+   * catálogo de ferramentas a quem conduz o próprio ciclo, e `streaming: true` porque o transporte
+   * AG-UI responde em fluxo.
+   */
+  vision?: boolean;
   /** Para o teste de fio: o `fetch` que o transporte HTTP usa por baixo. */
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
@@ -57,8 +69,9 @@ export function createCodexDelegatedProvider(
   return {
     id: options.id ?? "codex",
     capabilities: {
-      // O serviço do Codex tem visão pelo MCP e ferramentas próprias, mas quem as executa é ele.
-      vision: true,
+      // O serviço tem visão pelo MCP e ferramentas próprias; quem as executa é ele. Se o modelo dele
+      // enxerga imagem é o deployment que diz — ver `vision` nas opções.
+      vision: options.vision ?? true,
       tools: false,
       streaming: true,
       mode: "delegated",
@@ -67,13 +80,13 @@ export function createCodexDelegatedProvider(
     async run(input: AgentRunInput, context): Promise<AgentRunResult> {
       if (!options.endpoint) {
         throw new ProviderRejectedError(
-          "O provedor codex não está configurado: falta o endereço AG-UI do serviço.",
+          `O provedor ${options.id ?? "codex"} não está configurado: falta o endereço AG-UI do serviço.`,
         );
       }
 
       const agent = new HttpAgent({
         url: options.endpoint,
-        agentId: "codex",
+        agentId: options.id ?? "codex",
         // O serviço do Codex é um Bot gerenciado: ele valida o token do deployment antes de aceitar
         // qualquer coisa. Sem este cabeçalho a resposta é 401, e o erro aparece como
         // PROVIDER_UNAVAILABLE na tarefa — que é honesto, mas aponta para o lugar errado.

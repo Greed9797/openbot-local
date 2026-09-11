@@ -9,6 +9,7 @@ import { createAgentRunWorker } from "./agent-runs/worker";
 import { createArtifactStore } from "./agent-runtime/artifact-store";
 import { createBrowserTools } from "./agent-runtime/browser-tools";
 import { createAgentRunExecutor } from "./agent-runtime/loop";
+import { buildModelCatalog } from "./agent-runtime/model-catalog";
 import { createModelConfigurationStore } from "./agent-runtime/model-configurations";
 import { createGatewayObservationSource } from "./agent-runtime/observation";
 import { createProviderRegistry } from "./agent-runtime/registry";
@@ -311,9 +312,23 @@ const providers = createProviderRegistry(
 );
 if (config.agentRuntime.enabled && config.agentRuntime.providers.length === 0) {
   console.warn(
-    "Nenhum modelo está configurado para o runtime agêntico: as tarefas vão falhar com PROVIDER_UNAVAILABLE. Configure OPENAI_API_KEY, ANTHROPIC_API_KEY, AGENT_LOCAL_BASE_URL ou AGENT_CODEX_URL.",
+    "Nenhum modelo está configurado para o runtime agêntico: as tarefas vão falhar com PROVIDER_UNAVAILABLE. Configure OPENAI_API_KEY, ANTHROPIC_API_KEY, AGENT_LOCAL_BASE_URL, AGENT_GEMINI_API_KEY, AGENT_CODEX_URL ou AGENT_OPENCODE_URL.",
   );
 }
+
+/*
+ * O que a pessoa vê quando pergunta quais modelos existem — no painel, e na conferência do deploy.
+ *
+ * `undefined` com o runtime desligado, como as rotas que ele descreve: um deployment que não tem
+ * tarefas não ganha uma tela de modelos que só descreveria tarefas.
+ */
+const modelCatalog = config.agentRuntime.enabled
+  ? buildModelCatalog({
+      providers,
+      configurations: config.agentRuntime.providers,
+      defaultProvider: config.agentRuntime.defaultProvider,
+    })
+  : undefined;
 const modelConfigurationStore = createModelConfigurationStore(database);
 void modelConfigurationStore
   .sync(config.agentRuntime.providers)
@@ -622,6 +637,8 @@ const app = createApp(
   // O Telegram, quando há token. As rotas de pareamento existem mesmo sem o runtime: ligar o chat é
   // o passo anterior a ter tarefas.
   telegram ? telegram.store : undefined,
+  // Quais modelos existem. Descreve o mesmo runtime que o serviço acima; com ele desligado, some.
+  modelCatalog,
 );
 
 /**

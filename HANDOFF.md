@@ -31,7 +31,8 @@ Travas que já custaram caro e continuam valendo:
 
 ## Estado atual
 
-- **1147 testes locais, 5 pulados, 0 falhas** (`bun run test:ci` na raiz; 116 arquivos).
+- **1183 testes locais, 5 pulados, 0 falhas** (`bun run test:ci` na raiz; 118 arquivos, medido em
+  2026-09-11 depois da correção da visão dos CLIs delegados).
 - **Bateria de turno único: 44/44** (`tools/bateria/rodar-tudo.sh`).
 - **Bateria de conversa: 5/5** (`tools/bateria/conversa.py`, incluída no `rodar-tudo.sh`).
 - Smoke do deploy passa nas 5 verificações, incluindo a que prova que o guarda de destino recusa a
@@ -55,6 +56,29 @@ homologado está em `docs/agentic/delivery-report.md`; o vocabulário do ciclo d
 Duas regras que valem para quem mexer: toda ação de navegador continua passando pelo
 `ComputerGateway` (o modelo nunca fala Playwright), e o Telegram não tem caminho próprio para o
 computador — ele cria tarefas no mesmo runtime que o painel usa.
+
+### Os motores: CLIs de agente, Gemini, e as skills da pessoa
+
+Depois do runtime, a mesma sessão abriu três caminhos novos para o modelo e um para as skills — sem
+tocar no laço, porque o modelo é dado de configuração e o navegador é o mesmo.
+
+| Onde | O quê |
+|---|---|
+| `agent-cli/` | um serviço que entrega a tarefa inteira a um CLI (OpenCode, MiMo Code); o CLI recebe o navegador pelo `shared/mcp-computer.ts`, então política e auditoria continuam valendo |
+| `server/src/agent-runtime/providers/gemini.ts` | Gemini pela API nativa (imagem como `inlineData`) |
+| `transport: "delegated"` | o transporte que era `codex` e passou a servir três ids: `codex`, `opencode`, `mimo` |
+| `tools/skills.sh` | leva catálogos de skills para os dois motores (Codex e OpenCode), fora do repositório de propósito |
+| `GET /api/models` | o que o runtime realmente alcança: id, modelo, transporte, `capabilities` e o padrão — a conferência do deploy |
+
+O que ficou medido: o OpenCode dirigiu o navegador da VPS pelo gateway (linha
+`computer.action_allowed` nomeando o Bot e a pessoa da declaração assinada), e o catálogo de skills
+chegou aos dois motores. O que **não** foi: MiMo Code real (só o fio, sem o CLI instalado), Gemini
+pago e o teste de canvas.
+
+Uma armadilha corrigida aqui e vale a pena saber: o adaptador delegado presumia `vision: true` por
+conta própria, então `AGENT_*_VISION=off` era uma linha de `.env` sem efeito — e a análise de tela
+escolhia justamente o provedor que não enxerga. A visão agora vem do deployment; o teste que prende
+isso é `server/tests/agent-model-catalog.test.ts`.
 
 ## O que esta sessão fez
 
