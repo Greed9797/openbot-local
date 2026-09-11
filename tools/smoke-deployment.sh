@@ -55,14 +55,28 @@ esac
 
 echo "5. O Bot usa o navegador quando pedem uma página?"
 # httpbin.org/uuid muda a cada leitura, então uma resposta certa não pode vir de memória.
+#
+# O `case` que existia aqui aprovava com `[0-9a-f]-[0-9a-f]`, que casa com qualquer coisa: o eco do
+# threadId (`smoke-1789…` casa em `e-1`) fazia o passo dizer "abriu a página e leu o valor" num turno
+# que tinha terminado em RUN_ERROR. Medido com a conta do Codex no limite de uso — dois deploys
+# passaram com o Bot sem conseguir responder nada. O critério agora é o valor lido, no formato exato
+# de um UUID, e a falha do turno é dita com o motivo que o serviço deu.
 resposta=$(curl -sS -N -m 200 -X POST "$API/api/copilotkit/agent/$AGENTE/run" \
   -H "content-type: application/json" \
   -d "{\"threadId\":\"smoke-$(date +%s)\",\"runId\":\"smoke\",\"messages\":[{\"id\":\"u1\",\"role\":\"user\",\"content\":\"Abra https://httpbin.org/uuid e diga o valor do campo uuid.\"}],\"tools\":[],\"context\":[],\"state\":{},\"forwardedProps\":{}}" 2>/dev/null)
+motivo=$(printf '%s' "$resposta" | tr ',' '\n' | sed -n 's/.*"message":"\([^"]*\)".*/\1/p' | head -1)
+uuid=$(printf '%s' "$resposta" | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)
 case "$resposta" in
-  *"Nenhuma página foi aberta"*) reprovar "o Bot respondeu de memória — ver AGENTS.md e as ferramentas" ;;
-  *[0-9a-f]-[0-9a-f]*)           aprovar "abriu a página e leu o valor" ;;
-  *)                             reprovar "resposta sem o valor pedido" ;;
+  *RUN_ERROR*)                   reprovar "o turno falhou: ${motivo:-sem motivo no fluxo}" ;;
 esac
+if [ -z "$uuid" ]; then
+  case "$resposta" in
+    *"Nenhuma página foi aberta"*) reprovar "o Bot respondeu de memória — ver AGENTS.md e as ferramentas" ;;
+    *)                             reprovar "resposta sem o valor lido: ${resposta: -160}" ;;
+  esac
+else
+  aprovar "abriu a página e leu o valor ($uuid)"
+fi
 
 echo
 if [ "$falhou" -ne 0 ]; then
