@@ -56,6 +56,24 @@ export type SharedComputerConfig = {
 export type ComputerConfig = DockerComputerConfig | SharedComputerConfig;
 
 /**
+ * Um modelo configurado neste deployment.
+ *
+ * `transport` é o dialeto, não a marca: `responses`, `messages` e `chat-completions` são três APIs
+ * diferentes, e duas empresas podem usar o mesmo dialeto. `codex` é o modo delegado, em que a tarefa
+ * inteira é entregue ao serviço do Codex.
+ */
+export type AgentModelConfig = {
+  id: string;
+  transport: "responses" | "messages" | "chat-completions" | "codex";
+  model: string;
+  baseUrl?: string;
+  apiKey?: string;
+  /** Presumida pelo nome do modelo até o teste de canvas homologá-la. Ver providers/index.ts. */
+  vision: boolean;
+  tools: boolean;
+};
+
+/**
  * The durable task runtime.
  *
  * Absent means the feature is off and its routes are not mounted, like the computer above. The
@@ -69,6 +87,8 @@ export type AgentRuntimeConfig = {
   pollMs: number;
   defaultProvider: string;
   defaultModel: string;
+  /** Os modelos que este deployment pode chamar, na ordem em que são preferidos. */
+  providers: AgentModelConfig[];
   /** How long a run lease lasts without a heartbeat; also the profile lock's TTL. */
   leaseTtlMs: number;
   maxSteps: number;
@@ -76,6 +96,14 @@ export type AgentRuntimeConfig = {
   maxCorrections: number;
   artifactsDir: string;
   artifactRetentionDays: number;
+  /**
+   * Hosts cujas páginas são gravadas para o painel mas nunca enviadas a um modelo.
+   *
+   * Classificação de dados é uma decisão do deployment, e a lista vazia é o padrão: uma empresa que
+   * trabalha com prontuários ou extratos escreve os hosts aqui e a captura dessas páginas passa a
+   * ficar retida para revisão em vez de seguir para o provedor. Ver NFR-05.
+   */
+  sensitiveHosts: string[];
   waitingHumanMinutes: number;
   idleBrowserMinutes: number;
 };
@@ -609,13 +637,139 @@ function wholeNumber(
   return value;
 }
 
+/**
+ * Os modelos que este deployment consegue chamar, lidos do ambiente.
+ *
+ * Cada bloco só existe quando a credencial (ou, para um modelo local, o endereço) existe. É a mesma
+ * pergunta que `configuredAuthProviders` faz para os provedores de identidade: um deployment tem o
+ * que tem, e a interface mostra isso em vez de oferecer o que vai falhar.
+ *
+ * Visão é presumida pelo nome do modelo e pode ser negada em `AGENT_TEXT_ONLY_PROVIDERS`. A presunção
+ * existe porque um nome de modelo sem visão recebendo uma imagem é um erro de payload, e o modo
+ * seguro do outro lado é não mandar imagem nenhuma; negar explicitamente é o que um deployment faz
+ * depois de rodar o teste de canvas contra o modelo e ver que ele não leu o que estava desenhado.
+ */
+function agentModels(environment: Environment): AgentModelConfig[] {
+  const textOnly = new Set(
+    commaSeparated(environment, "AGENT_TEXT_ONLY_PROVIDERS"),
+  );
+  const visionOverride = new Set(
+    commaSeparated(environment, "AGENT_VISION_PROVIDERS"),
+  );
+  const visionFor = (id: string, model: string): boolean => {
+    if (textOnly.has(id)) return false;
+    if (visionOverride.has(id)) return true;
+    return /gpt-5|gpt-4o|gpt-4\.1|o3|o4|claude|gemini|llava|qwen.*vl|pixtral|internvl/i.test(
+      model,
+    );
+  };
+  const models: AgentModelConfig[] = [];
+
+  const openaiKey =
+    optional(environment, "AGENT_OPENAI_API_KEY") ??
+    optional(environment, "OPENAI_API_KEY");
+  if (openaiKey) {
+    const model =
+      optional(environment, "AGENT_OPENAI_MODEL") ??
+      optional(environment, "BOT_MODEL") ??
+      "gpt-5.5";
+    const baseUrl =
+      optional(environment, "AGENT_OPENAI_BASE_URL") ??
+      optional(environment, "OPENAI_BASE_URL");
+    models.push({
+      id: "openai-responses",
+      transport: "responses",
+      model,
+      ...(baseUrl ? { baseUrl } : {}),
+      apiKey: openaiKey,
+      vision: visionFor("openai-responses", model),
+      tools: true,
+    });
+  }
+
+  const anthropicKey =
+    optional(environment, "AGENT_ANTHROPIC_API_KEY") ??
+    optional(environment, "ANTHROPIC_API_KEY");
+  if (anthropicKey) {
+    const model =
+      optional(environment, "AGENT_ANTHROPIC_MODEL") ?? "claude-sonnet-4-5";
+    const baseUrl =
+      optional(environment, "AGENT_ANTHROPIC_BASE_URL") ??
+      optional(environment, "ANTHROPIC_BASE_URL");
+    models.push({
+      id: "anthropic",
+      transport: "messages",
+      model,
+      ...(baseUrl ? { baseUrl } : {}),
+      apiKey: anthropicKey,
+      vision: visionFor("anthropic", model),
+      tools: true,
+    });
+  }
+
+  const localBaseUrl = optional(environment, "AGENT_LOCAL_BASE_URL");
+  if (localBaseUrl) {
+    const model = optional(environment, "AGENT_LOCAL_MODEL") ?? "llama3.1";
+    const localKey = optional(environment, "AGENT_LOCAL_API_KEY");
+    models.push({
+      id: "local",
+      transport: "chat-completions",
+      model,
+      baseUrl: localBaseUrl,
+      ...(localKey ? { apiKey: localKey } : {}),
+      vision: visionFor("local", model),
+      // Um modelo local pode não ter ferramentas; a variável existe para dizer isso sem descobrir na
+      // primeira chamada.
+      tools: flag(environment, "AGENT_LOCAL_TOOLS", true),
+    });
+  }
+
+  const codexUrl =
+    optional(environment, "AGENT_CODEX_URL") ??
+    optional(environment, "MANAGED_AGENT_AG_UI_URL");
+  if (codexUrl) {
+    models.push({
+      id: "codex",
+      transport: "codex",
+      model: optional(environment, "AGENT_CODEX_MODEL") ?? "codex default",
+      baseUrl: codexUrl,
+      vision: true,
+      tools: true,
+    });
+  }
+
+  return models;
+}
+
 function agentRuntimeConfig(environment: Environment): AgentRuntimeConfig {
+  const providers = agentModels(environment);
+  const defaultProvider =
+    optional(environment, "AGENT_DEFAULT_PROVIDER") ??
+    providers[0]?.id ??
+    "codex";
+  if (
+    optional(environment, "AGENT_DEFAULT_PROVIDER") &&
+    !providers.some((provider) => provider.id === defaultProvider)
+  ) {
+    // Escolher explicitamente um provedor que não existe é erro de configuração, e o lugar de
+    // descobrir isso é o boot: em execução, cada tarefa falharia por um motivo que ninguém lê.
+    throw new Error(
+      `AGENT_DEFAULT_PROVIDER aponta para ${defaultProvider}, que não está configurado. Configure-o (por exemplo com a credencial do provedor) ou remova a variável. Configurados: ${
+        providers.map((provider) => provider.id).join(", ") || "nenhum"
+      }`,
+    );
+  }
+  const defaultModel =
+    optional(environment, "AGENT_DEFAULT_MODEL") ??
+    providers.find((provider) => provider.id === defaultProvider)?.model ??
+    "default";
   return {
     enabled: flag(environment, "AGENT_RUNTIME_ENABLED", true),
     workerEnabled: flag(environment, "AGENT_WORKER_ENABLED", true),
     pollMs: wholeNumber(environment, "AGENT_POLL_MS", 1_000, 100),
-    defaultProvider: optional(environment, "AGENT_DEFAULT_PROVIDER") ?? "codex",
-    defaultModel: optional(environment, "AGENT_DEFAULT_MODEL") ?? "default",
+    defaultProvider,
+    defaultModel,
+    providers,
     leaseTtlMs: wholeNumber(environment, "AGENT_LEASE_TTL_MS", 60_000, 5_000),
     maxSteps: wholeNumber(environment, "AGENT_MAX_STEPS", 40, 1),
     maxRunMs: wholeNumber(environment, "AGENT_MAX_RUN_MS", 900_000, 10_000),
@@ -626,6 +780,9 @@ function agentRuntimeConfig(environment: Environment): AgentRuntimeConfig {
       "AGENT_ARTIFACT_RETENTION_DAYS",
       7,
       0,
+    ),
+    sensitiveHosts: commaSeparated(environment, "AGENT_SENSITIVE_HOSTS").map(
+      (host) => host.toLowerCase(),
     ),
     waitingHumanMinutes: wholeNumber(
       environment,

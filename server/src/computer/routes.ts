@@ -361,6 +361,20 @@ export function createComputerRoutes(
     ),
   );
 
+  routes.post("/:botId/select", (context) =>
+    act(context, (botId, actor, body, signal) => {
+      const ref = asRef(body);
+      if (!ref) return badRef;
+      if (typeof body?.value !== "string") {
+        return {
+          error:
+            "Escolher uma opção precisa do value da opção, não do texto que aparece na tela.",
+        };
+      }
+      return gateway.select(botId, actor, { ...ref, value: body.value }, signal);
+    }),
+  );
+
   /**
    * Who has the wheel. Polled by the surface next to the screen, so the person sees the Bot ask for
    * help without reloading anything.

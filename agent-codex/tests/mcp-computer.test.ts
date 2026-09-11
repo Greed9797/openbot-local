@@ -110,4 +110,101 @@ describe("contrato das ferramentas", () => {
       ?.inputSchema as { required: string[] };
     expect(schema.required).toEqual(["url"]);
   });
+
+  test("escolher_opcao exige ref, snapshotId e value", () => {
+    const schema = tools.find((tool) => tool.name === "escolher_opcao")
+      ?.inputSchema as { required: string[] };
+    expect(schema.required).toEqual(["ref", "snapshotId", "value"]);
+  });
+
+  test("pedir_ajuda exige o motivo", () => {
+    const schema = tools.find((tool) => tool.name === "pedir_ajuda")
+      ?.inputSchema as { required: string[] };
+    expect(schema.required).toEqual(["motivo"]);
+  });
+});
+
+/**
+ * A imagem, que era o buraco apontado pela auditoria.
+ *
+ * O protocolo aceita resultado de imagem; o que faltava era devolvê-lo. Um teste que só olhasse o
+ * nome da ferramenta passaria com o bridge mandando base64 como texto, que é exatamente o estado
+ * anterior — por isso a asserção é sobre o formato do conteúdo.
+ */
+describe("a captura chega como imagem", () => {
+  test("ver_a_tela devolve conteúdo image com o mime, e os metadados em texto", async () => {
+    const original = globalThis.fetch;
+    const calls: string[] = [];
+    globalThis.fetch = (async (url: string) => {
+      calls.push(String(url));
+      return new Response(
+        JSON.stringify({
+          base64: "aVZCT1J3MEtHZ29B",
+          width: 1280,
+          height: 800,
+          capturedAt: "2026-09-11T10:00:00.000Z",
+          url: "https://exemplo.test/form",
+          masked: 2,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    try {
+      const [reply] = (await ask({
+        jsonrpc: "2.0",
+        id: 9,
+        method: "tools/call",
+        params: { name: "ver_a_tela", arguments: {} },
+      })) as {
+        result: { content: { type: string; data?: string; mimeType?: string; text?: string }[] };
+      }[];
+
+      expect(reply.result.content[0]).toEqual({
+        type: "image",
+        data: "aVZCT1J3MEtHZ29B",
+        mimeType: "image/png",
+      });
+      const metadata = JSON.parse(String(reply.result.content[1]?.text));
+      expect(metadata).toEqual({
+        url: "https://exemplo.test/form",
+        width: 1280,
+        height: 800,
+        capturadaEm: "2026-09-11T10:00:00.000Z",
+        mascarados: 2,
+      });
+      // O base64 aparece uma vez só, como imagem, e nunca de novo dentro do texto.
+      expect(String(reply.result.content[1]?.text)).not.toContain("aVZCT1J3MEtHZ29B");
+      expect(calls[0]).toContain("/screenshot");
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  test("uma captura recusada durante um segredo não vira imagem", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          error: "A person is entering a value the assistant must not see.",
+          secretPending: true,
+        }),
+        { status: 409, headers: { "content-type": "application/json" } },
+      )) as unknown as typeof fetch;
+
+    try {
+      const [reply] = (await ask({
+        jsonrpc: "2.0",
+        id: 10,
+        method: "tools/call",
+        params: { name: "ver_a_tela", arguments: {} },
+      })) as { result: { content: { type: string; text?: string }[] } }[];
+
+      expect(reply.result.content).toHaveLength(1);
+      expect(reply.result.content[0]?.type).toBe("text");
+      expect(String(reply.result.content[0]?.text)).toContain("must not see");
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
 });

@@ -4,6 +4,14 @@ import { createAgentProfileStore } from "./agents/profile-store";
 import { createRuntimeAgentLoader } from "./agents/runtime-agents";
 import { createAgentRunRepository } from "./agent-runs/repository";
 import { createAgentRunService } from "./agent-runs/service";
+import { createAgentRunWorker } from "./agent-runs/worker";
+import { createArtifactStore } from "./agent-runtime/artifact-store";
+import { createBrowserTools } from "./agent-runtime/browser-tools";
+import { createAgentRunExecutor } from "./agent-runtime/loop";
+import { createModelConfigurationStore } from "./agent-runtime/model-configurations";
+import { createGatewayObservationSource } from "./agent-runtime/observation";
+import { createProviderRegistry } from "./agent-runtime/registry";
+import { createConfiguredProviders } from "./agent-runtime/providers";
 import { createApp } from "./app";
 import { createAuditReader, createAuditStore, recordAuditEvent } from "./audit";
 import { createAuth } from "./auth";
@@ -262,6 +270,41 @@ const agentRunService = config.agentRuntime.enabled
   : undefined;
 
 /**
+ * Onde as imagens de uma tarefa ficam, e o que pode sair delas.
+ *
+ * O diretório é configurável porque num container ele é um volume: apagar o container não pode
+ * apagar as evidências de uma tarefa, e um volume que cresce sem prazo é uma conta que chega depois.
+ * Por isso a retenção mora na linha, e não numa política escrita em algum lugar.
+ */
+const artifactStore = createArtifactStore({
+  repository: agentRunRepository,
+  root: config.agentRuntime.artifactsDir,
+  retentionDays: config.agentRuntime.artifactRetentionDays,
+});
+
+/**
+ * Os modelos deste deployment, e o registro do que existe.
+ *
+ * A lista vem do ambiente; a tabela é a cópia que a interface e o Telegram leem. Um deployment sem
+ * credencial nenhuma sobe com zero provedores: as tarefas falham com `PROVIDER_UNAVAILABLE` e dizem
+ * isso, em vez de o servidor não subir.
+ */
+const providers = createProviderRegistry(
+  createConfiguredProviders(config.agentRuntime.providers),
+);
+if (config.agentRuntime.enabled && config.agentRuntime.providers.length === 0) {
+  console.warn(
+    "Nenhum modelo está configurado para o runtime agêntico: as tarefas vão falhar com PROVIDER_UNAVAILABLE. Configure OPENAI_API_KEY, ANTHROPIC_API_KEY, AGENT_LOCAL_BASE_URL ou AGENT_CODEX_URL.",
+  );
+}
+const modelConfigurationStore = createModelConfigurationStore(database);
+void modelConfigurationStore
+  .sync(config.agentRuntime.providers)
+  .catch((error) => {
+    console.error("Não foi possível gravar os modelos configurados.", error);
+  });
+
+/**
  * What a Bot can reach beyond its own computer.
  *
  * Built here rather than beside the component store because it needs the policy, and it needs the
@@ -462,7 +505,62 @@ const app = createApp(
   createKnowledgeSearch(database),
   // Durable tasks. Undefined when the runtime is switched off, which unmounts the routes.
   agentRunService,
+  // As rotas de imagem: capturar, classificar e guardar são a mesma decisão, e sem o gateway não há
+  // de onde capturar.
+  computerGateway
+    ? {
+        gateway: computerGateway,
+        artifacts: artifactStore,
+        sensitiveHosts: config.agentRuntime.sensitiveHosts,
+        retentionDays: config.agentRuntime.artifactRetentionDays,
+      }
+    : undefined,
 );
+
+/**
+ * O executor das tarefas: o ciclo observar→decidir→agir, e o worker que o alimenta.
+ *
+ * Montado aqui, e não dentro do serviço, porque ele precisa das três coisas que só o boot tem: o
+ * gateway (por onde toda ação passa), os provedores configurados e o armazém de artefatos. Sem
+ * computador não há o que observar, então o worker não sobe: as tarefas ficam na fila visíveis em vez
+ * de falharem sozinhas por um motivo que ninguém pediu.
+ */
+if (agentRunService && computerGateway && config.agentRuntime.workerEnabled) {
+  const executor = createAgentRunExecutor({
+    repository: agentRunRepository,
+    auditStore: bootAuditStore,
+    providers,
+    observations: createGatewayObservationSource({
+      gateway: computerGateway,
+      artifacts: artifactStore,
+      sensitiveHosts: config.agentRuntime.sensitiveHosts,
+      retentionDays: config.agentRuntime.artifactRetentionDays,
+    }),
+    tools: createBrowserTools({ gateway: computerGateway }),
+    leaseTtlMs: config.agentRuntime.leaseTtlMs,
+    maxCorrections: config.agentRuntime.maxCorrections,
+    maxRefusals: 2,
+    maxProviderRetries: 1,
+  });
+  const worker = createAgentRunWorker({
+    repository: agentRunRepository,
+    service: agentRunService,
+    execute: executor,
+    owner: `server:${process.pid}`,
+    pollMs: config.agentRuntime.pollMs,
+    leaseTtlMs: config.agentRuntime.leaseTtlMs,
+    concurrency: 1,
+    housekeeping: async () => {
+      await artifactStore.deleteExpired();
+    },
+  });
+  worker.start();
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    process.on(signal, () => {
+      void worker.stop();
+    });
+  }
+}
 
 /**
  * The live screen, proxied.

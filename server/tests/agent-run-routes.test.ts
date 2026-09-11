@@ -18,6 +18,13 @@ import { createDatabase } from "../src/db/client";
 import { agentRuns } from "../src/db/schema";
 import { TEST_POOL } from "./support/database";
 
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createArtifactStore } from "../src/agent-runtime/artifact-store";
+import type { ComputerGateway } from "../src/computer/gateway";
+import type { RunVision } from "../src/agent-runs/routes";
+
 const database = createDatabase(
   process.env.DATABASE_URL ??
     "postgres://openbot:openbot@127.0.0.1:5432/openbot",
@@ -67,6 +74,41 @@ function appFor(actor: AuthenticatedActor) {
   app.route(
     "/api/agent-runs",
     createAgentRunRoutes(service, asActor(actor)),
+  );
+  return app;
+}
+
+const PIXEL_PNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+
+/** As rotas de imagem, com um computador de mentira e um armazém de verdade. */
+async function visionFor(options: {
+  screenshotUrl?: string;
+  masked?: number;
+} = {}): Promise<RunVision> {
+  const root = await mkdtemp(join(tmpdir(), "openbot-route-artifacts-"));
+  return {
+    gateway: {
+      screenshot: async () => ({
+        base64: PIXEL_PNG,
+        width: 1280,
+        height: 800,
+        capturedAt: "2026-09-11T10:00:00.000Z",
+        url: options.screenshotUrl ?? "https://exemplo.test/form",
+        masked: options.masked ?? 0,
+      }),
+    } as unknown as ComputerGateway,
+    artifacts: createArtifactStore({ repository, root, retentionDays: 7 }),
+    sensitiveHosts: ["banco.test"],
+    retentionDays: 7,
+  };
+}
+
+function appWithVision(actor: AuthenticatedActor, vision?: RunVision) {
+  const app = new Hono<{ Variables: AppVariables }>();
+  app.route(
+    "/api/agent-runs",
+    createAgentRunRoutes(service, asActor(actor), vision),
   );
   return app;
 }
@@ -211,5 +253,116 @@ describe("task routes", () => {
     };
     expect(body.events.length).toBeGreaterThan(0);
     expect(body.events[0]?.type).toBe("run.created");
+  });
+});
+
+/**
+ * A imagem de uma tarefa: capturar, classificar, guardar e servir.
+ *
+ * O que se fixa aqui é o caminho do PRD — a captura vira artefato com classificação e destinos, os
+ * bytes saem por um endereço próprio, e um artefato de outra pessoa responde como inexistente. Sem
+ * esta última parte, um id adivinhado leria a tela de outro usuário.
+ */
+describe("imagem de uma tarefa", () => {
+  test("a captura vira artefato, e os bytes saem pelo endereço do artefato", async () => {
+    const { payload } = await create(member, {
+      botId: "bot-routes",
+      objective: "Ver a tela.",
+    });
+    const id = payload.run?.id;
+    const app = appWithVision(member, await visionFor({ masked: 2 }));
+
+    const captured = await app.request(`/api/agent-runs/${id}/screenshot`, {
+      method: "POST",
+    });
+    expect(captured.status).toBe(200);
+    const body = (await captured.json()) as {
+      artifact: {
+        id: string;
+        mime: string;
+        classification: string;
+        protection: string;
+        allowedDestinations: string[];
+      };
+    };
+    expect(body.artifact.mime).toBe("image/png");
+    expect(body.artifact.classification).toBe("internal");
+    expect(body.artifact.protection).toBe("masked");
+    expect(body.artifact.allowedDestinations).toContain("model");
+
+    const bytes = await app.request(
+      `/api/agent-runs/${id}/artifacts/${body.artifact.id}`,
+    );
+    expect(bytes.status).toBe(200);
+    expect(bytes.headers.get("content-type")).toBe("image/png");
+    expect(bytes.headers.get("cache-control")).toBe("no-store");
+    expect(Buffer.from(await bytes.arrayBuffer()).toString("base64")).toBe(
+      PIXEL_PNG,
+    );
+  });
+
+  test("uma página sensível fica retida para o painel e não vai ao modelo", async () => {
+    const { payload } = await create(member, {
+      botId: "bot-routes",
+      objective: "Ver a tela do banco.",
+    });
+    const app = appWithVision(
+      member,
+      await visionFor({ screenshotUrl: "https://app.banco.test/extrato" }),
+    );
+    const captured = (await (
+      await app.request(`/api/agent-runs/${payload.run?.id}/screenshot`, {
+        method: "POST",
+      })
+    ).json()) as {
+      artifact: { classification: string; allowedDestinations: string[] };
+    };
+    expect(captured.artifact.classification).toBe("sensitive");
+    expect(captured.artifact.allowedDestinations).toEqual(["panel"]);
+  });
+
+  test("o artefato de outra pessoa responde como inexistente", async () => {
+    const mine = await create(member, {
+      botId: "bot-routes",
+      objective: "Minha tela.",
+    });
+    const theirs = await create(other, {
+      botId: "bot-routes",
+      objective: "Tela alheia.",
+    });
+    const vision = await visionFor();
+    const app = appWithVision(member, vision);
+
+    const captured = (await (
+      await app.request(`/api/agent-runs/${mine.payload.run?.id}/screenshot`, {
+        method: "POST",
+      })
+    ).json()) as { artifact: { id: string } };
+
+    // O mesmo artefato, pedido sob a tarefa de outra pessoa.
+    const stolen = await app.request(
+      `/api/agent-runs/${theirs.payload.run?.id}/artifacts/${captured.artifact.id}`,
+    );
+    expect(stolen.status).toBe(404);
+
+    // E a tarefa de outra pessoa nem pode ser vista por quem não é dono dela.
+    const wrongOwner = await app.request(
+      `/api/agent-runs/${theirs.payload.run?.id}/screenshot`,
+      { method: "POST" },
+    );
+    expect(wrongOwner.status).toBe(404);
+  });
+
+  test("sem navegador ligado, a rota diz isso em vez de falhar por dentro", async () => {
+    const { payload } = await create(member, {
+      botId: "bot-routes",
+      objective: "Sem visão.",
+    });
+    const app = appWithVision(member, undefined);
+    const response = await app.request(
+      `/api/agent-runs/${payload.run?.id}/screenshot`,
+      { method: "POST" },
+    );
+    expect(response.status).toBe(503);
   });
 });

@@ -162,6 +162,8 @@ export interface AgentRunRepository {
   insertArtifact(input: NewArtifactInput): Promise<RunArtifactRow>;
   artifact(id: string): Promise<RunArtifactRow | undefined>;
   artifacts(runId: string): Promise<RunArtifactRow[]>;
+  expiredArtifacts(now: Date, limit: number): Promise<RunArtifactRow[]>;
+  deleteArtifact(id: string): Promise<void>;
   acquireProfileLease(
     input: AcquireProfileLeaseInput,
   ): Promise<{ generation: number } | undefined>;
@@ -520,6 +522,28 @@ export function createAgentRunRepository(
   }
 
   /**
+   * Artefatos que passaram do prazo de retenção, mais antigos primeiro.
+   *
+   * Com limite porque uma implantação parada por semanas volta com uma pilha de imagens vencidas: sem
+   * ele, o primeiro tick depois da parada carregaria todas na memória para apagar uma por uma.
+   */
+  async function expiredArtifacts(
+    now: Date,
+    limit: number,
+  ): Promise<RunArtifactRow[]> {
+    return database
+      .select()
+      .from(runArtifacts)
+      .where(lt(runArtifacts.retentionUntil, now))
+      .orderBy(asc(runArtifacts.retentionUntil))
+      .limit(limit);
+  }
+
+  async function deleteArtifact(id: string): Promise<void> {
+    await database.delete(runArtifacts).where(eq(runArtifacts.id, id));
+  }
+
+  /**
    * Take the profile lock, or fail because somebody holds it.
    *
    * The upsert's `WHERE` is the lock: it may take a row that is free or expired, or one this same
@@ -722,6 +746,8 @@ export function createAgentRunRepository(
     insertArtifact,
     artifact,
     artifacts,
+    expiredArtifacts,
+    deleteArtifact,
     acquireProfileLease,
     renewProfileLease,
     releaseProfileLease,

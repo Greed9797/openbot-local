@@ -165,6 +165,75 @@ const tools: Tool[] = [
     }),
     call: (args) => computer("scroll", { method: "POST", body: args }),
   },
+  {
+    name: "ver_a_tela",
+    description:
+      "Tira uma foto do navegador e devolve a imagem. Use quando o texto não bastar: conteúdo desenhado em canvas, um gráfico, um estado visual, ou quando precisar conferir o que a pessoa está vendo. Campos de senha saem mascarados, e durante a digitação de um segredo a captura é recusada de propósito.",
+    inputSchema: object({}),
+    call: async () => {
+      const shot = (await computer("screenshot", { method: "GET" })) as {
+        base64?: string;
+        width?: number;
+        height?: number;
+        url?: string;
+        masked?: number;
+        capturedAt?: string;
+        recusado?: boolean;
+      };
+      if (shot.recusado || !shot.base64) return shot;
+      /*
+       * A imagem vai como conteúdo `image`, não como texto.
+       *
+       * Era este o buraco apontado pela auditoria: o bridge serializava tudo em `JSON.stringify`, e
+       * um modelo que recebe uma parede de base64 não vê imagem nenhuma. O protocolo já previa
+       * resultados de imagem; o que faltava era devolvê-los assim. O texto que acompanha são só os
+       * metadados — nunca o base64 em duas formas.
+       */
+      return {
+        content: [
+          { type: "image", data: shot.base64, mimeType: "image/png" },
+          {
+            type: "text",
+            text: JSON.stringify({
+              url: shot.url,
+              width: shot.width,
+              height: shot.height,
+              capturadaEm: shot.capturedAt,
+              mascarados: shot.masked ?? 0,
+            }),
+          },
+        ],
+      };
+    },
+  },
+  {
+    name: "pedir_ajuda",
+    description:
+      "Para e chama uma pessoa: login, CAPTCHA, 2FA, ou qualquer decisão que só o operador pode tomar. Use também quando a política recusar uma ação e você não tiver outro caminho.",
+    inputSchema: object(
+      { motivo: text("Em uma frase, o que está impedindo e o que a pessoa precisa fazer") },
+      ["motivo"],
+    ),
+    call: (args) =>
+      computer("control/request", {
+        method: "POST",
+        body: { reason: args.motivo },
+      }),
+  },
+  {
+    name: "escolher_opcao",
+    description:
+      "Escolhe uma opção de um campo de seleção (dropdown). O valor é o `value` da opção, não o texto que aparece na tela.",
+    inputSchema: object(
+      {
+        ref: text("O ref do campo de seleção, vindo do último mapear_pagina"),
+        snapshotId: number("O snapshotId de onde o ref veio"),
+        value: text("O value da opção a escolher"),
+      },
+      ["ref", "snapshotId", "value"],
+    ),
+    call: (args) => computer("select", { method: "POST", body: args }),
+  },
 ];
 
 /**
@@ -258,6 +327,19 @@ async function handle(message: {
       const result = await tool.call(
         (params?.arguments as Record<string, unknown>) ?? {},
       );
+      /*
+       * Uma ferramenta pode devolver conteúdo MCP pronto — a imagem de `ver_a_tela`. É o único
+       * caminho em que o resultado não é texto, e é por isso que ele é reconhecido aqui em vez de
+       * cada ferramenta embrulhar o próprio envelope.
+       */
+      if (
+        result &&
+        typeof result === "object" &&
+        "content" in result &&
+        Array.isArray(result.content)
+      ) {
+        return reply(id, { content: result.content });
+      }
       return reply(id, {
         content: [{ type: "text", text: JSON.stringify(result) }],
       });

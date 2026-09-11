@@ -23,6 +23,10 @@ export type AgentRunWorkerOptions = {
   leaseTtlMs: number;
   /** How many runs this worker drives at once. One on a small VPS. */
   concurrency?: number;
+  /** Trabalho periódico que não pertence a nenhuma tarefa — hoje, apagar artefatos vencidos. */
+  housekeeping?: () => Promise<void>;
+  /** De quanto em quanto tempo chamá-lo. Um minuto por padrão. */
+  housekeepingEveryMs?: number;
 };
 
 export interface AgentRunWorker {
@@ -52,6 +56,7 @@ export function createAgentRunWorker(
   let timer: ReturnType<typeof setInterval> | undefined;
   let ticking = false;
   let stopped = false;
+  let lastHousekeeping = 0;
 
   async function settleFailure(
     runId: string,
@@ -147,6 +152,7 @@ export function createAgentRunWorker(
   async function tick(): Promise<number> {
     if (stopped) return 0;
     await options.service.recoverExpired();
+    await housekeepingIfDue();
     const waiting = await options.repository.queued(concurrency);
     let started = 0;
     for (const candidate of waiting) {
@@ -164,6 +170,27 @@ export function createAgentRunWorker(
       inflight.add(task);
     }
     return started;
+  }
+
+  /**
+   * O trabalho que não é de nenhuma tarefa: apagar o que passou do prazo.
+   *
+   * Não a cada tick, porque uma varredura por segundo para achar zero linhas é custo sem resposta, e
+   * não em um processo separado, porque o worker já é o processo que está de pé. Uma vez por minuto,
+   * e uma falha aqui não derruba o tick: um artefato que ficou um minuto a mais não é motivo para
+   * parar de executar tarefas.
+   */
+  async function housekeepingIfDue(): Promise<void> {
+    if (!options.housekeeping) return;
+    const interval = options.housekeepingEveryMs ?? 60_000;
+    const now = Date.now();
+    if (now - lastHousekeeping < interval) return;
+    lastHousekeeping = now;
+    try {
+      await options.housekeeping();
+    } catch (error) {
+      console.error("Agent run housekeeping failed.", error);
+    }
   }
 
   return {

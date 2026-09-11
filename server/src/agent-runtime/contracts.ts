@@ -49,6 +49,16 @@ export type AgentObservation = {
   /** Who is driving the browser, and whether a secret is pending — both block acting. */
   control: { holder: "bot" | "human"; secretPending: boolean };
   images: ObservationImage[];
+  /**
+   * Why there is no image when one was asked for.
+   *
+   * "The capture failed" and "the capture was withheld" are different facts and both are worth
+   * telling the model, which otherwise reads an empty `images` as a page with nothing to look at.
+   * Absent when an image was delivered or when none was requested.
+   */
+  imageNote?: string;
+  /** How many spans of the page text were removed before it was given to a model. */
+  redactions: number;
   /** True when the engine was the text-only one and there is no Chromium page behind this. */
   textOnly: boolean;
 };
@@ -83,6 +93,8 @@ export type ToolOutcome = {
 
 export type ToolCallContext = {
   runId: string;
+  /** O computador em que a ferramenta age. Vem do run, nunca do modelo. */
+  botId: string;
   stepSeq: number;
   actor: ActionActor;
   signal: AbortSignal;

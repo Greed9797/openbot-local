@@ -50,6 +50,34 @@ export class StaleSnapshotError extends Error {
 }
 
 /**
+ * Uma pessoa está com o volante agora.
+ *
+ * Distinto de um snapshot vencido, que é resolvido tirando outro: aqui nada que o Bot fizer resolve,
+ * e o que ele deve fazer é esperar. Sem este tipo, a resposta do computador (409, como o snapshot
+ * vencido) faria o modelo repetir a mesma ação para sempre enquanto a pessoa preenche um formulário.
+ */
+export class HumanHasControlError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = "HumanHasControlError";
+  }
+}
+
+/**
+ * A página está recebendo um valor que o Bot não pode ver.
+ *
+ * Uma captura durante a digitação de um segredo devolveria ao modelo exatamente o que este caminho
+ * existe para manter fora dele. Distinto de uma falha: o que o Bot deve fazer é esperar a pessoa
+ * terminar.
+ */
+export class SecretPendingError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = "SecretPendingError";
+  }
+}
+
+/**
  * Transport options used inside the computer gateway.
  *
  * This is an internal seam. Application code uses ComputerGateway and does not
@@ -244,6 +272,17 @@ function throwMappedError(
 ): never {
   const detail =
     typeof body?.error === "string" ? body.error : `HTTP ${status}`;
+  /*
+   * Uma pessoa está dirigindo. Vem como 409, o mesmo status de um ref vencido, e por isso precisa ser
+   * distinguido pela marca que o computador manda junto: tratado como "snapshot velho", o modelo
+   * tiraria outro snapshot e tentaria de novo para sempre enquanto a pessoa trabalha.
+   */
+  if (body?.humanHasControl === true) {
+    throw new HumanHasControlError(detail);
+  }
+  if (body?.secretPending === true) {
+    throw new SecretPendingError(detail);
+  }
   if (status === 409) {
     throw new StaleSnapshotError(detail);
   }

@@ -32,7 +32,7 @@ import type { ComputerGateway } from "./computer/gateway";
 import type { PolicyStore } from "./computer/policy-store";
 import { createComputerRoutes } from "./computer/routes";
 import { configuredAuthProviders, type DeploymentConfig } from "./config";
-import { createAgentRunRoutes } from "./agent-runs/routes";
+import { createAgentRunRoutes, type RunVision } from "./agent-runs/routes";
 import type { AgentRunService } from "./agent-runs/service";
 import type { ConnectorAdminService } from "./connectors";
 import type { KnowledgeSearch } from "./connectors/knowledge-search";
@@ -163,6 +163,11 @@ export function createApp(
    * uma superfície que não funciona, e sim nenhuma superfície.
    */
   agentRunService?: AgentRunService,
+  /**
+   * Imagem de uma tarefa: o gateway que captura, o armazém que guarda e a classificação que decide
+   * para onde a captura pode ir. Ausente desmonta as duas rotas de imagem.
+   */
+  agentVision?: RunVision,
 ) {
   const app = new Hono<{ Variables: AppVariables }>();
 
@@ -912,7 +917,7 @@ export function createApp(
   if (agentRunService) {
     app.route(
       "/api/agent-runs",
-      createAgentRunRoutes(agentRunService, requireUser),
+      createAgentRunRoutes(agentRunService, requireUser, agentVision),
     );
   }
 

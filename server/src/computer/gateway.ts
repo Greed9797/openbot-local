@@ -24,7 +24,9 @@ import { checkComputerAddress } from "./target";
 export {
   ComputerUnavailableError,
   ElementNotFoundError,
+  HumanHasControlError,
   NavigationRefusedError,
+  SecretPendingError,
   StaleSnapshotError,
   WorkspaceRefusedError,
   WorkspaceRequestError,
@@ -56,6 +58,7 @@ import type {
   RunCommandResult,
   ScreenshotResult,
   ScrollInput,
+  SelectInput,
   SecretRequest,
   SecretResult,
   SnapshotElement,
@@ -87,6 +90,17 @@ export type ActionActor = {
   id: string;
   /** Null unless this is a real row in `users`, because the audit table has a foreign key to it. */
   userId?: string;
+  /**
+   * The durable task this action belongs to, when a task is driving rather than a person.
+   *
+   * Recorded so an investigator reading one row of the computer trail can find the run it came from
+   * without correlating timestamps, and so a run's steps and the actions it took are the same story
+   * told from both ends. Never used to authorize anything: the policy is asked the same question
+   * whoever is driving.
+   */
+  runId?: string;
+  /** The step within that run, when the caller knows it. */
+  stepId?: string;
 };
 
 export type ComputerGatewayOptions = {
@@ -150,6 +164,12 @@ export interface ComputerGateway {
     botId: string,
     actor: ActionActor,
     input: ScrollInput,
+  ): Promise<ActionResult>;
+  select(
+    botId: string,
+    actor: ActionActor,
+    input: SelectInput,
+    signal?: AbortSignal,
   ): Promise<ActionResult>;
   readFile(
     botId: string,
@@ -739,6 +759,33 @@ export function createComputerGateway(
     },
 
     /**
+     * Escolher uma opção, decidida antes de acontecer.
+     *
+     * O valor não entra no assunto da política nem na linha de auditoria. Mesma razão do texto
+     * digitado: uma escolha pode ser a categoria de um produto ou a nacionalidade de uma pessoa, e o
+     * que uma regra precisa julgar é o elemento, não o conteúdo. Quem precisa saber qual opção foi
+     * escolhida lê o passo da tarefa, onde o modelo registrou o que pediu.
+     */
+    select(
+      botId: string,
+      actor: ActionActor,
+      input: SelectInput,
+      signal?: AbortSignal,
+    ) {
+      return govern(
+        "computer_select",
+        botId,
+        actor,
+        {
+          ref: input.ref,
+          snapshotId: input.snapshotId,
+          ...(signal ? { signal } : {}),
+        },
+        () => post<ActionResult>(botId, "/select", input, signal),
+      );
+    },
+
+    /**
      * The file tools, governed like everything else.
      *
      * The read is governed too, unlike reading a page. A page was permitted when it was opened; the
@@ -928,6 +975,15 @@ async function write(
       action: entry.toolName,
       bot: entry.botId,
       actor: entry.actor.id,
+      /*
+       * Qual tarefa durável pediu isto, quando foi uma.
+       *
+       * Sem estes dois campos, ligar uma linha do computador ao run que a pediu depende de comparar
+       * relógios de processos diferentes. Não autoriza nada: a decisão de política é a mesma para
+       * uma pessoa e para uma tarefa.
+       */
+      ...(entry.actor.runId ? { run: entry.actor.runId } : {}),
+      ...(entry.actor.stepId ? { step: entry.actor.stepId } : {}),
       page: entry.pageUrl,
       ref: entry.ref ?? null,
       /*
@@ -1014,6 +1070,7 @@ async function writeControlEvent(
     payload: {
       bot: entry.botId,
       actor: entry.actor.id,
+      ...(entry.actor.runId ? { run: entry.actor.runId } : {}),
       ...(entry.reason ? { reason: entry.reason } : {}),
     },
   });

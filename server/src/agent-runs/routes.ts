@@ -7,6 +7,9 @@
  */
 import type { Context, MiddlewareHandler } from "hono";
 import { Hono } from "hono";
+import type { ArtifactStore } from "../agent-runtime/artifact-store";
+import { classifyCapture } from "../agent-runtime/image-input";
+import type { ComputerGateway } from "../computer/gateway";
 import type { AppVariables } from "../auth/guards";
 import type { AgentRunRow } from "./repository";
 import type { AgentRunService } from "./service";
@@ -14,6 +17,19 @@ import { AgentRunError, eventView, runView, stepView } from "./service";
 import type { CreateRunInput, RunStatus } from "./types";
 
 export type RunRoutesService = AgentRunService;
+
+/**
+ * O que as rotas de imagem precisam: capturar, classificar, gravar.
+ *
+ * Um objeto em vez de três parâmetros soltos porque as três andam juntas — uma captura sem
+ * classificação é uma imagem sem decisão de destino, e é exatamente o que não pode existir.
+ */
+export type RunVision = {
+  gateway: ComputerGateway;
+  artifacts: ArtifactStore;
+  sensitiveHosts: readonly string[];
+  retentionDays: number;
+};
 
 function statusOf(error: unknown): {
   status: 404 | 409 | 400 | 500;
@@ -32,6 +48,7 @@ function statusOf(error: unknown): {
 export function createAgentRunRoutes(
   service: RunRoutesService,
   requireUser: MiddlewareHandler<{ Variables: AppVariables }>,
+  vision?: RunVision,
 ) {
   const routes = new Hono<{ Variables: AppVariables }>();
 
@@ -246,6 +263,114 @@ export function createAgentRunRoutes(
         "content-type": "text/event-stream",
         "cache-control": "no-cache",
         connection: "keep-alive",
+      },
+    });
+  });
+
+  /**
+   * A captura de uma tarefa, sob demanda.
+   *
+   * Quem pede já pode ver a tarefa; o que a rota acrescenta é a decisão sobre a imagem. Ela é
+   * classificada pelo host, gravada com prazo e destinos, e devolvida como metadado — os bytes saem
+   * por `GET /:id/artifacts/:artifactId`, um caminho com autorização própria, para que uma imagem
+   * não viaje por acidente em toda resposta que a menciona.
+   *
+   * `/tela` do Telegram não gasta uma chamada de modelo por causa disto: capturar e analisar são
+   * duas rotas, e esta é a primeira.
+   */
+  routes.post("/:id/screenshot", requireUser, async (context) => {
+    if (!vision) {
+      return context.json(
+        { error: "Este deployment não tem navegador ligado ao runtime." },
+        503,
+      );
+    }
+    let run: AgentRunRow;
+    try {
+      run = await loadVisible(context.req.param("id"), context);
+    } catch (error) {
+      const { status, body } = statusOf(error);
+      return context.json(body, status);
+    }
+    try {
+      const shot = await vision.gateway.screenshot(run.botId);
+      const url = shot.url ?? "";
+      const classified = classifyCapture({
+        url,
+        sensitiveHosts: vision.sensitiveHosts,
+      });
+      const artifact = await vision.artifacts.capture({
+        runId: run.id,
+        stepId: null,
+        kind: "screenshot",
+        data: shot.base64,
+        mime: "image/png",
+        url,
+        width: shot.width,
+        height: shot.height,
+        capturedAt: shot.capturedAt,
+        classification: classified.classification,
+        protection: (shot.masked ?? 0) > 0 ? "masked" : "none",
+        allowedDestinations: classified.destinations,
+        retentionDays: vision.retentionDays,
+        metadata: { masked: shot.masked ?? 0, reason: classified.reason },
+      });
+      await service.recordEvent(run.id, "run.screenshot", {
+        artifactId: artifact.id,
+        url,
+        by: context.var.actor.id,
+      });
+      return context.json({
+        artifact: {
+          id: artifact.id,
+          mime: artifact.mime,
+          width: artifact.width,
+          height: artifact.height,
+          bytes: artifact.bytes,
+          classification: artifact.classification,
+          protection: artifact.protection,
+          allowedDestinations: artifact.allowedDestinations,
+          retentionUntil: artifact.retentionUntil,
+          createdAt: artifact.createdAt,
+          metadata: artifact.metadata,
+        },
+      });
+    } catch (error) {
+      return context.json(
+        { error: error instanceof Error ? error.message : "A captura falhou." },
+        502,
+      );
+    }
+  });
+
+  /**
+   * Os bytes de um artefato.
+   *
+   * A resposta mais fechada que serve: uma imagem, sem lista de metadados, sem nome de arquivo do
+   * servidor no cabeçalho. A autorização é a mesma da tarefa dona do artefato, e a comparação do
+   * `runId` é o que impede que um id de artefato adivinhado leia a imagem de outra pessoa.
+   */
+  routes.get("/:id/artifacts/:artifactId", requireUser, async (context) => {
+    if (!vision) {
+      return context.json({ error: "Artefatos não estão ligados." }, 503);
+    }
+    let run: AgentRunRow;
+    try {
+      run = await loadVisible(context.req.param("id"), context);
+    } catch (error) {
+      const { status, body } = statusOf(error);
+      return context.json(body, status);
+    }
+    const found = await vision.artifacts.read(context.req.param("artifactId"));
+    if (!found || found.row.runId !== run.id) {
+      return context.json({ error: "Artefato não encontrado." }, 404);
+    }
+    return new Response(new Uint8Array(found.bytes), {
+      headers: {
+        "content-type": found.row.mime,
+        "content-length": String(found.bytes.byteLength),
+        // Nada de cache intermediário para uma imagem de uma página autenticada.
+        "cache-control": "no-store",
       },
     });
   });

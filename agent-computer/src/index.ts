@@ -103,6 +103,22 @@ const ACTION_TIMEOUT_MS = Number.parseInt(
 const TEXT_EXTRACT_LIMIT = 6000;
 
 /**
+ * O que a captura pinta por cima antes de sair daqui.
+ *
+ * Campos de senha sempre, mais o que o deployment configurar em `SCREENSHOT_MASK_SELECTORS`. A
+ * máscara não é uma promessa de que a imagem está limpa: é a redução do que é óbvio, e a
+ * classificação de dados no servidor decide se a imagem pode sair para um modelo ou para o Telegram.
+ * Ver NFR-05.
+ */
+const SCREENSHOT_MASK_SELECTORS = [
+  'input[type="password"]',
+  ...(process.env.SCREENSHOT_MASK_SELECTORS ?? "")
+    .split(",")
+    .map((selector) => selector.trim())
+    .filter(Boolean),
+];
+
+/**
  * Which snapshot the caller's refs came from.
  *
  * Kept as a caller-facing guard even though Playwright enforces the real thing underneath. The
@@ -229,6 +245,7 @@ async function snapshotPage(
   title: string;
   elements: SnapshotElement[];
   truncated: boolean;
+  viewport: { width: number; height: number };
 }> {
   session.snapshotId += 1;
   const yaml = await target.ariaSnapshot({ mode: "ai" });
@@ -237,6 +254,7 @@ async function snapshotPage(
     url: target.url(),
     title: await target.title(),
     ...parseAriaSnapshot(yaml),
+    viewport: target.viewportSize() ?? VIEWPORT,
   };
 }
 
@@ -645,14 +663,47 @@ serve<StreamData>({
 
     if (url.pathname === "/screenshot" && request.method === "GET") {
       try {
+        /*
+         * A página que está recebendo um segredo não é fotografada.
+         *
+         * O caminho do segredo é a pessoa digitando direto no navegador, sem passar pelo modelo. Um
+         * print tirado durante essa digitação devolveria o valor ao modelo por outra porta, e um
+         * valor que aparece na tela enquanto é digitado aparece inteiro em qualquer captura feita
+         * depois. Recusado aqui, onde a captura acontece, e não só no servidor: este processo é quem
+         * tem a foto.
+         */
+        if (session.control.get().secretWanted) {
+          return json(
+            {
+              error:
+                "A person is entering a value the assistant must not see. No capture is taken while that is happening.",
+              secretPending: true,
+            },
+            409,
+          );
+        }
         const target = await currentPage(botId);
-        const buffer = await target.screenshot({ type: "png" });
+        const masks = target
+          .locator(SCREENSHOT_MASK_SELECTORS.join(", "))
+          .filter({ visible: true });
+        let masked = 0;
+        if (SCREENSHOT_MASK_SELECTORS.length) {
+          // Counted before the capture, and best-effort: the number is what tells an operator that a
+          // mask configured against this page matched nothing, which is the failure that otherwise
+          // goes unnoticed.
+          masked = await masks.count().catch(() => 0);
+        }
+        const buffer = await target.screenshot({
+          type: "png",
+          mask: SCREENSHOT_MASK_SELECTORS.length ? [masks] : [],
+        });
         const size = target.viewportSize() ?? { width: 1280, height: 800 };
         return json({
           base64: buffer.toString("base64"),
           width: size.width,
           height: size.height,
           capturedAt: new Date().toISOString(),
+          masked,
           // Which page this is a picture of. A browser that has not been sent anywhere sits on
           // `about:blank`, and a screenshot of that is a valid, entirely white PNG, indistinguishable
           // from a real page to anything looking only at the bytes. The transcript needs to tell
@@ -895,9 +946,10 @@ type ActionBody = {
   key?: unknown;
   deltaY?: unknown;
   submit?: unknown;
+  value?: unknown;
 };
 
-const ACTIONS = new Set(["/click", "/type", "/key", "/scroll"]);
+const ACTIONS = new Set(["/click", "/type", "/key", "/scroll", "/select"]);
 
 const HUMAN_INPUT = new Set([
   "/human/click",
@@ -1042,6 +1094,21 @@ async function performAction(
       await target.keyboard.press(body.key);
     }
     return { action: "key", key: body.key, ref, url: target.url() };
+  }
+
+  if (action === "/select") {
+    if (!ref) {
+      throw new Error("Choosing an option needs the ref of the select element.");
+    }
+    if (typeof body.value !== "string") {
+      throw new Error("Choosing an option needs the option's value.");
+    }
+    const field = await resolveRefIn(session.snapshotId, target, ref, expected);
+    await field.selectOption(body.value, acting);
+    // O valor escolhido não é devolvido, pela mesma razão que o texto digitado não é: esta resposta
+    // é lida pelo modelo e registrada pelo servidor, e uma escolha pode ser tão sensível quanto um
+    // campo de texto. O rótulo do elemento vai anexado pelo gateway.
+    return { action: "select", ref, url: target.url() };
   }
 
   // Scroll. A plain wheel event on the page, which is what moves a long form, rather than scrolling a

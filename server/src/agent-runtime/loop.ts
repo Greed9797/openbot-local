@@ -607,6 +607,7 @@ export function createAgentRunExecutor(
         try {
           outcome = await options.tools.execute(call, {
             runId: request.runId,
+            botId: loaded.botId,
             stepSeq: seq,
             actor,
             signal: request.signal,
@@ -663,6 +664,26 @@ export function createAgentRunExecutor(
         if (outcome.help) {
           await settle(request, "waiting_human", {
             message: outcome.help.reason,
+            checkpoint: { stepSeq: seq, effect: "none" },
+          });
+          return;
+        }
+
+        /*
+         * Uma pessoa assumiu o volante, ou está digitando um valor que o modelo não pode ver.
+         *
+         * Não é falha da ferramenta e não é algo que o modelo resolva tentando de novo: enquanto ela
+         * estiver ali, toda ação é recusada. Parar em `waiting_human` é a única resposta que não
+         * gasta passos contra a parede, e é o que faz o painel mostrar a tarefa esperando a pessoa em
+         * vez de um erro.
+         */
+        if (
+          !outcome.ok &&
+          (outcome.error?.code === "HUMAN_CONTROL" ||
+            outcome.error?.code === "SECRET_PENDING")
+        ) {
+          await settle(request, "waiting_human", {
+            message: outcome.error.message,
             checkpoint: { stepSeq: seq, effect: "none" },
           });
           return;

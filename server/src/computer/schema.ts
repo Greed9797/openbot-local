@@ -26,6 +26,7 @@ export const COMPUTER_TOOLS = [
   "computer_type",
   "computer_key",
   "computer_scroll",
+  "computer_select",
   "computer_read_file",
   "computer_write_file",
   "computer_list_files",
@@ -58,6 +59,7 @@ export const COMPUTER_ACTING_TOOLS = [
   "computer_type",
   "computer_key",
   "computer_scroll",
+  "computer_select",
   "computer_read_file",
   "computer_write_file",
   "computer_list_files",
@@ -105,6 +107,14 @@ export type ScreenshotResult = {
    * failure that matters is a real screenshot being hidden behind a placeholder.
    */
   url?: string;
+  /**
+   * How many elements the deployment's mask selectors painted over in this capture.
+   *
+   * Optional for the same reason as `url`. Zero means the selectors matched nothing on this page,
+   * which is a fact worth keeping: a mask configured against a page that renamed its fields stops
+   * protecting anything, and nothing else in the system would notice.
+   */
+  masked?: number;
 };
 
 /** The current page as text, without opening anything. Same shape as a navigation, minus the trip. */
@@ -160,6 +170,14 @@ export type SnapshotResult = {
   elements: SnapshotElement[];
   /** True when the page had more interactive elements than the snapshot describes. */
   truncated: boolean;
+  /**
+   * The viewport these refs were taken in, in CSS pixels.
+   *
+   * Carried so a person reading a run's steps knows what the Bot was looking at, and so anything
+   * that turns a coordinate into an action can be checked against the page it was measured on. The
+   * refs are what actions use; this is context, not an address.
+   */
+  viewport: { width: number; height: number };
 };
 
 /** Common to every acting call: which element, and which snapshot the ref came from. */
@@ -173,6 +191,15 @@ export type TypeInput = ActionTarget & {
 };
 export type KeyInput = Partial<ActionTarget> & { key: string };
 export type ScrollInput = { deltaY?: number };
+/**
+ * Escolher uma opção de um `select`.
+ *
+ * Existe como ação própria porque abrir um dropdown nativo é uma caixa do sistema operacional, não
+ * um elemento da página: o clique que a abre não expõe as opções a nenhum snapshot, e o Bot que
+ * tentasse seguir por refs ficaria clicando numa lista que ele não vê. O valor é o `value` da
+ * opção, que é o que um formulário de verdade envia.
+ */
+export type SelectInput = ActionTarget & { value: string };
 
 /**
  * What an action reports back.
@@ -183,7 +210,7 @@ export type ScrollInput = { deltaY?: number };
  * secret into two places that keep it. `characters` is enough to confirm the field was filled.
  */
 export type ActionResult = {
-  action: "click" | "type" | "key" | "scroll";
+  action: "click" | "type" | "key" | "scroll" | "select";
   ref?: string;
   /**
    * The label of the element acted on, as the gateway resolved it.
@@ -294,6 +321,15 @@ export type ControlState = {
   reason?: string;
   /** The Bot has asked and nobody has taken over yet. */
   requested: boolean;
+  /**
+   * The value the Bot is waiting for and must not be told, by label only.
+   *
+   * Present while a person is expected to type it. Two things read this: the surface, which asks for
+   * it, and any capture, which must not photograph a page while a secret is being entered.
+   */
+  secretWanted?: string;
+  /** Which field the secret goes in, so nobody has to guess where a person should type. */
+  secretRef?: string;
 };
 
 /**
