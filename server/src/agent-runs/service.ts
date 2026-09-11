@@ -123,7 +123,7 @@ export interface AgentRunService {
     actor: RunActor,
     decision: "approved" | "denied",
     note?: string,
-  ): Promise<{ run: AgentRunRow; approval: RunApprovalRow }>;
+  ): Promise<{ run: AgentRunRow; approval: RunApprovalView }>;
   pause(id: string, actor: RunActor): Promise<AgentRunRow>;
   resume(id: string, actor: RunActor): Promise<AgentRunRow>;
   cancel(id: string, actor: RunActor): Promise<AgentRunRow>;
@@ -471,7 +471,7 @@ export function createAgentRunService(options: {
           });
         }
       }
-      return { run: current, approval: decided };
+      return { run: current, approval: approvalView(decided) };
     },
 
     async pause(id: string, actor: RunActor) {

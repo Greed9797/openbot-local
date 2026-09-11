@@ -7,19 +7,12 @@
  */
 import type { Context, MiddlewareHandler } from "hono";
 import { Hono } from "hono";
-import type { ArtifactStore } from "../agent-runtime/artifact-store";
-import { classifyCapture } from "../agent-runtime/image-input";
-import type { ComputerGateway } from "../computer/gateway";
 import type { AppVariables } from "../auth/guards";
+import { captureRunScreen } from "./capture";
+import type { RunVision } from "./capture";
 import type { AgentRunRow } from "./repository";
 import type { AgentRunService } from "./service";
-import {
-  AgentRunError,
-  approvalView,
-  eventView,
-  runView,
-  stepView,
-} from "./service";
+import { AgentRunError, eventView, runView, stepView } from "./service";
 import type { CreateRunInput, RunStatus } from "./types";
 
 export type RunRoutesService = AgentRunService;
@@ -30,12 +23,7 @@ export type RunRoutesService = AgentRunService;
  * Um objeto em vez de três parâmetros soltos porque as três andam juntas — uma captura sem
  * classificação é uma imagem sem decisão de destino, e é exatamente o que não pode existir.
  */
-export type RunVision = {
-  gateway: ComputerGateway;
-  artifacts: ArtifactStore;
-  sensitiveHosts: readonly string[];
-  retentionDays: number;
-};
+export type { RunVision };
 
 function statusOf(error: unknown): {
   status: 404 | 409 | 400 | 500;
@@ -299,28 +287,12 @@ export function createAgentRunRoutes(
       return context.json(body, status);
     }
     try {
-      const shot = await vision.gateway.screenshot(run.botId);
-      const url = shot.url ?? "";
-      const classified = classifyCapture({
-        url,
-        sensitiveHosts: vision.sensitiveHosts,
-      });
-      const artifact = await vision.artifacts.capture({
-        runId: run.id,
-        stepId: null,
-        kind: "screenshot",
-        data: shot.base64,
-        mime: "image/png",
-        url,
-        width: shot.width,
-        height: shot.height,
-        capturedAt: shot.capturedAt,
-        classification: classified.classification,
-        protection: (shot.masked ?? 0) > 0 ? "masked" : "none",
-        allowedDestinations: classified.destinations,
-        retentionDays: vision.retentionDays,
-        metadata: { masked: shot.masked ?? 0, reason: classified.reason },
-      });
+      const captured = await captureRunScreen(
+        vision,
+        { id: run.id, botId: run.botId },
+        { stepId: null },
+      );
+      const { artifact, url } = captured;
       await service.recordEvent(run.id, "run.screenshot", {
         artifactId: artifact.id,
         url,
@@ -455,7 +427,10 @@ export function createAgentRunRoutes(
         body.decision === "approve" ? "approved" : "denied",
         typeof body.note === "string" ? body.note : undefined,
       );
-      return context.json({ run: runView(run), approval: approvalView(approval) });
+      return context.json({
+        run: runView(run),
+        approval,
+      });
     } catch (error) {
       const { status, body } = statusOf(error);
       return context.json(body, status);

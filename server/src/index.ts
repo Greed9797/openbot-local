@@ -31,6 +31,12 @@ import { createThreadIdentity } from "./channels/thread-identity";
 import { createSandboxedStore } from "./components/sandboxed";
 import { createComponentStore } from "./components/store";
 import { createComputerGateway } from "./computer/gateway";
+import { createTelegramClient } from "./telegram/client";
+import { createTelegramHandler } from "./telegram/handler";
+import { createTelegramNotifier } from "./telegram/notifier";
+import { createTelegramPoller } from "./telegram/poller";
+import { createTelegramSender } from "./telegram/sender";
+import { createTelegramStore } from "./telegram/store";
 import {
   createPolicyStore,
   DEFAULT_ACTION_POLICY,
@@ -365,6 +371,32 @@ console.info(
     ...(isolation.warning ? { warning: isolation.warning } : {}),
   }),
 );
+
+/*
+ * O que este processo faz com tarefas, em uma linha.
+ *
+ * Um deployment que sobe sem provedor, sem worker ou sem Telegram parece igual a um que subiu certo:
+ * as tarefas ficam na fila em silêncio. A linha diz os três de uma vez, no formato que o resto do
+ * boot já usa, para que a primeira pergunta — "por que a tarefa não anda?" — se responda no log.
+ */
+console.info(
+  JSON.stringify({
+    type: "agent-runtime",
+    enabled: config.agentRuntime.enabled,
+    worker: config.agentRuntime.workerEnabled,
+    providers: providers.list().length,
+    defaultProvider: config.agentRuntime.defaultProvider,
+    artifactsDir: config.agentRuntime.artifactsDir,
+    approvals: config.agentRuntime.approvalPatterns.length > 0 ? "extra-patterns" : "default",
+    telegram: config.telegram
+      ? {
+          bot: config.telegram.botId,
+          allowedUsers: config.telegram.allowedUserIds.length,
+          running: Boolean(agentRunService && config.agentRuntime.workerEnabled),
+        }
+      : "off",
+  }),
+);
 /**
  * One Bot's endpoint must not take down the platform.
  *
@@ -423,6 +455,67 @@ const threadHistoryRunner =
         return runner;
       })()
     : undefined;
+
+/**
+ * O Telegram: o mesmo runtime, com outra porta de entrada.
+ *
+ * Construído antes do app porque as rotas de pareamento montam a partir daqui, e depois do serviço de
+ * tarefas porque a conversa só existe para conduzi-las. Um deployment sem token não monta nada disto —
+ * não há bot para receber mensagem, e uma tela de pareamento que não leva a lugar nenhum é pior do que
+ * nenhuma tela.
+ */
+const telegram =
+  config.telegram && agentRunService
+    ? (() => {
+        const store = createTelegramStore(database);
+        const client = createTelegramClient({ token: config.telegram.token });
+        const vision = computerGateway
+          ? {
+              gateway: computerGateway,
+              artifacts: artifactStore,
+              sensitiveHosts: config.agentRuntime.sensitiveHosts,
+              retentionDays: config.agentRuntime.artifactRetentionDays,
+            }
+          : undefined;
+        const handler = createTelegramHandler({
+          store,
+          runs: agentRunService,
+          allowedUserIds: config.telegram.allowedUserIds,
+          ...(vision ? { vision } : {}),
+          providers,
+        });
+        const poller = createTelegramPoller({
+          store,
+          handler,
+          client,
+          botId: config.telegram.botId,
+          onError: (error) => {
+            console.error("A leitura do Telegram falhou.", error);
+          },
+        });
+        const sender = createTelegramSender({
+          store,
+          client,
+          intervalMs: config.telegram.deliveryIntervalMs,
+        });
+        return {
+          store,
+          client,
+          poller,
+          sender,
+          notifier: createTelegramNotifier({
+            store,
+            repository: agentRunRepository,
+          }),
+        };
+      })()
+    : undefined;
+
+if (config.telegram && !agentRunService) {
+  console.warn(
+    "TELEGRAM_BOT_TOKEN está configurado, mas o runtime de tarefas está desligado (AGENT_RUNTIME_ENABLED): a conversa não sobe. Ligue o runtime para usar o Telegram.",
+  );
+}
 
 const app = createApp(
   config,
@@ -516,6 +609,9 @@ const app = createApp(
         retentionDays: config.agentRuntime.artifactRetentionDays,
       }
     : undefined,
+  // O Telegram, quando há token. As rotas de pareamento existem mesmo sem o runtime: ligar o chat é
+  // o passo anterior a ter tarefas.
+  telegram ? telegram.store : undefined,
 );
 
 /**
@@ -549,6 +645,8 @@ if (agentRunService && computerGateway && config.agentRuntime.workerEnabled) {
       ttlMs: config.agentRuntime.approvalTtlMs,
       extraPatterns: config.agentRuntime.approvalPatterns,
     }),
+    // Quem avisa quem pediu. Ausente quando não há Telegram: a tarefa não depende de ter um canal.
+    ...(telegram ? { notifier: telegram.notifier } : {}),
     leaseTtlMs: config.agentRuntime.leaseTtlMs,
     maxCorrections: config.agentRuntime.maxCorrections,
     maxRefusals: 2,
@@ -585,6 +683,36 @@ if (agentRunService && computerGateway && config.agentRuntime.workerEnabled) {
       void worker.stop();
     });
   }
+}
+
+/*
+ * O Telegram só roda onde o worker roda.
+ *
+ * Ler updates é barato, mas responder a eles cria tarefas — e um processo que não conduz a fila
+ * deixaria cada mensagem como uma tarefa parada na fila, sem ninguém para executá-la. Um deployment
+ * com várias réplicas liga isto na réplica que tem o worker, que é a mesma decisão que
+ * AGENT_WORKER_ENABLED já expressa.
+ */
+if (telegram && agentRunService && config.agentRuntime.workerEnabled) {
+  await telegram.poller.start();
+  await telegram.sender.start();
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    process.on(signal, () => {
+      void telegram.poller.stop();
+      void telegram.sender.stop();
+    });
+  }
+  console.info(
+    JSON.stringify({
+      type: "telegram",
+      bot: config.telegram?.botId,
+      allowedUsers: config.telegram?.allowedUserIds.length ?? 0,
+      note:
+        (config.telegram?.allowedUserIds.length ?? 0) === 0
+          ? "TELEGRAM_ALLOWED_USER_IDS está vazio: o bot responde a qualquer pessoa com uma recusa até que a lista seja configurada."
+          : "Somente os ids listados falam com este bot.",
+    }),
+  );
 }
 
 /**

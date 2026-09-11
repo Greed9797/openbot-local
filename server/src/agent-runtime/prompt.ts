@@ -21,6 +21,9 @@ import type {
 
 /** O papel do modelo, e os limites que não são negociáveis. */
 export function systemPrompt(input: AgentRunInput): string {
+  if (input.instructions) {
+    return `${input.instructions}\n\nTarefa: ${input.objective}`;
+  }
   const lines = [
     "Você opera o navegador de uma pessoa por meio de ferramentas governadas. Cada passo seu é registrado e auditado.",
     "",

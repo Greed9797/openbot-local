@@ -134,6 +134,14 @@ export type AgentRunInput = {
   resumeNote?: string;
   /** The provider's own capabilities, repeated here so an adapter can refuse without a lookup. */
   capabilities: ModelCapabilities;
+  /**
+   * Quando presente, substitui o papel padrão do sistema.
+   *
+   * Existe para a pergunta que não é um passo de tarefa — "o que está nesta captura?" —, onde não há
+   * ferramenta, histórico nem próximo passo, e sim uma imagem e uma frase. Os adaptadores continuam
+   * montando o prompt do mesmo jeito; o que muda é quem escreve as instruções.
+   */
+  instructions?: string;
 };
 
 export type AgentRunContext = {

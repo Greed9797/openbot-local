@@ -33,6 +33,8 @@ import type { PolicyStore } from "./computer/policy-store";
 import { createComputerRoutes } from "./computer/routes";
 import { configuredAuthProviders, type DeploymentConfig } from "./config";
 import { createAgentRunRoutes, type RunVision } from "./agent-runs/routes";
+import { createTelegramRoutes } from "./telegram/routes";
+import type { TelegramStore } from "./telegram/store";
 import type { AgentRunService } from "./agent-runs/service";
 import type { ConnectorAdminService } from "./connectors";
 import type { KnowledgeSearch } from "./connectors/knowledge-search";
@@ -168,6 +170,11 @@ export function createApp(
    * para onde a captura pode ir. Ausente desmonta as duas rotas de imagem.
    */
   agentVision?: RunVision,
+  /**
+   * Os vínculos de chat do Telegram. Ausente desmonta o pareamento: um deployment sem bot não ganha
+   * uma tela para gerar códigos que não levam a lugar nenhum.
+   */
+  telegramStore?: TelegramStore,
 ) {
   const app = new Hono<{ Variables: AppVariables }>();
 
@@ -919,6 +926,10 @@ export function createApp(
       "/api/agent-runs",
       createAgentRunRoutes(agentRunService, requireUser, agentVision),
     );
+  }
+
+  if (telegramStore) {
+    app.route("/api/telegram", createTelegramRoutes(telegramStore, requireUser));
   }
 
   if (agentProfileStore) {

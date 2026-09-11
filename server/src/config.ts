@@ -231,6 +231,31 @@ export type DeploymentConfig = {
    * than an open door.
    */
   agentToolToken?: string;
+  /**
+   * O bot do Telegram deste deployment.
+   *
+   * Ausente quando não há token: um deployment sem Telegram sobe normalmente, sem rotas de pareamento
+   * e sem laço de leitura, em vez de recusar o boot por falta de uma credencial de canal.
+   */
+  telegram?: TelegramConfig;
+};
+
+export type TelegramConfig = {
+  token: string;
+  /**
+   * Quem pode falar com o bot, por id numérico.
+   *
+   * Lista vazia significa ninguém: o canal está configurado e o bot responde a todos com uma recusa.
+   * É a leitura segura do que "não configurado" quer dizer, e é por isso que ela não abre o bot para
+   * o mundo quando alguém esquece a variável.
+   */
+  allowedUserIds: string[];
+  /** Identidade do bot nas tabelas. Muda quando há mais de um bot no mesmo deployment. */
+  botId: string;
+  /** Quanto tempo o getUpdates fica pendurado em cada chamada. */
+  pollTimeoutSeconds: number;
+  /** De quanto em quanto tempo a caixa de saída é verificada. */
+  deliveryIntervalMs: number;
 };
 
 type Environment = Record<string, string | undefined>;
@@ -755,6 +780,25 @@ function agentModels(environment: Environment): AgentModelConfig[] {
   return models;
 }
 
+function telegramConfig(environment: Environment): TelegramConfig | undefined {
+  const token = optional(environment, "TELEGRAM_BOT_TOKEN");
+  if (!token) return undefined;
+  return {
+    token,
+    allowedUserIds: commaSeparated(environment, "TELEGRAM_ALLOWED_USER_IDS"),
+    botId: optional(environment, "TELEGRAM_BOT_ID") ?? "default",
+    pollTimeoutSeconds: wholeNumber(
+      environment,
+      "TELEGRAM_POLL_SECONDS",
+      25,
+      1,
+    ),
+    deliveryIntervalMs:
+      wholeNumber(environment, "TELEGRAM_DELIVERY_INTERVAL_SECONDS", 5, 1) *
+      1_000,
+  };
+}
+
 function agentRuntimeConfig(environment: Environment): AgentRuntimeConfig {
   const providers = agentModels(environment);
   const defaultProvider =
@@ -821,6 +865,7 @@ export function loadConfig(
 ): DeploymentConfig {
   const google = oauthClient(environment, "GOOGLE");
   const auth = authConfig(environment, google);
+  const telegram = telegramConfig(environment);
 
   return {
     databaseUrl: required(environment, "DATABASE_URL"),
@@ -850,5 +895,6 @@ export function loadConfig(
     ...(optional(environment, "AGENT_TOOL_TOKEN")
       ? { agentToolToken: optional(environment, "AGENT_TOOL_TOKEN") as string }
       : {}),
+    ...(telegram ? { telegram } : {}),
   };
 }
