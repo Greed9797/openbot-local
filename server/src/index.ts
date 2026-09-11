@@ -2,6 +2,8 @@ import { serve } from "bun";
 import { mintRunAssertion } from "./agents/callback-token";
 import { createAgentProfileStore } from "./agents/profile-store";
 import { createRuntimeAgentLoader } from "./agents/runtime-agents";
+import { createAgentRunRepository } from "./agent-runs/repository";
+import { createAgentRunService } from "./agent-runs/service";
 import { createApp } from "./app";
 import { createAuditReader, createAuditStore, recordAuditEvent } from "./audit";
 import { createAuth } from "./auth";
@@ -235,6 +237,31 @@ const computerGateway = computerProvider
   : undefined;
 
 /**
+ * The durable task core: persistence, the state machine, and the routes over both.
+ *
+ * Mounted only when the runtime is enabled. The worker that drives queued runs is created after the
+ * app, because it needs the executor — and the executor is built from the same gateway, so every
+ * browser action a run takes still passes the policy and the audit trail rather than a new path.
+ */
+const agentRunRepository = createAgentRunRepository(database);
+const agentRunService = config.agentRuntime.enabled
+  ? createAgentRunService({
+      repository: agentRunRepository,
+      auditStore: bootAuditStore,
+      defaults: {
+        provider: config.agentRuntime.defaultProvider,
+        model: config.agentRuntime.defaultModel,
+        budget: {
+          maxSteps: config.agentRuntime.maxSteps,
+          maxMs: config.agentRuntime.maxRunMs,
+          maxCorrections: config.agentRuntime.maxCorrections,
+        },
+        leaseTtlMs: config.agentRuntime.leaseTtlMs,
+      },
+    })
+  : undefined;
+
+/**
  * What a Bot can reach beyond its own computer.
  *
  * Built here rather than beside the component store because it needs the policy, and it needs the
@@ -243,7 +270,6 @@ const computerGateway = computerProvider
  * the change would arrive through a browser or through a tool call.
  */
 const sandboxedStore = createSandboxedStore(database, bootAuditStore);
-
 const pluginStore = createPluginStore({
   database,
   auditStore: bootAuditStore,
@@ -434,6 +460,8 @@ const app = createApp(
   // than through Better Auth's own listing, which answers per person. See identity-provider-store.ts.
   identityProviderStore,
   createKnowledgeSearch(database),
+  // Durable tasks. Undefined when the runtime is switched off, which unmounts the routes.
+  agentRunService,
 );
 
 /**

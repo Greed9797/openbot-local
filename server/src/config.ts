@@ -56,6 +56,31 @@ export type SharedComputerConfig = {
 export type ComputerConfig = DockerComputerConfig | SharedComputerConfig;
 
 /**
+ * The durable task runtime.
+ *
+ * Absent means the feature is off and its routes are not mounted, like the computer above. The
+ * defaults are the small-VPS numbers from the PRD: one browser run at a time, forty steps, fifteen
+ * minutes, and a human window measured in minutes rather than seconds.
+ */
+export type AgentRuntimeConfig = {
+  enabled: boolean;
+  /** Whether this process runs the queue. One replica says yes; the others would only duplicate. */
+  workerEnabled: boolean;
+  pollMs: number;
+  defaultProvider: string;
+  defaultModel: string;
+  /** How long a run lease lasts without a heartbeat; also the profile lock's TTL. */
+  leaseTtlMs: number;
+  maxSteps: number;
+  maxRunMs: number;
+  maxCorrections: number;
+  artifactsDir: string;
+  artifactRetentionDays: number;
+  waitingHumanMinutes: number;
+  idleBrowserMinutes: number;
+};
+
+/**
  * Who a deployment lets in, and through which front door.
  *
  * One identity provider is a product decision somebody else already made. A company running this
@@ -150,6 +175,8 @@ export type DeploymentConfig = {
    * mounted and failing: a capability that is not configured should be missing, not broken.
    */
   computer?: ComputerConfig;
+  /** The durable task runtime. Present by default; switched off with AGENT_RUNTIME_ENABLED=off. */
+  agentRuntime: AgentRuntimeConfig;
   /**
    * The secret a Bot presents when it calls a tool back through this server.
    *
@@ -552,6 +579,69 @@ function agentStallTimeoutMs(environment: Environment): number {
   return milliseconds;
 }
 
+/** `AGENT_RUNTIME_ENABLED=off` and friends. Absent takes the default; nonsense refuses to boot. */
+function flag(
+  environment: Environment,
+  name: string,
+  fallback: boolean,
+): boolean {
+  const raw = optional(environment, name)?.toLowerCase();
+  if (raw === undefined) return fallback;
+  if (["1", "true", "on", "yes"].includes(raw)) return true;
+  if (["0", "false", "off", "no"].includes(raw)) return false;
+  throw new Error(`${name} must be a boolean such as true or false, or unset`);
+}
+
+function wholeNumber(
+  environment: Environment,
+  name: string,
+  fallback: number,
+  minimum: number,
+): number {
+  const raw = optional(environment, name);
+  if (raw === undefined) return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < minimum) {
+    throw new Error(
+      `${name} must be a whole number of at least ${minimum}, or unset`,
+    );
+  }
+  return value;
+}
+
+function agentRuntimeConfig(environment: Environment): AgentRuntimeConfig {
+  return {
+    enabled: flag(environment, "AGENT_RUNTIME_ENABLED", true),
+    workerEnabled: flag(environment, "AGENT_WORKER_ENABLED", true),
+    pollMs: wholeNumber(environment, "AGENT_POLL_MS", 1_000, 100),
+    defaultProvider: optional(environment, "AGENT_DEFAULT_PROVIDER") ?? "codex",
+    defaultModel: optional(environment, "AGENT_DEFAULT_MODEL") ?? "default",
+    leaseTtlMs: wholeNumber(environment, "AGENT_LEASE_TTL_MS", 60_000, 5_000),
+    maxSteps: wholeNumber(environment, "AGENT_MAX_STEPS", 40, 1),
+    maxRunMs: wholeNumber(environment, "AGENT_MAX_RUN_MS", 900_000, 10_000),
+    maxCorrections: wholeNumber(environment, "AGENT_MAX_CORRECTIONS", 2, 0),
+    artifactsDir: optional(environment, "AGENT_ARTIFACTS_DIR") ?? "./.artifacts",
+    artifactRetentionDays: wholeNumber(
+      environment,
+      "AGENT_ARTIFACT_RETENTION_DAYS",
+      7,
+      0,
+    ),
+    waitingHumanMinutes: wholeNumber(
+      environment,
+      "AGENT_WAITING_HUMAN_MINUTES",
+      15,
+      1,
+    ),
+    idleBrowserMinutes: wholeNumber(
+      environment,
+      "AGENT_IDLE_BROWSER_MINUTES",
+      10,
+      1,
+    ),
+  };
+}
+
 export function loadConfig(
   environment: Environment = process.env,
 ): DeploymentConfig {
@@ -582,6 +672,7 @@ export function loadConfig(
       ? { appDistDir: optional(environment, "APP_DIST_DIR") as string }
       : {}),
     computer: computerConfig(environment),
+    agentRuntime: agentRuntimeConfig(environment),
     ...(optional(environment, "AGENT_TOOL_TOKEN")
       ? { agentToolToken: optional(environment, "AGENT_TOOL_TOKEN") as string }
       : {}),

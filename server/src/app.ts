@@ -32,6 +32,8 @@ import type { ComputerGateway } from "./computer/gateway";
 import type { PolicyStore } from "./computer/policy-store";
 import { createComputerRoutes } from "./computer/routes";
 import { configuredAuthProviders, type DeploymentConfig } from "./config";
+import { createAgentRunRoutes } from "./agent-runs/routes";
+import type { AgentRunService } from "./agent-runs/service";
 import type { ConnectorAdminService } from "./connectors";
 import type { KnowledgeSearch } from "./connectors/knowledge-search";
 import type { CredentialAdminService, CredentialInput } from "./credentials";
@@ -154,6 +156,13 @@ export function createApp(
    * tipos por acaso não batem.
    */
   knowledgeSearch?: KnowledgeSearch,
+  /**
+   * O núcleo de tarefas duráveis.
+   *
+   * Ausente desmonta as rotas de tarefas: um deployment que não quer o runtime agêntico não ganha
+   * uma superfície que não funciona, e sim nenhuma superfície.
+   */
+  agentRunService?: AgentRunService,
 ) {
   const app = new Hono<{ Variables: AppVariables }>();
 
@@ -897,6 +906,13 @@ export function createApp(
         canUseBot,
         authoriseAgent,
       ),
+    );
+  }
+
+  if (agentRunService) {
+    app.route(
+      "/api/agent-runs",
+      createAgentRunRoutes(agentRunService, requireUser),
     );
   }
 

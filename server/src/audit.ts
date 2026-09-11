@@ -120,6 +120,20 @@ export const auditEventTypes = [
   "bot.declined",
 
   /*
+   * A durable task, from the moment somebody asked for it.
+   *
+   * The trail already records every browser action a Bot takes. What it could not answer was which
+   * task those actions belonged to: a click was a click. These rows carry the run, so "what did task
+   * #153 actually do, and who asked for it" is a question the trail can answer, and a run that was
+   * cancelled or recovered says so out loud instead of merely stopping.
+   */
+  "agent_run.created",
+  "agent_run.status_changed",
+  "agent_run.completed",
+  "agent_run.cancelled",
+  "agent_run.recovered",
+
+  /*
    * What a Bot may answer with, decided per Bot and recorded like anything else it is trusted with.
    *
    * A component is a capability you grant, so the trail has to answer the same questions a connector
