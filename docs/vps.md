@@ -193,9 +193,13 @@ de quem opera, não código do fork, e um push não deveria publicar as suas.
 Do seu computador, onde as skills estão:
 
 ```sh
-tar -C ~/.codex/skills --exclude=.system --exclude=.DS_Store -cf - . \
+tar -h -C ~/.codex/skills --exclude=.system --exclude=.DS_Store -cf - . \\
   | ssh root@your-vps 'rm -rf /opt/openbot-local/skills && mkdir -p /opt/openbot-local/skills && tar -C /opt/openbot-local/skills -xf -'
 ```
+
+O `-h` não é opcional: skill que é link simbólico (para `~/.claude/skills`, por exemplo) chegaria
+como link quebrado, e um link quebrado tem o pior sintoma possível — o motor lista a skill e o
+modelo não encontra o `SKILL.md`.
 
 Na VPS:
 
