@@ -414,12 +414,21 @@ describe("erros de provedor", () => {
  */
 describe("Codex delegado", () => {
   /** Um fluxo AG-UI mínimo, com um texto e o fim do run. */
-  function streamOf(text: string): Response {
+  function streamOf(text: string, declaredTools?: number): Response {
     const events = [
       { type: "RUN_STARTED", threadId: "t", runId: "run-1" },
       { type: "TEXT_MESSAGE_START", messageId: "m1", role: "assistant" },
       { type: "TEXT_MESSAGE_CONTENT", messageId: "m1", delta: text },
       { type: "TEXT_MESSAGE_END", messageId: "m1" },
+      ...(declaredTools === undefined
+        ? []
+        : [
+            {
+              type: "CUSTOM",
+              name: "openbot.tools",
+              value: { count: declaredTools },
+            },
+          ]),
       { type: "RUN_FINISHED", threadId: "t", runId: "run-1" },
     ];
     return new Response(
@@ -429,7 +438,7 @@ describe("Codex delegado", () => {
   }
 
   async function call(
-    options: { token?: string; text?: string },
+    options: { token?: string; text?: string; declaredTools?: number },
   ): Promise<{ headers: Headers; body: unknown; result: unknown }> {
     let seen: Headers | undefined;
     let body: unknown;
@@ -441,7 +450,10 @@ describe("Codex delegado", () => {
       fetchImpl: (async (_url: string, init?: RequestInit) => {
         seen = new Headers(init?.headers);
         body = init?.body ? JSON.parse(String(init.body)) : undefined;
-        return streamOf(options.text ?? "Abri a página e li o título.");
+        return streamOf(
+          options.text ?? "Abri a página e li o título.",
+          options.declaredTools,
+        );
       }) as unknown as typeof fetch,
     });
     const result = await provider.run(input(), {
@@ -463,6 +475,47 @@ describe("Codex delegado", () => {
   test("sem token configurado, o cabeçalho não vai", async () => {
     const { headers } = await call({});
     expect(headers.get("x-openbot-agent-token")).toBeNull();
+  });
+
+  /**
+   * O CLI conta as ferramentas dele porque ninguém mais pode contá-las.
+   *
+   * Um agente delegado conduz o próprio laço: as chamadas de ferramenta dele não passam por este
+   * processo, e sem a declaração o run fechava dizendo `tools: 0` depois de ter aberto página,
+   * clicado e lido — a mesma resposta que um turno que não usou ferramenta nenhuma.
+   */
+  test("as ferramentas declaradas pelo serviço chegam ao run", async () => {
+    const { result } = await call({ declaredTools: 7 });
+    expect(result).toMatchObject({ toolCalls: 7, evidence: { tools: 7 } });
+  });
+
+  test("declaração menor não apaga o que o fluxo já contou", async () => {
+    const provider = createCodexDelegatedProvider({
+      endpoint: "http://agent-codex.test/ag-ui",
+      model: "codex default",
+      fetchImpl: (async () => {
+        const events = [
+          { type: "RUN_STARTED", threadId: "t", runId: "run-1" },
+          { type: "TOOL_CALL_START", toolCallId: "c1", toolCallName: "computer" },
+          { type: "TOOL_CALL_END", toolCallId: "c1" },
+          { type: "TOOL_CALL_START", toolCallId: "c2", toolCallName: "computer" },
+          { type: "TOOL_CALL_END", toolCallId: "c2" },
+          { type: "TEXT_MESSAGE_START", messageId: "m1", role: "assistant" },
+          { type: "TEXT_MESSAGE_CONTENT", messageId: "m1", delta: "pronto" },
+          { type: "TEXT_MESSAGE_END", messageId: "m1" },
+          { type: "CUSTOM", name: "openbot.tools", value: { count: 1 } },
+          { type: "RUN_FINISHED", threadId: "t", runId: "run-1" },
+        ];
+        return new Response(
+          events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        );
+      }) as unknown as typeof fetch,
+    });
+    const result = await provider.run(input(), {
+      signal: new AbortController().signal,
+    });
+    expect(result).toMatchObject({ toolCalls: 2, evidence: { tools: 2 } });
   });
 
   test("o objetivo vai no corpo, com o que já aconteceu", async () => {

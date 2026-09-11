@@ -315,6 +315,11 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
       };
 
       let failure: string | null = null;
+      // Quantas ferramentas o turno usou, somando as passagens de autocorreção. O runtime não vê o
+      // CLI por dentro: sem isto, um turno que dirigiu o navegador chega lá com zero ferramentas, e
+      // "o Bot usou mesmo as ferramentas?" — a pergunta que este fork inteiro existe para responder —
+      // volta a ser opinião.
+      let toolCalls = 0;
 
       try {
         const assertion = runAssertionOf(input);
@@ -331,6 +336,7 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
         }
 
         const resultado = await executarPassagem(CLI, pergunta, say, abort.signal);
+        toolCalls += resultado.toolCalls;
 
         if (resultado.failure) {
           failure = resultado.failure;
@@ -355,6 +361,11 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
         if (failure) {
           send({ type: "RUN_ERROR", message: failure } as BaseEvent);
         } else {
+          send({
+            type: "CUSTOM",
+            name: "openbot.tools",
+            value: { count: toolCalls },
+          } as BaseEvent);
           send({
             type: "RUN_FINISHED",
             threadId: input.threadId,

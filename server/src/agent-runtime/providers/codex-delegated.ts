@@ -151,6 +151,22 @@ export function createCodexDelegatedProvider(
             onToolCallStartEvent: () => {
               toolCalls += 1;
             },
+            /*
+             * O serviço conta as ferramentas dele e as declara aqui.
+             *
+             * Um CLI de agente conduz o próprio laço: o navegador dele passa pelo MCP do outro
+             * lado, e este processo não vê chamada nenhuma. Sem esta linha, um turno que abriu
+             * página, clicou e leu chegava ao run com zero ferramentas — e a resposta para "o Bot
+             * usou mesmo as ferramentas?", que é a pergunta deste fork inteiro, voltava a ser o que
+             * o modelo disse de si mesmo. Vale o maior dos dois números: quem conta é quem viu.
+             */
+            onCustomEvent: ({ event }) => {
+              if (event.name !== "openbot.tools") return;
+              const declared = (event.value as { count?: unknown } | null)?.count;
+              if (typeof declared === "number" && declared > toolCalls) {
+                toolCalls = declared;
+              }
+            },
           },
         );
       } catch (error) {

@@ -422,3 +422,11 @@ Threads, channels, coworkers, policy, audit and the browser computers are unaffe
 deliberately narrow — a mode switch in `config.ts`, a branch in `copilot.ts`, one new runner, one new
 Bot — so a merge should conflict only where upstream touches runtime construction. Upstream is alpha
 and moves; read `server/src/copilot.ts` after every merge.
+
+### O smoke e um provedor fora do ar
+
+O smoke termina com uma pergunta ao Bot ("abra esta página e diga o que está escrito") e reprova
+quando a resposta sai **sem a leitura** — o Bot que fala de memória. Um provedor recusando o turno
+(cota da conta esgotada, chave ausente) não é esse defeito: é alto, diz o motivo e não foi causado
+pelo deploy. Nesse caso o smoke diz `aviso` com o motivo do provedor e termina em
+`SMOKE PASSOU COM AVISOS`. Para exigir o modelo de pé, `SMOKE_EXIGE_MODEL=on`.
