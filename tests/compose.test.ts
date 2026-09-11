@@ -30,6 +30,12 @@ test("publishes every service on a settable port with the documented default", (
     ["SUPERVISOR_PORT", "4500", "4300"],
     ["BOT_PORT", "4200", "4200"],
     ["LANGGRAPH_PORT", "4201", "4201"],
+    // Os que faltavam: a API e os dois serviços de CLI de agente. Sem eles a lista não era
+    // "every published port" — três serviços podiam mudar de porta, ou deixar de ser configuráveis,
+    // sem que esta conferência dissesse nada.
+    ["OPENBOT_PORT", "3001", "3001"],
+    ["CODEX_BOT_PORT", "4202", "4202"],
+    ["CLI_BOT_PORT", "4210", "4210"],
   ] as const;
 
   for (const [name, host, container] of published) {
