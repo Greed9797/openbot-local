@@ -167,10 +167,13 @@ ligada, com o conteúdo da página na resposta; o servidor de conhecimento de me
 registrado como `http://127.0.0.1:4599/mcp` com o interruptor ligado e a ferramenta `search_notes`
 apareceu com o schema que ele anuncia, enquanto `http://169.254.169.254/mcp` continuou 400.
 
-E a bateria inteira contra um Bot apontado para o serviço `agent-cli` (motor `opencode`, modelo
-`opencode-go/muse-spark-1.3-contributor`), com `BATERIA_COMPOSE_FILE=docker-compose.yml` porque a
-contagem de ações lê o postgres do deployment: **basicas 12/12, workspace 10/10, dificeis 10/12,
-adversariais 8/10** — 40 de 44. As quatro que reprovaram são de julgamento do motor, não do caminho:
+E as **quatro listas de turno único** da bateria contra um Bot apontado para o serviço `agent-cli`
+(motor `opencode`, modelo `opencode-go/muse-spark-1.3-contributor`), com
+`BATERIA_COMPOSE_FILE=docker-compose.yml` porque a contagem de ações lê o postgres do deployment:
+**basicas 12/12, workspace 10/10, dificeis 10/12, adversariais 8/10** — 40 de 44. As conversas do
+`rodar-tudo.sh` não rodaram nesta rodada: são a parte cara (dezenas de turnos) e medem memória entre
+perguntas, que é justamente onde o motor CLI já reprova `t15-memoria` abaixo. As quatro que
+reprovaram são de julgamento do motor, não do caminho:
 
 | Tarefa | O que a bateria esperava | O que aconteceu |
 |---|---|---|
