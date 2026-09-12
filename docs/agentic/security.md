@@ -20,6 +20,25 @@ sendo risco conhecido. Implementado sem homologação em ambiente real.
   'human'`, ação do Bot é recusada (`assertBotMayAct`, `HumanHasControlError` → espera
   `waiting_human`, sem gastar passos contra a parede).
 
+## Para onde o Bot pode ir, e para onde o servidor pode apontar
+
+- **A rede interna, por Bot.** `checkNavigationTarget` (`computer/target.ts`) recusa, antes de
+  qualquer requisição, endereço que seja o deste deployment: IP privado, `localhost`, nome sem
+  ponto (é assim que um serviço do mesmo compose se chama) e os apelidos de credencial de nuvem —
+  esses últimos nunca, nem com permissão. Quem responde "sim" é o cadastro do Bot
+  (`agents.configuration.allowPrivateNavigation`, desligado por padrão, com o que ele abre escrito
+  no formulário) ou `COMPUTER_ALLOW_PRIVATE_NAVIGATION=true` para o deployment inteiro. Erro ao ler
+  o cadastro é "não" com aviso no log. A recusa é auditada como `computer.action_refused` com
+  `cause: private_network` — a decisão de política vai como foi, sem inventar uma regra que não
+  olhou o endereço —, e o passo da tarefa mostra o motivo e a saída para quem estava esperando.
+- **Servidor MCP fora do catálogo, por URL.** `customUrlRefusal` (`plugins/catalogue.ts`) exige
+  `https` e host público antes de guardar o endereço: sem isso, "adicione um servidor MCP" é um
+  primitivo de requisição para onde o servidor alcança, com o token do cofre no cabeçalho.
+  `PLUGINS_ALLOW_PRIVATE_MCP=true` é a decisão de administrador que aceita uma API da casa (rede
+  interna, http) — ela é registrada em `mcp_servers.addedBy`, e cada servidor que só passou por causa
+  dela leva `privateNetwork: true` no evento `configuration.changed`. O endereço de credencial de
+  nuvem continua recusado mesmo assim, e toda recusa que o interruptor abriria diz o nome dele.
+
 ## Classificação de artefatos e destinos
 
 - `classifyCapture` (`image-input.ts`): host em `AGENT_SENSITIVE_HOSTS` (comparação exata
