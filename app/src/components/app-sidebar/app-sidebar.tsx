@@ -1,4 +1,5 @@
 import {
+  IconApps,
   IconBolt,
   IconBox,
   IconListCheck,
@@ -282,6 +283,25 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <IconBox />
               </div>
               <span className="text-sm trackint-tight">Habilidades</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              className="hover:bg-foreground/5 h-10"
+              render={(props) => (
+                <Link
+                  {...props}
+                  to="/marketplace"
+                  activeProps={{
+                    className: "bg-foreground/5",
+                  }}
+                />
+              )}
+            >
+              <div className="size-[28px] flex items-center justify-center">
+                <IconApps />
+              </div>
+              <span className="text-sm trackint-tight">Marketplace</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>

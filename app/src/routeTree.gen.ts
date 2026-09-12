@@ -16,6 +16,7 @@ import { Route as AuthedAdminRouteRouteImport } from './routes/_authed/admin/rou
 import { Route as AuthedSettingsRouteRouteImport } from './routes/_authed/settings/route'
 import { Route as AuthedAppIndexRouteImport } from './routes/_authed/_app/index'
 import { Route as AuthedAppBotRouteImport } from './routes/_authed/_app/bot'
+import { Route as AuthedAppMarketplaceRouteImport } from './routes/_authed/_app/marketplace'
 import { Route as AuthedAppSkillsRouteImport } from './routes/_authed/_app/skills'
 import { Route as AuthedAdminIndexRouteImport } from './routes/_authed/admin/index'
 import { Route as AuthedAdminAuditRouteImport } from './routes/_authed/admin/audit'
@@ -70,6 +71,11 @@ const AuthedAppIndexRoute = AuthedAppIndexRouteImport.update({
 const AuthedAppBotRoute = AuthedAppBotRouteImport.update({
   id: '/bot',
   path: '/bot',
+  getParentRoute: () => AuthedAppRoute,
+} as any)
+const AuthedAppMarketplaceRoute = AuthedAppMarketplaceRouteImport.update({
+  id: '/marketplace',
+  path: '/marketplace',
   getParentRoute: () => AuthedAppRoute,
 } as any)
 const AuthedAppSkillsRoute = AuthedAppSkillsRouteImport.update({
@@ -197,6 +203,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AuthedAdminRouteRouteWithChildren
   '/settings': typeof AuthedSettingsRouteRouteWithChildren
   '/bot': typeof AuthedAppBotRoute
+  '/marketplace': typeof AuthedAppMarketplaceRoute
   '/skills': typeof AuthedAppSkillsRoute
   '/admin/audit': typeof AuthedAdminAuditRoute
   '/admin/boundaries': typeof AuthedAdminBoundariesRoute
@@ -224,6 +231,7 @@ export interface FileRoutesByTo {
   '/': typeof AuthedAppIndexRoute
   '/sign': typeof SignRoute
   '/bot': typeof AuthedAppBotRoute
+  '/marketplace': typeof AuthedAppMarketplaceRoute
   '/skills': typeof AuthedAppSkillsRoute
   '/admin/audit': typeof AuthedAdminAuditRoute
   '/admin/boundaries': typeof AuthedAdminBoundariesRoute
@@ -255,6 +263,7 @@ export interface FileRoutesById {
   '/_authed/settings': typeof AuthedSettingsRouteRouteWithChildren
   '/_authed/_app': typeof AuthedAppRouteWithChildren
   '/_authed/_app/bot': typeof AuthedAppBotRoute
+  '/_authed/_app/marketplace': typeof AuthedAppMarketplaceRoute
   '/_authed/_app/skills': typeof AuthedAppSkillsRoute
   '/_authed/admin/audit': typeof AuthedAdminAuditRoute
   '/_authed/admin/boundaries': typeof AuthedAdminBoundariesRoute
@@ -287,6 +296,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/settings'
     | '/bot'
+    | '/marketplace'
     | '/skills'
     | '/admin/audit'
     | '/admin/boundaries'
@@ -314,6 +324,7 @@ export interface FileRouteTypes {
     | '/'
     | '/sign'
     | '/bot'
+    | '/marketplace'
     | '/skills'
     | '/admin/audit'
     | '/admin/boundaries'
@@ -344,6 +355,7 @@ export interface FileRouteTypes {
     | '/_authed/settings'
     | '/_authed/_app'
     | '/_authed/_app/bot'
+    | '/_authed/_app/marketplace'
     | '/_authed/_app/skills'
     | '/_authed/admin/audit'
     | '/_authed/admin/boundaries'
@@ -423,6 +435,13 @@ declare module '@tanstack/react-router' {
       path: '/bot'
       fullPath: '/bot'
       preLoaderRoute: typeof AuthedAppBotRouteImport
+      parentRoute: typeof AuthedAppRoute
+    }
+    '/_authed/_app/marketplace': {
+      id: '/_authed/_app/marketplace'
+      path: '/marketplace'
+      fullPath: '/marketplace'
+      preLoaderRoute: typeof AuthedAppMarketplaceRouteImport
       parentRoute: typeof AuthedAppRoute
     }
     '/_authed/_app/skills': {
@@ -636,6 +655,7 @@ const AuthedSettingsRouteRouteWithChildren =
 
 interface AuthedAppRouteChildren {
   AuthedAppBotRoute: typeof AuthedAppBotRoute
+  AuthedAppMarketplaceRoute: typeof AuthedAppMarketplaceRoute
   AuthedAppSkillsRoute: typeof AuthedAppSkillsRoute
   AuthedAppIndexRoute: typeof AuthedAppIndexRoute
   AuthedAppChannelChannelIdRoute: typeof AuthedAppChannelChannelIdRoute
@@ -647,6 +667,7 @@ interface AuthedAppRouteChildren {
 
 const AuthedAppRouteChildren: AuthedAppRouteChildren = {
   AuthedAppBotRoute: AuthedAppBotRoute,
+  AuthedAppMarketplaceRoute: AuthedAppMarketplaceRoute,
   AuthedAppSkillsRoute: AuthedAppSkillsRoute,
   AuthedAppIndexRoute: AuthedAppIndexRoute,
   AuthedAppChannelChannelIdRoute: AuthedAppChannelChannelIdRoute,
