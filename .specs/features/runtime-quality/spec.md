@@ -192,7 +192,7 @@ Como usuário, quero perguntar sobre dados anteriores sem repeti-los.
 | Requirement ID | Story | Phase | Status |
 |---|---|---|---|
 | RQ-01 | Memória CLI | Contexto | Verified |
-| RQ-02 | Isolamento CLI | Contexto | Pending |
+| RQ-02 | Isolamento CLI | Contexto | Verified |
 | RQ-03 | Conclusão | Confiabilidade | Pending |
 | RQ-04 | Consumo | Confiabilidade | Pending |
 | RQ-05 | Relógio | Confiabilidade | Pending |

@@ -467,6 +467,7 @@ async function executarPassagem(
   model = "",
 ): Promise<TurnResult> {
   const adapter = adapterFor(adapterId);
+  abort.throwIfAborted();
   const child = Bun.spawn(
     [
       adapter.binary,
@@ -543,17 +544,49 @@ async function executarPassagem(
   } finally {
     clearTimeout(timer);
     abort.removeEventListener("abort", onAbort);
-    if (child.exitCode === null) child.kill();
+    if (child.exitCode === null) {
+      child.kill();
+      await child.exited;
+    }
   }
 }
 
-async function runAgent(input: RunAgentInput): Promise<Response> {
+// One process shares one workspace. A cancelled waiter releases only its own gate.
+let workspaceTail = Promise.resolve();
+async function acquireWorkspace(signal: AbortSignal): Promise<() => void> {
+  signal.throwIfAborted();
+  const previous = workspaceTail;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  workspaceTail = previous.then(() => held);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const abort = () => reject(signal.reason);
+      signal.addEventListener("abort", abort, { once: true });
+      void previous.then(() => {
+        signal.removeEventListener("abort", abort);
+        if (signal.aborted) reject(signal.reason);
+        else resolve();
+      });
+    });
+    signal.throwIfAborted();
+    return release;
+  } catch (error) {
+    release();
+    throw error;
+  }
+}
+
+export async function runAgent(input: RunAgentInput, signal: AbortSignal): Promise<Response> {
   const encoder = new EventEncoder();
+  const abort = new AbortController();
+  const turnSignal = AbortSignal.any([signal, abort.signal]);
+  let closed = false;
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const utf8 = new TextEncoder();
-      let closed = false;
+      let releaseWorkspace: (() => void) | undefined;
       const send = (event: BaseEvent) => {
         if (closed) return;
         controller.enqueue(utf8.encode(encoder.encodeSSE(event)));
@@ -577,7 +610,6 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
         send({ type: "CUSTOM", name: "heartbeat", value: {} } as BaseEvent);
       }, 20_000);
 
-      const abort = new AbortController();
       const messageId = `msg_${input.runId}`;
       let textOpen = false;
       const openText = () => {
@@ -623,7 +655,9 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
         if (!pergunta.trim()) {
           throw new Error("O turno chegou sem pergunta.");
         }
+        releaseWorkspace = await acquireWorkspace(turnSignal);
         await prepararTurno(CLI, assertion, skills);
+        turnSignal.throwIfAborted();
 
         const modelo = modeloDoTurno(input);
         if (modelo) {
@@ -636,7 +670,7 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
           CLI,
           pergunta,
           say,
-          abort.signal,
+          turnSignal,
           modelo,
         );
         toolCalls += resultado.toolCalls;
@@ -656,6 +690,7 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
         failure =
           error instanceof Error ? error.message : "The Bot could not answer.";
       } finally {
+        releaseWorkspace?.();
         clearInterval(heartbeat);
 
         if (textOpen) {
@@ -684,6 +719,10 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
           /* O consumidor foi embora. */
         }
       }
+    },
+    cancel(reason) {
+      closed = true;
+      abort.abort(reason);
     },
   });
 
@@ -856,7 +895,7 @@ if (import.meta.main) {
           return Response.json({ error: "Unauthorized." }, { status: 401 });
         }
         const input = (await request.json()) as RunAgentInput;
-        return runAgent(input);
+        return runAgent(input, request.signal);
       }
 
       return Response.json({ error: "Not found." }, { status: 404 });

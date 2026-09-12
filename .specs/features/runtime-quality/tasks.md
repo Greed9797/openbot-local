@@ -69,12 +69,15 @@ Cobertura bidirecional RQ-01: AC1 ↔ `agent-cli/tests/cli.test.ts:247` (`expect
 **Reuses**: runAgent, prepararTurno e AbortSignal existentes.
 **Requirement**: RQ-02
 **Done when**:
-- [ ] Dois turnos distintos nunca sobrepõem configuração ou skills.
-- [ ] Cancelamento em fila não modifica workspace nem encerra turno ativo.
-- [ ] Erro no processo libera fila, sem starvation dos próximos turnos.
+- [x] Dois turnos distintos nunca sobrepõem configuração ou skills.
+- [x] Cancelamento em fila não modifica workspace nem encerra turno ativo.
+- [x] Erro no processo libera fila, sem starvation dos próximos turnos.
 **Tests**: unit — teste concorrente com executável local controlado, em agent-cli/tests; verificar resultado visível por turno e não apenas número de chamadas.
 **Gate**: quick
 **Commit**: fix(cli): serialize shared workspace execution
+
+Gate T2: `bun test agent-cli/tests/workspace.test.ts agent-cli/tests/cli.test.ts` — 21 pass, 0 fail. Executável local controlado lê config e skill reais em workspace temporário; cancelamento do segundo turno preserva primeiro, terceiro falha e quarto progride. Nenhuma chamada de fornecedor.
+Cobertura RQ-02 AC1–AC3 ↔ `agent-cli/tests/workspace.test.ts`, teste `queued cancellation preserves active files; failure releases the next isolated turn`: assertions `beforeRelease === "first"`, `cancelledStarted === false`, `unchanged === true`, skill e assertion próprios do primeiro/último, `RUN_ERROR` do terceiro. Adequação: observa isolamento e progresso, não contagem de mocks.
 
 ### T3: Preservar contexto útil sem duplicar regras
 
