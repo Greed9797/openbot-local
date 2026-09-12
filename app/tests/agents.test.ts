@@ -29,6 +29,7 @@ describe("coworker form validation", () => {
         authValue: "",
         provider: "",
         model: "",
+        allowPrivateNavigation: false,
       }).name,
     ).toBe("Expense Manager");
   });
@@ -44,6 +45,7 @@ describe("coworker form validation", () => {
       // volta ao padrão. O que este teste prova é a forma do endpoint.
       provider: "",
       model: "",
+      allowPrivateNavigation: false,
     };
     // Empty means the Bot in the box, which is what most people want first time.
     expect(agentFormSchema.safeParse({ ...valid, endpoint: "" }).success).toBe(
@@ -70,6 +72,9 @@ describe("coworker form validation", () => {
       visibility: "private" as const,
       endpoint: "",
       authValue: "",
+      provider: "",
+      model: "",
+      allowPrivateNavigation: false,
     };
 
     expect(agentFormSchema.safeParse({ ...valid, name: "   " }).success).toBe(

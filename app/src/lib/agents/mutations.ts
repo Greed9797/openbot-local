@@ -15,6 +15,11 @@ export type AgentInput = {
    */
   provider?: string;
   model?: string;
+  /**
+   * Se este Bot pode abrir endereços da rede interna. Enviado sempre: `false` é uma decisão — tirar
+   * a permissão —, e ausente é não mexer.
+   */
+  allowPrivateNavigation?: boolean;
   /** Write-only auth value; omitted when the user leaves the key field empty. */
   auth?: { header: string; value: string };
 };

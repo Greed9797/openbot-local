@@ -242,15 +242,32 @@ const computerGateway = computerProvider
       // but the one that snapshotted, and the boundary would decide with no element to look at.
       snapshots: createSnapshotStore(database),
       /*
-       * A variável PRÓPRIA da navegação, e não a do registro de agentes.
+       * A pergunta é por Bot: o cadastro responde, e o interruptor do deployment continua valendo
+       * como um "sim" para todos.
        *
-       * `AGENT_COMPUTER_ALLOW_PRIVATE_HOSTS` responde se um Bot pode ser registrado num endereço
+       * `AGENT_COMPUTER_ALLOW_PRIVATE_HOSTS` responde se um Bot pode ser REGISTRADO num endereço
        * interno — e a resposta é sim, porque é onde os Bots deste deployment moram. Enquanto as duas
        * perguntas dividiram a mesma variável, permitir o registro abria a rede interna para a
        * navegação: medido, o navegador do Bot lia `http://openbot:3001/api/admin/connectors`, que é
        * a API que o governa, com privilégio de administrador num deployment de usuário único.
+       *
+       * A permissão do Bot nasce desligada e é auditada: quem a liga está dizendo que aquele Bot
+       * pode alcançar os serviços que governam este deployment, e a frase está no formulário.
        */
-      allowPrivateNavigation: config.computer?.allowPrivateNavigation,
+      allowPrivateNavigation: async (botId) => {
+        if (config.computer?.allowPrivateNavigation) return true;
+        try {
+          const settings = await agentProfileStore.runtimeSettings(botId);
+          return settings?.allowPrivateNavigation === true;
+        } catch (error) {
+          // Na dúvida, a resposta que não abre a rede — e dita em voz alta, porque um banco fora do
+          // ar vira uma recusa de navegação que ninguém explicaria de outro jeito.
+          console.warn(
+            `Não foi possível ler a permissão de navegação do Bot ${botId}: ${String(error)}`,
+          );
+          return false;
+        }
+      },
       token: config.computer?.token,
     })
   : undefined;

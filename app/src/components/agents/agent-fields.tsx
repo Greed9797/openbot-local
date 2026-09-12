@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { type AgentFormValues, agentFormSchema } from "@/lib/agents/form";
 import {
@@ -360,6 +361,33 @@ export function AgentFields({
             );
           }}
         </form.Subscribe>
+        <form.Field name="allowPrivateNavigation">
+          {(field) => (
+            <Field>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-col gap-1">
+                  <FieldLabel htmlFor="agent-private-navigation">
+                    Navegar na rede interna
+                  </FieldLabel>
+                  <p className="text-muted-foreground text-sm">
+                    Este Bot pode abrir endereços internos deste deployment —
+                    inclusive os serviços que o governam. Ligue só para uma
+                    página que você opera, e saiba que toda abertura e toda
+                    recusa ficam na auditoria.
+                  </p>
+                </div>
+                <Switch
+                  aria-label="Navegar na rede interna"
+                  checked={field.state.value}
+                  id="agent-private-navigation"
+                  onCheckedChange={(checked) =>
+                    field.handleChange(checked === true)
+                  }
+                />
+              </div>
+            </Field>
+          )}
+        </form.Field>
         <form.Field name="authValue">
           {(field) => (
             <Field>

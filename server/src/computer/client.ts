@@ -17,10 +17,16 @@ export class ElementNotFoundError extends Error {
   }
 }
 
-/** The navigation target is not permitted. */
+/**
+ * Um destino recusado pelo guarda de navegação, antes de qualquer coisa ser enviada.
+ *
+ * A causa viaja com a exceção (`cause`, do `Error` do ES2022) porque a frase sozinha não basta para
+ * quem lê depois: a tela oferece uma saída só para a recusa de rede interna, e a auditoria separa o
+ * motivo sem comparar texto.
+ */
 export class NavigationRefusedError extends Error {
-  constructor(reason: string) {
-    super(reason);
+  constructor(reason: string, cause?: "private_network") {
+    super(reason, cause === undefined ? undefined : { cause });
     this.name = "NavigationRefusedError";
   }
 }
@@ -96,8 +102,15 @@ export type ComputerTransportOptions = {
    * O que isso valia na prática: `http://openbot:3001/api/admin/connectors` respondia ao navegador
    * do Bot, e num deployment de usuário único toda chamada que alcança aquela porta é de
    * administrador. Um Bot alcançando a API que o governa.
+   *
+   * Um booleano vale para o deployment inteiro — é o interruptor de ambiente, para quem não quer
+   * responder isso por Bot. Uma função responde **por Bot**, e é o caso normal: a permissão mora no
+   * cadastro do Bot, e quem sabe lê-la é o perfil. Erro ao responder é `false` do lado de quem
+   * monta a função: na dúvida, a resposta que não abre a rede.
    */
-  allowPrivateNavigation?: boolean;
+  allowPrivateNavigation?:
+    | boolean
+    | ((botId: string) => boolean | Promise<boolean>);
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
 };
@@ -227,7 +240,7 @@ export function createComputerTransport(
     url: string,
   ): Promise<NavigateResult> {
     return post<NavigateResult>(baseUrl, botId, "/navigate", {
-      url: aprovarDestino(url),
+      url: await aprovarDestino(url, botId),
     });
   }
 
@@ -248,16 +261,25 @@ export function createComputerTransport(
     url: string,
   ): Promise<unknown> {
     return post<unknown>(baseUrl, botId, "/fetch", {
-      url: aprovarDestino(url),
+      url: await aprovarDestino(url, botId),
     });
   }
 
-  function aprovarDestino(url: string): string {
+  async function aprovarDestino(url: string, botId: string): Promise<string> {
+    /*
+     * A pergunta é por Bot quando quem monta o transporte passa uma função — é o caso normal, e a
+     * resposta vem do cadastro do Bot. O booleano continua valendo para o deployment inteiro, que é
+     * o interruptor de ambiente.
+     */
+    const permitido =
+      typeof options.allowPrivateNavigation === "function"
+        ? await options.allowPrivateNavigation(botId)
+        : options.allowPrivateNavigation;
     const verdict = checkNavigationTarget(url, {
-      allowPrivateHosts: options.allowPrivateNavigation,
+      allowPrivateHosts: permitido,
     });
     if (!verdict.allowed) {
-      throw new NavigationRefusedError(verdict.reason);
+      throw new NavigationRefusedError(verdict.reason, verdict.cause);
     }
     return verdict.url;
   }

@@ -11,8 +11,8 @@
  * página foi parar, nunca o texto que foi digitado.
  */
 import {
-  ActionRefusedError,
   type ActionActor,
+  ActionRefusedError,
   type ComputerGateway,
   ComputerUnavailableError,
   ElementNotFoundError,
@@ -21,6 +21,7 @@ import {
   SecretPendingError,
   StaleSnapshotError,
 } from "../computer/gateway";
+import type { SnapshotElement } from "../computer/schema";
 import type {
   ToolCall,
   ToolCallContext,
@@ -28,7 +29,6 @@ import type {
   ToolDefinition,
   ToolOutcome,
 } from "./contracts";
-import type { SnapshotElement } from "../computer/schema";
 import { extractForm, planFill } from "./form-extract";
 
 /** Quanto uma espera pode durar. Acima disto, a tarefa está presa e quem decide é a pessoa. */
@@ -211,9 +211,13 @@ export function createBrowserTools(options: BrowserToolOptions): ToolCatalog {
   ];
 
   const acting = new Set(
-    definitions.filter((definition) => definition.acting === true).map((d) => d.name),
+    definitions
+      .filter((definition) => definition.acting === true)
+      .map((d) => d.name),
   );
-  const known = new Map(definitions.map((definition) => [definition.name, definition]));
+  const known = new Map(
+    definitions.map((definition) => [definition.name, definition]),
+  );
 
   return {
     definitions: () =>
@@ -250,7 +254,9 @@ export function createBrowserTools(options: BrowserToolOptions): ToolCatalog {
       try {
         switch (call.name) {
           case "navigate":
-            return ok(await gateway.navigate(botId, actor, textOf(call, "url")));
+            return ok(
+              await gateway.navigate(botId, actor, textOf(call, "url")),
+            );
           case "read_page": {
             const page = await gateway.read(botId);
             return ok({
@@ -469,11 +475,11 @@ export function createBrowserTools(options: BrowserToolOptions): ToolCatalog {
  * O texto digitado nunca aparece: o `ActionResult` já não o devolve, e esta função não o acrescenta.
  * O que entra num passo é o rótulo do elemento e o endereço em que a página ficou.
  */
-function ok(
-  result: unknown,
-  extra: Record<string, unknown> = {},
-): ToolOutcome {
-  return { ok: true, result: { ...(asRecord(result) ?? { result }), ...extra } };
+function ok(result: unknown, extra: Record<string, unknown> = {}): ToolOutcome {
+  return {
+    ok: true,
+    result: { ...(asRecord(result) ?? { result }), ...extra },
+  };
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -526,7 +532,16 @@ function failure(
     return { ok: false, refused: { rule: error.rule, reason: error.message } };
   }
   if (error instanceof NavigationRefusedError) {
-    return { ok: false, refused: { rule: null, reason: error.message } };
+    return {
+      ok: false,
+      refused: {
+        rule: null,
+        reason: error.message,
+        ...(error.cause === "private_network"
+          ? { cause: "private_network" as const }
+          : {}),
+      },
+    };
   }
   if (error instanceof StaleSnapshotError) {
     return {

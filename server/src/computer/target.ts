@@ -55,7 +55,18 @@ function ehNomeDeServiço(hostname: string): boolean {
 
 export type TargetVerdict =
   | { allowed: true; url: string }
-  | { allowed: false; reason: string };
+  | {
+      allowed: false;
+      reason: string;
+      /**
+       * Por que a recusa aconteceu, quando há como dizer.
+       *
+       * `reason` é a frase que a pessoa lê; isto é o que a tela e a auditoria conseguem ramificar sem
+       * comparar texto. Só a recusa por rede interna tem causa hoje — as outras não têm saída
+       * nenhuma que a tela possa oferecer.
+       */
+      cause?: "private_network";
+    };
 
 function isPrivateIpv4(hostname: string): boolean {
   const parts = hostname.split(".");
@@ -165,6 +176,7 @@ export function checkNavigationTarget(
   ) {
     return {
       allowed: false,
+      cause: "private_network",
       reason:
         "That address is inside this deployment's own network, so the assistant is not allowed to open it.",
     };

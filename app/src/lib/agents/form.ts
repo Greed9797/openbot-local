@@ -50,6 +50,13 @@ export const agentFormSchema = z.object({
     .trim()
     .max(120, "Provider must be 120 characters or fewer."),
   model: z.string().trim().max(120, "Model must be 120 characters or fewer."),
+  /**
+   * Se este Bot pode abrir endereços da rede interna deste deployment.
+   *
+   * Booleano, e o padrão é falso: a caixa só fica marcada quando alguém a marcou, e é o que o
+   * cadastro guarda. Marcada, o navegador deste Bot alcança os serviços que governam o deployment.
+   */
+  allowPrivateNavigation: z.boolean(),
 });
 
 export type AgentFormValues = z.infer<typeof agentFormSchema>;
@@ -63,6 +70,7 @@ export const emptyAgentForm: AgentFormValues = {
   authValue: "",
   provider: "",
   model: "",
+  allowPrivateNavigation: false,
 };
 
 /** Convert form values to API input; omit an empty key so editing preserves the current credential. */
@@ -80,6 +88,9 @@ export function agentInputFrom(values: AgentFormValues) {
      */
     provider: values.provider.trim(),
     model: values.model.trim(),
+    // Booleano de verdade, e não "presente ou ausente": desmarcar a caixa é uma decisão — tirar a
+    // permissão —, e o servidor só a distingue de "não mexeu" porque este campo vai sempre.
+    allowPrivateNavigation: values.allowPrivateNavigation,
     ...(values.authValue.trim()
       ? { auth: { header: "Authorization", value: values.authValue.trim() } }
       : {}),

@@ -121,6 +121,7 @@ export function AgentProfile({ agentId }: { agentId: string }) {
             // servidor interpreta como "volte ao padrão".
             provider: profile.provider ?? "",
             model: profile.model ?? "",
+            allowPrivateNavigation: profile.allowPrivateNavigation,
             // The server never sends credentials back to the client.
             authValue: "",
           }}

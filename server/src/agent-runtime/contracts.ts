@@ -83,7 +83,18 @@ export type ToolCall = {
 export type ToolOutcome = {
   ok: boolean;
   result?: unknown;
-  refused?: { rule: string | null; reason: string };
+  refused?: {
+    rule: string | null;
+    reason: string;
+    /**
+     * Por que a recusa aconteceu, quando quem recusou sabe dizer.
+     *
+     * `private_network` é a única causa hoje, e é a única com saída oferecível: a permissão de
+     * navegar para dentro da rede é do Bot, então a tela consegue dizer onde ligá-la. A frase do
+     * motivo continua sendo o que a pessoa lê.
+     */
+    cause?: "private_network";
+  };
   stale?: boolean;
   /** The action ran but its external effect is unknown — a submit that timed out. */
   uncertain?: boolean;

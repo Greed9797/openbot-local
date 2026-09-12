@@ -26,6 +26,13 @@ export type AgentProfile = {
    */
   provider: string | null;
   model: string | null;
+  /**
+   * Se este Bot pode abrir endereços da rede interna deste deployment.
+   *
+   * Falso é o padrão, e é o que a ausência significa. Ligar isto dá ao navegador do Bot acesso aos
+   * serviços que governam o deployment — inclusive à API que o governa.
+   */
+  allowPrivateNavigation: boolean;
   /** Whether a key is set for it. Never the key itself. */
   hasAuth: boolean;
   /**

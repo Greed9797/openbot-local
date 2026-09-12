@@ -18,7 +18,11 @@
  * The refs are opaque to the caller precisely so that the server holds the mapping.
  */
 import { type AuditStore, recordAuditEvent } from "../audit";
-import { ComputerUnavailableError, createComputerTransport } from "./client";
+import {
+  ComputerUnavailableError,
+  createComputerTransport,
+  NavigationRefusedError,
+} from "./client";
 import { checkComputerAddress } from "./target";
 
 export {
@@ -58,9 +62,9 @@ import type {
   RunCommandResult,
   ScreenshotResult,
   ScrollInput,
-  SelectInput,
   SecretRequest,
   SecretResult,
+  SelectInput,
   SnapshotElement,
   SnapshotResult,
   TypeInput,
@@ -112,8 +116,13 @@ export type ComputerGatewayOptions = {
    * Se o Bot pode navegar para dentro da rede deste deployment. Verdadeiro num laptop, onde navegar
    * para endereços privados é o caso normal. Ver a nota em `ComputerTransportOptions`: isto NÃO é a
    * mesma pergunta que registrar um Bot num endereço interno, e as duas viviam na mesma variável.
+   *
+   * `boolean` responde pelo deployment inteiro; a função responde **por Bot**, que é o caso normal
+   * agora — a permissão mora no cadastro do Bot, e quem monta esta função junta as duas respostas.
    */
-  allowPrivateNavigation?: boolean;
+  allowPrivateNavigation?:
+    | boolean
+    | ((botId: string) => boolean | Promise<boolean>);
   /** The secret that agent-computer requires on each request. */
   token?: string;
   /** An injectable fetch implementation for focused gateway tests. */
@@ -469,6 +478,34 @@ export function createComputerGateway(
     try {
       result = await run();
     } catch (error) {
+      /**
+       * Uma recusa de destino não é uma ação que falhou.
+       *
+       * O guarda de navegação estoura dentro do transporte — antes do `govern()` —, e até agora essa
+       * exceção caía aqui: a recusa por rede interna virava `computer.action_failed`, com a frase do
+       * motivo escondida no campo de falha. Foi assim que a recusa não apareceu na aba "Bloqueado"
+       * do admin. Ela é a mesma coisa que uma política que nega: nada foi tentado, e o motivo é
+       * acionável — então é registrada como recusa.
+       */
+      if (error instanceof NavigationRefusedError) {
+        await write(auditStore, {
+          toolName,
+          botId,
+          actor,
+          element,
+          ref,
+          filePath,
+          pageUrl,
+          decision,
+          refusal: {
+            reason: error.message,
+            ...(error.cause === "private_network"
+              ? { cause: "private_network" }
+              : {}),
+          },
+        });
+        throw error;
+      }
       /**
        * A permitted action that did not happen gets its own row.
        *
@@ -953,6 +990,14 @@ async function write(
     decision: PolicyDecision;
     /** The command a shell call ran, so the trail says what was run and not merely that something was. */
     command?: string;
+    /**
+     * Uma recusa que não veio da política: hoje só a do guarda de destino, quando o endereço é
+     * interno. A decisão de política vai como ela foi — inventar uma decisão negada aqui seria
+     * escrever na auditoria que uma regra barrou o que nenhuma regra olhou.
+     *
+     * `cause`, quando existe, é o que a tela usa para oferecer a saída: só a rede interna tem uma.
+     */
+    refusal?: { reason: string; cause?: string };
     /** Set only when a permitted action was attempted and did not succeed. */
     failure?: string;
   },
@@ -962,9 +1007,11 @@ async function write(
     // is that a reader can tell an action that happened from one that was permitted and then did not.
     eventType: entry.failure
       ? "computer.action_failed"
-      : entry.decision.allowed
-        ? "computer.action_allowed"
-        : "computer.action_refused",
+      : entry.refusal
+        ? "computer.action_refused"
+        : entry.decision.allowed
+          ? "computer.action_allowed"
+          : "computer.action_refused",
     targetType: "computer",
     targetId: entry.botId,
     // Only ever a real users row. The audit table has a foreign key to it, so writing the local
@@ -1017,6 +1064,12 @@ async function write(
             // than as an absent field that reads like a logging gap.
             "not in the current snapshot",
       ...(entry.failure ? { failure: entry.failure } : {}),
+      ...(entry.refusal
+        ? {
+            refusal: entry.refusal.reason,
+            ...(entry.refusal.cause ? { cause: entry.refusal.cause } : {}),
+          }
+        : {}),
       decision: {
         allowed: entry.decision.allowed,
         mode: entry.decision.mode,
