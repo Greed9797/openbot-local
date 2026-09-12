@@ -255,6 +255,19 @@ describe("registro do routed", () => {
     ).toBeUndefined();
   });
 
+  test("modos de execução incompatíveis recusam a política", () => {
+    expect(() =>
+      createRoutedProvider({
+        policy: { primary: "cheap", fallback: "strong" },
+        providers: [
+          fakeProvider("cheap"),
+          fakeProvider("strong", { capabilities: { mode: "delegated" } }),
+        ],
+        configs: mutableConfigs(),
+      }),
+    ).toThrow(/same execution mode/);
+  });
+
   test("vive sob o id routed sem virar padrão", () => {
     const routed = createRoutedProvider({
       policy: { primary: "cheap", fallback: "strong" },

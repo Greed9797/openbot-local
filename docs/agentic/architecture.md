@@ -146,12 +146,12 @@ Snapshot nativo agrega texto e refs após conferir documento/URL antes e depois 
 Sem `AGENT_ROUTING_POLICY`, seleção fixa permanece igual. Exemplo opt-in:
 
 ```sh
-AGENT_ROUTING_POLICY='{"primary":"openai","fallback":"anthropic"}'
+AGENT_ROUTING_POLICY='{"primary":"openai-responses","fallback":"anthropic"}'
 ```
 
-Ids devem estar configurados. Política registra provedor sintético `routed`, sem substituir padrão ou Bot existente. Para autorizar seleção automática, a tarefa escolhe `provider: "routed"` sem fixar modelo; modelo explícito fica preso ao candidato correspondente e não autoriza trocar por outro modelo.
+Ids devem estar configurados. Política registra provedor sintético `routed`, sem substituir padrão ou Bot existente. Para autorizar seleção automática, a tarefa escolhe `provider: "routed"` sem fixar modelo; modelo explícito fica preso ao candidato correspondente e não autoriza trocar por outro modelo. A escolha da tarefa ou do Bot é persistida separadamente do valor padrão, inclusive quando ambos são iguais; metadata arbitrário não altera esse pin.
 
-Seleção considera capacidades. Falha retentável permite uma escalada para fallback autorizado; tentativas persistidas mantêm escolha nos próximos passos/retomadas. Recusa e cancelamento não escalam. O laço não acrescenta retries ao roteador.
+Seleção considera capacidades. Primário e fallback com modos de execução diferentes recusam a configuração na construção do roteador. Falha retentável permite uma escalada para fallback autorizado; tentativas persistidas mantêm escolha nos próximos passos/retomadas. Recusa e cancelamento não escalam. O laço não acrescenta retries ao roteador.
 
 ### Evidência local
 

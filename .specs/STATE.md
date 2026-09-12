@@ -11,6 +11,7 @@
 - **RQ-AD-03 — Memória conservadora.** CLI: envelope de 48.000 caracteres e fila FIFO por processo. Runtime: instruções humanas inteiras, inclusive mais de cinco mensagens e mais de dez pendências; excedente de 48.000 caracteres interrompe explicitamente antes do modelo. Não resumir ou esquecer restrições silenciosamente.
 - **RQ-AD-04 — Roteamento voluntário.** Política opcional registra `routed`; não altera Bots ou padrão. Um fallback autorizado, com tentativas efetivas persistidas. O loop não adiciona retries ao roteador. Modelo explicitamente fixado não autoriza substituição.
 - **RQ-AD-05 — Paralelismo e integração.** Autorização do usuário substituiu dependências de pesquisa artificiais para T1/T4/T8; arquivos compartilhados foram integrados pelo executor principal. Subagentes não forneceram prova de aceitação: imports, argumentos e limites perdidos foram corrigidos pelos gates do principal.
+- **RQ-AD-06 — Origem da escolha preservada.** Revisão independente encontrou pin explícito perdido quando igual ao padrão. `createRun` agora grava `modelPinned` a partir da tarefa/Bot, sobrescrevendo metadata arbitrário; executor conserva a escolha após retomada. Política com modos incompatíveis recusa construção, não desativa fallback silenciosamente.
 
 ## Evidência já observada
 

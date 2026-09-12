@@ -747,10 +747,15 @@ export function createAgentRunExecutor(
          * entre "o Bot pediu este modelo" e "o deployment tem este modelo", e é justamente essa
          * diferença que deixa o serviço do CLI usar o modelo dele quando ninguém pediu nada.
          */
+        const modelPinned = (
+          loaded.metadata as { modelPinned?: boolean } | null
+        )?.modelPinned;
         const modeloEscolhido =
-          loaded.model && loaded.model !== options.defaultModel
-            ? loaded.model
-            : undefined;
+          modelPinned === false
+            ? undefined
+            : modelPinned === true || loaded.model !== options.defaultModel
+              ? loaded.model
+              : undefined;
 
         const input: AgentRunInput = {
           runId: request.runId,

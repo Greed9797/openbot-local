@@ -79,10 +79,9 @@ function indexCandidates(
   if (
     fallbackProvider.capabilities.mode !== primaryProvider.capabilities.mode
   ) {
-    console.warn(
-      `Routed fallback "${policy.fallback}" runs in mode "${fallbackProvider.capabilities.mode}" while primary "${policy.primary}" runs in "${primaryProvider.capabilities.mode}": fallback disabled, primary only.`,
+    throw new Error(
+      "Routed primary and fallback must use the same execution mode.",
     );
-    return { primary };
   }
   return {
     primary,

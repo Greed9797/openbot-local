@@ -250,6 +250,7 @@ const FORGED_METADATA_KEYS: Record<string, true> = {
   completion: true,
   verified: true,
   verification: true,
+  modelPinned: true,
 };
 
 /**

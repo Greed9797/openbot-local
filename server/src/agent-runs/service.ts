@@ -402,7 +402,10 @@ export function createAgentRunService(options: {
           modelCalls: 0,
           toolCalls: 0,
         } satisfies RunUsage,
-        metadata: metadataWithCompletion(input.metadata, completion),
+        metadata: {
+          ...metadataWithCompletion(input.metadata, completion),
+          modelPinned: Boolean(escolhidoModel),
+        },
       });
       // The key already owned a run: hand that one back without a second trail row.
       if (!inserted) return { run, created: false };

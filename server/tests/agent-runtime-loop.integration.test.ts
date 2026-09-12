@@ -29,6 +29,7 @@ import type {
 import { TEST_POOL } from "./support/database";
 import { createAgentRunExecutor } from "../src/agent-runtime/loop";
 import { createProviderRegistry } from "../src/agent-runtime/registry";
+import { createRoutedProvider } from "../src/agent-runtime/routed-provider";
 
 const database = createDatabase(
   process.env.DATABASE_URL ??
@@ -169,6 +170,7 @@ function executorFor(options: {
   maxProviderRetries?: number;
   notifier?: { events: { to: string }[] };
   now?: () => number;
+  defaultModel?: string;
 }) {
   return createAgentRunExecutor({
     repository,
@@ -180,6 +182,7 @@ function executorFor(options: {
     maxCorrections: options.maxCorrections ?? 1,
     maxRefusals: options.maxRefusals ?? 1,
     maxProviderRetries: options.maxProviderRetries ?? 1,
+    defaultModel: options.defaultModel,
     ...(options.now ? { now: options.now } : {}),
     ...(options.notifier
       ? {
@@ -1230,5 +1233,88 @@ describe("conclusão verificável e relatos roteados (RQ-03/RQ-04)", () => {
     expect(usage.attempts.map((attempt) => attempt.provider)).toEqual([
       "cheap",
     ]);
+  });
+});
+
+describe("pin explícito no roteador real", () => {
+  test.each([
+    {
+      name: "preserva modelo igual ao padrão após retomada",
+      model: "scripted-1",
+      forged: false,
+      status: "failed",
+      attempts: ["scripted", "scripted"],
+    },
+    {
+      name: "permite fallback sem escolha apesar de metadata forjado",
+      model: undefined,
+      forged: true,
+      status: "succeeded",
+      attempts: ["scripted", "scripted", "strong"],
+    },
+  ])("$name", async ({ model, forged, status, attempts }) => {
+    const { run } = await service.createRun(
+      { id: "loop-user" },
+      {
+        botId: `bot-${crypto.randomUUID()}`,
+        userId: "loop-user",
+        origin: "web",
+        objective: "Relatar o texto disponível.",
+        provider: "routed",
+        model,
+        metadata: { modelPinned: forged },
+      },
+      "loop-user",
+    );
+    created.push(run.id);
+    const primary = scriptedProvider((input) => {
+      if (input.usage.modelCalls === 0)
+        return { kind: "help", reason: "Confirme a continuação." };
+      throw Object.assign(new Error("Primary unavailable"), {
+        retryable: true,
+      });
+    });
+    const fallback = {
+      ...scriptedProvider([{ kind: "final", message: "Texto disponível." }]),
+      id: "strong",
+    };
+    const routed = createRoutedProvider({
+      policy: { primary: "scripted", fallback: "strong" },
+      providers: [primary, fallback],
+      configs: [
+        {
+          id: "scripted",
+          transport: "responses",
+          model: "scripted-1",
+          vision: false,
+          tools: true,
+        },
+        {
+          id: "strong",
+          transport: "responses",
+          model: "strong-1",
+          vision: false,
+          tools: true,
+        },
+      ],
+    });
+    if (!routed)
+      throw new Error("The real routed provider was not registered.");
+    await drive(
+      run.id,
+      executorFor({ provider: routed, defaultModel: "scripted-1" }),
+    );
+    expect((await repository.get(run.id))?.status).toBe("waiting_human");
+    await service.resume(run.id, { id: "loop-user" });
+    await drive(
+      run.id,
+      executorFor({ provider: routed, defaultModel: "scripted-1" }),
+    );
+    const row = await repository.get(run.id);
+    if (!row) throw new Error("The persisted run disappeared.");
+    expect(row.status).toBe(status);
+    expect(
+      runView(row).usage.attempts?.map((attempt) => attempt.provider),
+    ).toEqual(attempts);
   });
 });
