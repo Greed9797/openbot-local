@@ -24,6 +24,8 @@ export function createProviderFor(
   options: {
     fetchImpl?: typeof fetch;
     signRun?: CodexSignRun;
+    /** Ver `CodexDelegatedOptions.skills`: só o provedor delegado entrega skills ao motor. */
+    skills?: CodexSkills;
   } = {},
 ): AgentModelProvider | undefined {
   const capabilities: ModelCapabilities = {
@@ -54,6 +56,7 @@ export function createProviderFor(
         // que ele aceita é este cabeçalho.
         ...(config.agentToken ? { token: config.agentToken } : {}),
         ...(options.signRun ? { signRun: options.signRun } : {}),
+        ...(options.skills ? { skills: options.skills } : {}),
         ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
       });
     case "responses":
@@ -97,6 +100,8 @@ export function createConfiguredProviders(
     fetchImpl?: typeof fetch;
     /** Ver `CodexDelegatedOptions.signRun`: só o provedor delegado tem o que assinar. */
     signRun?: CodexSignRun;
+    /** Ver `CodexDelegatedOptions.skills`: só o provedor delegado entrega skills ao motor. */
+    skills?: CodexSkills;
   } = {},
 ): AgentModelProvider[] {
   return configs
@@ -106,6 +111,9 @@ export function createConfiguredProviders(
 
 /** O que o provedor delegado assina, do lado de quem tem a chave. */
 export type CodexSignRun = NonNullable<CodexDelegatedOptions["signRun"]>;
+
+/** O que o provedor delegado entrega como skills concedidas. Ver `CodexDelegatedOptions.skills`. */
+export type CodexSkills = NonNullable<CodexDelegatedOptions["skills"]>;
 
 /**
  * Os modelos que cada serviço delegado diz ter.

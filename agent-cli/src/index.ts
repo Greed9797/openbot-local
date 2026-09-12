@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { BaseEvent, RunAgentInput } from "@ag-ui/core";
 import { EventEncoder } from "@ag-ui/encoder";
@@ -48,6 +48,15 @@ const VARIANT = process.env.AGENT_CLI_VARIANT?.trim() ?? "";
  * pessoa recolhe o arquivo.
  */
 const WORKSPACE = process.env.AGENT_CLI_WORKSPACE?.trim() || "/workspace";
+
+/**
+ * Onde as skills concedidas a este Bot ficam, dentro do workspace.
+ *
+ * Um diretório só, refeito a cada turno: é o que faz revogar uma concessão valer no turno seguinte,
+ * e é por isso que ele não é `AGENT_CLI_SKILLS_DIR` — um caminho configurável fora do workspace
+ * seria um lugar que a limpeza não alcança.
+ */
+const SKILLS_DIR = join(WORKSPACE, ".openbot-skills");
 
 /** Onde vive o servidor MCP que empresta o navegador ao CLI. */
 const MCP_SERVER_PATH =
@@ -133,6 +142,53 @@ export function perguntaDoTurno(input: RunAgentInput): string {
   return String(ultima?.content ?? "");
 }
 
+/** Uma skill como o painel a concedeu: os quatro campos que a rota guarda por slug. */
+export type SkillConcedida = {
+  slug: string;
+  title: string;
+  summary: string;
+  instructions: string;
+};
+
+/**
+ * As skills que este turno recebeu do runtime.
+ *
+ * Lidas do `forwardedProps`, onde o runtime as põe por Bot. Uma lista ausente e uma lista vazia
+ * querem dizer a mesma coisa aqui — este turno não tem skill nenhuma —, e é o que o serviço escreve
+ * no workspace: nada.
+ *
+ * O slug é validado aqui, antes de virar nome de diretório, e não na hora de escrever: o slug entra
+ * num caminho, então um slug com `..` ou `/` escreveria fora do workspace. O formato é o que a rota
+ * do painel aceita (`^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$`), e o que não casar é descartado — o modelo
+ * não pode receber no índice uma skill cujo arquivo não existe.
+ */
+export function skillsDoTurno(input: RunAgentInput): SkillConcedida[] {
+  const props = input.forwardedProps as { skills?: unknown } | undefined;
+  if (!Array.isArray(props?.skills)) return [];
+  return props.skills.flatMap((bruta) => {
+    const skill = bruta as Partial<SkillConcedida> | null;
+    if (
+      !skill ||
+      typeof skill.slug !== "string" ||
+      typeof skill.instructions !== "string"
+    ) {
+      return [];
+    }
+    if (!/^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$/.test(skill.slug)) {
+      console.warn(`skill ignorada: slug fora do formato — ${skill.slug}`);
+      return [];
+    }
+    return [
+      {
+        slug: skill.slug,
+        title: typeof skill.title === "string" ? skill.title : skill.slug,
+        summary: typeof skill.summary === "string" ? skill.summary : "",
+        instructions: skill.instructions,
+      },
+    ];
+  });
+}
+
 /**
  * O que o CLI lê como instruções do projeto.
  *
@@ -140,8 +196,8 @@ export function perguntaDoTurno(input: RunAgentInput): string {
  * navegador precisa saber que elas existem, que a ordem é snapshot-antes-de-agir, e que senha e
  * captcha são pedidos a uma pessoa — nunca adivinhados nem pedidos por chat.
  */
-function instructions(): string {
-  return [
+export function instructions(skills: SkillConcedida[] = []): string {
+  const linhas = [
     SYSTEM_PROMPT,
     "",
     "## Ferramentas deste ambiente",
@@ -152,11 +208,33 @@ function instructions(): string {
     "pela política e pela auditoria do deployment.",
     "",
     "Para baixar ou gerar arquivos, escreva no diretório de trabalho — é o que a pessoa recebe.",
-  ].join("\n");
+  ];
+
+  /*
+   * O índice, e não o corpo: com cem skills concedidas, o texto inteiro seria o turno. O arquivo de
+   * cada uma está no disco (`SKILLS_DIR`), e a instrução é abri-lo quando a tarefa casar com a
+   * descrição — o modelo lê o que precisa, quando precisa.
+   */
+  if (skills.length) {
+    linhas.push(
+      "",
+      "## Skills concedidas",
+      "",
+      ...skills.map(
+        (skill) =>
+          `- ${skill.slug} — ${skill.summary || skill.title} (${join(SKILLS_DIR, skill.slug, "SKILL.md")})`,
+      ),
+      "",
+      "Abra o arquivo da skill quando a tarefa casar com a descrição; sem isso, responda sem ela.",
+    );
+  }
+
+  return linhas.join("\n");
 }
 
 /**
- * Escreve o que o CLI precisa para este turno: o config do projeto e as instruções.
+ * Escreve o que o CLI precisa para este turno: o config do projeto, as skills concedidas e as
+ * instruções.
  *
  * O config carrega a declaração assinada, que vale para UM turno. Por isso ele é reescrito a cada
  * vez, em vez de ficar no ambiente do serviço, que sobrevive a todos eles.
@@ -164,6 +242,7 @@ function instructions(): string {
 async function prepararTurno(
   adapterId: string,
   assertion: string,
+  skills: SkillConcedida[] = [],
 ): Promise<{ configPath: string; instructionsPath: string }> {
   const adapter = adapterFor(adapterId);
   const configPath = join(WORKSPACE, adapter.configPath);
@@ -195,7 +274,25 @@ async function prepararTurno(
     )}\n`,
     "utf8",
   );
-  await writeFile(instructionsPath, `${instructions()}\n`, "utf8");
+
+  /*
+   * O diretório é refeito a cada turno, e não atualizado: o volume sobrevive a todos eles, e uma
+   * skill revogada não pode continuar no disco do CLI — o modelo acharia o arquivo e a usaria.
+   * `force` porque na primeira vez ele não existe.
+   */
+  await rm(SKILLS_DIR, { recursive: true, force: true });
+  for (const skill of skills) {
+    // O slug já foi validado por quem leu a lista (`skillsDoTurno`); aqui ele só vira caminho.
+    const destino = join(SKILLS_DIR, skill.slug, "SKILL.md");
+    await mkdir(dirname(destino), { recursive: true });
+    await writeFile(
+      destino,
+      `# ${skill.title}\n\n${skill.instructions}\n`,
+      "utf8",
+    );
+  }
+
+  await writeFile(instructionsPath, `${instructions(skills)}\n`, "utf8");
   return { configPath, instructionsPath };
 }
 
@@ -355,14 +452,15 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
 
       try {
         const assertion = runAssertionOf(input);
+        const skills = skillsDoTurno(input);
         console.info(
           `turno ${input.runId}: CLI ${CLI}, declaração de execução ${
             assertion
               ? `presente (${assertion.length} caracteres)`
               : "AUSENTE — sem ferramentas"
-          }`,
+          }${skills.length ? `, ${skills.length} skill(s) concedida(s)` : ""}`,
         );
-        await prepararTurno(CLI, assertion);
+        await prepararTurno(CLI, assertion, skills);
 
         const pergunta = perguntaDoTurno(input);
         if (!pergunta.trim()) {

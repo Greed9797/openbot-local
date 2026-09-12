@@ -58,6 +58,25 @@ export type CodexDelegatedOptions = {
    * AG-UI responde em fluxo.
    */
   vision?: boolean;
+  /**
+   * As skills que este Bot pode usar, como o painel as concedeu.
+   *
+   * Vêm por função, e não por valor, porque quem concede é o store de plugins — que é do processo
+   * que monta o provedor — e porque conceder ou revogar tem de valer no turno seguinte, sem
+   * reiniciar nada. É a mesma promessa que o caminho de passo já faz (`plugins/tools.ts`), e a
+   * leitura é feita por turno.
+   *
+   * O adaptador não interpreta nada disto: ele entrega a lista ao serviço, que escreve os arquivos
+   * no workspace do CLI. Skill é instrução escrita, não ferramenta.
+   */
+  skills?: (botId: string) => Promise<
+    {
+      slug: string;
+      title: string;
+      summary: string;
+      instructions: string;
+    }[]
+  >;
   /** Para o teste de fio: o `fetch` que o transporte HTTP usa por baixo. */
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
@@ -110,6 +129,13 @@ export function createCodexDelegatedProvider(
       const abort = () => controller.abort();
       context.signal.addEventListener("abort", abort, { once: true });
 
+      /*
+       * Lidas por turno, e antes de começar: a concessão vale no turno seguinte, e uma skill
+       * revogada não pode continuar no workspace do CLI — o serviço apaga o diretório antes de
+       * escrever, e esta lista é o que ele escreve.
+       */
+      const concedidas = (await options.skills?.(input.botId)) ?? [];
+
       let text = "";
       let toolCalls = 0;
       /**
@@ -150,6 +176,12 @@ export function createCodexDelegatedProvider(
                * turno, e vai pelo mesmo canal da declaração de execução.
                */
               ...(input.model ? { model: input.model } : {}),
+              /*
+               * As skills concedidas. É o serviço que as escreve no workspace do CLI e as indexa no
+               * AGENTS.md — o corpo delas não passa por aqui além disto, e o que o modelo vê é o
+               * índice, com o arquivo no disco para quando a tarefa casar com a descrição.
+               */
+              ...(concedidas.length ? { skills: concedidas } : {}),
               ...(options.signRun && input.actorId
                 ? {
                     openbotRun: options.signRun({

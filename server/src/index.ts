@@ -326,6 +326,15 @@ const providers = createProviderRegistry(
      */
     signRun: ({ botId, runId, actorId }) =>
       mintRunAssertion({ botId, actorId, runId }, config.keyEncryptionKey),
+    /*
+     * As skills concedidas a este Bot, lidas a cada turno.
+     *
+     * O store é declarado mais abaixo neste arquivo, e a leitura só acontece quando um turno roda —
+     * depois do boot, que é quando ele existe. Conceder ou revogar no painel vale no turno seguinte,
+     * sem reiniciar nada, que é a mesma promessa do caminho de passo (`plugins/tools.ts`).
+     */
+    skills: (botId) =>
+      pluginStore.listForAgent(botId).then((held) => held.skills),
   }),
 );
 if (config.agentRuntime.enabled && config.agentRuntime.providers.length === 0) {
