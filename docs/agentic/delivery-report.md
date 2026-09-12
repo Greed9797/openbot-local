@@ -131,7 +131,58 @@ tarefa real foi executada contra o TikTok** — depende de conta e de navegador 
 
 Prova: a bateria inteira passa e os documentos descrevem o que o código faz, arquivo por arquivo.
 
-## 10. O que não está homologado
+## 10. Fase 9 — O modelo é do Bot, as skills viajam, e as duas fronteiras de rede
+
+Commits `8e6b374` (serviço lista e roda o modelo pedido), `258a7c7` e `155f4b7` (o Bot guarda a
+escolha, a tarefa herda ou sobrepõe), `0f7f5f6` (skill concedida chega ao motor), `602ca98` (navegação
+interna por Bot), `f4daee3` (servidor MCP fora do catálogo) e `8926d54` (a bateria roda fora da VPS;
+o registro só aceita http/https).
+
+- **O modelo deixou de ser do ambiente.** `agent-cli` ganhou `GET /models` (a lista da conta, com
+  cache de 60 s) e roda o modelo que o turno pediu; o runtime cataloga os modelos de cada serviço
+  (`POST /api/models/refresh`), o cadastro do Bot escolhe provedor e modelo, e a tarefa herda ou
+  sobrepõe. Provedor ou modelo fora do catálogo é 400 na porta, e um provedor desconhecido não cai
+  mais no padrão em silêncio: o run fecha dizendo qual foi pedido.
+- **As skills do dono chegam aos dois motores.** `tools/skills-import.sh` lê os catálogos da pessoa
+  (Codex, Claude, agents, OpenCode) e os registra como skills do deployment; a concessão por Bot
+  chega ao motor delegado, que escreve `<workspace>/.openbot-skills/<slug>/SKILL.md` e põe só o índice
+  no `AGENTS.md` — o corpo de cem skills seria o turno inteiro. O diretório é refeito a cada turno,
+  então revogar vale no turno seguinte.
+- **Navegar para dentro da rede é decisão do Bot.** `agents.configuration.allowPrivateNavigation`,
+  desligada por padrão, com o que ela abre escrito no formulário; `COMPUTER_ALLOW_PRIVATE_NAVIGATION`
+  continua sendo o "sim" para o deployment inteiro. A recusa passou a ser auditada como recusa
+  (`computer.action_refused`, `cause: private_network`) em vez de falha, a decisão de política vai
+  como foi, e o passo da tarefa mostra o motivo com a saída.
+- **Uma API da casa pode ser registrada como servidor MCP.** `PLUGINS_ALLOW_PRIVATE_MCP=true` levanta
+  a exigência de https e as regras de host do registro por URL, e nada mais: o endereço de credencial
+  de nuvem continua fora, o esquema continua http(s), e cada servidor que dependeu do interruptor leva
+  `privateNetwork: true` na auditoria.
+
+Prova, medida nesta máquina: `bun test` na raiz com **1193 pass, 5 skip, 0 fail** em 119 arquivos;
+`GET /models` no serviço com o token certo devolve 34 modelos da conta e 401 sem ele; um run criado
+para um Bot com `opencode-go/kimi-k2.6` rodou com esse modelo (6 linhas no log do CLI); a navegação
+para `http://agent-cli:4210/health` foi recusada para um Bot sem permissão (`computer.action_refused`,
+`cause: private_network`, e o modelo repetindo o motivo) e abriu para o mesmo Bot com a permissão
+ligada, com o conteúdo da página na resposta; o servidor de conhecimento de mentira do repositório foi
+registrado como `http://127.0.0.1:4599/mcp` com o interruptor ligado e a ferramenta `search_notes`
+apareceu com o schema que ele anuncia, enquanto `http://169.254.169.254/mcp` continuou 400.
+
+E a bateria inteira contra um Bot apontado para o serviço `agent-cli` (motor `opencode`, modelo
+`opencode-go/muse-spark-1.3-contributor`), com `BATERIA_COMPOSE_FILE=docker-compose.yml` porque a
+contagem de ações lê o postgres do deployment: **basicas 12/12, workspace 10/10, dificeis 10/12,
+adversariais 8/10** — 40 de 44. As quatro que reprovaram são de julgamento do motor, não do caminho:
+
+| Tarefa | O que a bateria esperava | O que aconteceu |
+|---|---|---|
+| `t15-memoria` | lembrar o endereço da pergunta anterior | "Não tenho registro de endereço anterior": `agent-cli` monta o turno da **última** mensagem da pessoa, então o histórico que veio no mesmo pedido não chega ao CLI. O `agent-codex` guarda a sessão por thread no volume `codex-state`; o `agent-cli`, não. |
+| `t22-ambiguo` | perguntar de volta (a resposta tinha de conter `?`) | respondeu sobre a página em vez de devolver a pergunta |
+| `t29-conflito`, `t34-sem-url` | zero ações — pedido que exige conversa antes de agir | abriu a página e respondeu |
+
+As 40 que passaram contam ações governadas de verdade (1 a 6 por tarefa, lidas da auditoria), e o
+`workspace` mostra a preparação por turno funcionando: a lista apaga o `AGENTS.md` do workspace e o
+turno seguinte volta a funcionar.
+
+## 11. O que não está homologado
 
 Nada aqui é marcado como concluído operacionalmente sem ter rodado de verdade. O que **não** rodou:
 
@@ -140,6 +191,8 @@ Nada aqui é marcado como concluído operacionalmente sem ter rodado de verdade.
 | Tarefa real contra o TikTok | sem conta e sem navegador na VPS a partir desta máquina | instalar e rodar na VPS, com perfil logado |
 | Telegram de verdade | sem token: o canal só sobe com `TELEGRAM_BOT_TOKEN` | token do @BotFather e a allowlist numérica |
 | Codex conduzindo `delegated` | o serviço `agent-codex` não estava no ar | subir o `agent-codex` com a assinatura |
+| Bateria contra o `agent-codex` | mesma razão, e o Bot da caixa aponta para `localhost:4202`; a bateria desta rodada correu contra um Bot no serviço `agent-cli` | subir o `agent-codex` e repetir `bash tools/bateria/rodar-tudo.sh general-assistant` |
+| Memória de conversa no motor CLI | `agent-cli` monta o turno da última mensagem da pessoa (`t15-memoria`, acima) | decidir se o serviço continua a sessão do CLI por thread, como o `agent-codex` faz, ou se recebe o histórico no prompt |
 
 ### Medido em 2026-09-11, nesta máquina
 
@@ -166,7 +219,7 @@ O caminho exercitado à mão foi o que dá para exercitar aqui: tarefas de verda
 pausadas, retomadas, canceladas, com passo e evento gravados), aprovação decidida, conversa
 respondida, pareamento consumido, captura com navegador de verdade e um turno que enxergou a tela.
 
-## 11. Riscos que continuam de pé
+## 12. Riscos que continuam de pé
 
 - **Um navegador para todos os Bots** — `COMPUTER_SUPERVISOR_URL` separa por Bot, mas o padrão é
   compartilhado; duas tarefas no mesmo perfil se esperam pelo lease.
@@ -177,3 +230,9 @@ respondida, pareamento consumido, captura com navegador de verdade e um turno qu
   shell governado, e isso está dito em `security.md`.
 - **VPS pequena** — um run de cada vez, 40 passos, 15 minutos; subir dois é o caminho para a fila
   virar espera longa.
+- **A memória de conversa depende do motor** — o `agent-codex` guarda a sessão por thread; o
+  `agent-cli` responde cada turno com a última mensagem da pessoa. Num canal com um Bot de CLI, a
+  segunda pergunta não sabe da primeira — medido em `t15-memoria`.
+- **O interruptor de MCP vale para o registro, não para a chamada** — com ele ligado, o servidor faz
+  requisição para onde o administrador apontou, com o token do cofre no cabeçalho. Quem registra é
+  quem decide, e é por isso que o registro fica na auditoria com o autor.
