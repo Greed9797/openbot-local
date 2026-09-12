@@ -1,4 +1,8 @@
 #!/usr/bin/env bun
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import type { BaseEvent, RunAgentInput } from "@ag-ui/core";
+import { EventEncoder } from "@ag-ui/encoder";
 /**
  * Um CLI de agente como Bot, atrás do mesmo contrato do serviço do Codex.
  *
@@ -18,13 +22,9 @@
  *   próprio.
  */
 import { serve } from "bun";
-import type { BaseEvent, RunAgentInput } from "@ag-ui/core";
-import { EventEncoder } from "@ag-ui/encoder";
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
 import { hasManagedAgentToken } from "../../shared/agent-authorisation";
 import { SYSTEM_PROMPT } from "../../shared/bot-prompt";
-import { adapterFor, cliConfig, knownAdapters, type CliEvent } from "./cli";
+import { adapterFor, type CliEvent, cliConfig, knownAdapters } from "./cli";
 
 const PORT = Number(process.env.PORT ?? 4210);
 const MANAGED_AGENT_TOKEN = process.env.MANAGED_AGENT_TOKEN?.trim() ?? "";
@@ -53,7 +53,9 @@ const WORKSPACE = process.env.AGENT_CLI_WORKSPACE?.trim() || "/workspace";
 const MCP_SERVER_PATH =
   process.env.OPENBOT_MCP_PATH?.trim() || "/app/shared/mcp-computer.ts";
 
-const TURN_TIMEOUT_MS = Number(process.env.AGENT_CLI_TURN_TIMEOUT_MS ?? 900_000);
+const TURN_TIMEOUT_MS = Number(
+  process.env.AGENT_CLI_TURN_TIMEOUT_MS ?? 900_000,
+);
 
 /**
  * Se o CLI pode dirigir o navegador do Bot.
@@ -80,9 +82,7 @@ const AUTH_JSON = process.env.AGENT_CLI_AUTH_JSON?.trim() ?? "";
 
 const AUTH_PATH =
   process.env.AGENT_CLI_AUTH_PATH?.trim() ||
-  (CLI === "mimo"
-    ? "mimocode/auth.json"
-    : "opencode/auth.json");
+  (CLI === "mimo" ? "mimocode/auth.json" : "opencode/auth.json");
 
 async function instalarCredencial(): Promise<void> {
   if (!AUTH_JSON) return;
@@ -109,6 +109,20 @@ async function instalarCredencial(): Promise<void> {
 function runAssertionOf(input: RunAgentInput): string {
   const props = input.forwardedProps as { openbotRun?: unknown } | undefined;
   return typeof props?.openbotRun === "string" ? props.openbotRun : "";
+}
+
+/**
+ * O modelo que este turno pediu, quando pediu um.
+ *
+ * O padrão continua sendo o do serviço (`AGENT_CLI_MODEL`): uma tarefa que não escolheu modelo
+ * roda com o que o deployment configurou. Isto existe porque a escolha é do Bot, e o Bot é dado do
+ * runtime — que a manda por aqui, no mesmo canal da declaração de execução.
+ */
+function modeloDoTurno(input: RunAgentInput): string {
+  const props = input.forwardedProps as { model?: unknown } | undefined;
+  return typeof props?.model === "string" && props.model.trim()
+    ? props.model.trim()
+    : "";
 }
 
 /** A pergunta deste turno: a última mensagem da pessoa, que é como o runtime entrega a tarefa. */
@@ -198,6 +212,7 @@ async function executarPassagem(
   prompt: string,
   say: (text: string) => void,
   abort: AbortSignal,
+  model = "",
 ): Promise<TurnResult> {
   const adapter = adapterFor(adapterId);
   const child = Bun.spawn(
@@ -206,7 +221,8 @@ async function executarPassagem(
       ...adapter.args({
         prompt,
         workspace: WORKSPACE,
-        model: MODEL,
+        // O modelo da tarefa quando ela escolheu um; o do serviço quando não.
+        model: model || MODEL,
         variant: VARIANT,
       }),
     ],
@@ -341,7 +357,9 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
         const assertion = runAssertionOf(input);
         console.info(
           `turno ${input.runId}: CLI ${CLI}, declaração de execução ${
-            assertion ? `presente (${assertion.length} caracteres)` : "AUSENTE — sem ferramentas"
+            assertion
+              ? `presente (${assertion.length} caracteres)`
+              : "AUSENTE — sem ferramentas"
           }`,
         );
         await prepararTurno(CLI, assertion);
@@ -351,7 +369,20 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
           throw new Error("O turno chegou sem pergunta.");
         }
 
-        const resultado = await executarPassagem(CLI, pergunta, say, abort.signal);
+        const modelo = modeloDoTurno(input);
+        if (modelo) {
+          console.info(
+            `turno ${input.runId}: modelo escolhido pela tarefa — ${modelo}`,
+          );
+        }
+
+        const resultado = await executarPassagem(
+          CLI,
+          pergunta,
+          say,
+          abort.signal,
+          modelo,
+        );
         toolCalls += resultado.toolCalls;
 
         if (resultado.failure) {
@@ -366,7 +397,8 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
           );
         }
       } catch (error) {
-        failure = error instanceof Error ? error.message : "The Bot could not answer.";
+        failure =
+          error instanceof Error ? error.message : "The Bot could not answer.";
       } finally {
         clearInterval(heartbeat);
 
@@ -447,6 +479,67 @@ async function conferirFerramentas(): Promise<number> {
   }
 }
 
+/**
+ * Os modelos que a conta do CLI tem, para o painel poder escolher um.
+ *
+ * Cacheado porque isso muda na escala da conta, não na escala do turno, e porque o runtime pergunta
+ * no boot enquanto a tela pergunta a cada abertura. O que falhou é dito como falha — lista vazia
+ * com motivo —, nunca uma lista inventada.
+ */
+let cacheDeModelos: { at: number; models: string[]; error: string } | null =
+  null;
+const MODELOS_TTL_MS = 60_000;
+
+async function listarModelos(): Promise<{
+  supported: boolean;
+  models: string[];
+  error: string;
+}> {
+  const adapter = adapterFor(CLI);
+  if (!adapter.models) return { supported: false, models: [], error: "" };
+  const parsed = adapter.models.parse;
+
+  if (cacheDeModelos && Date.now() - cacheDeModelos.at < MODELOS_TTL_MS) {
+    return {
+      supported: true,
+      models: cacheDeModelos.models,
+      error: cacheDeModelos.error,
+    };
+  }
+
+  const child = Bun.spawn([adapter.binary, ...adapter.models.args], {
+    cwd: WORKSPACE,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: { ...process.env },
+  });
+
+  const timer = setTimeout(() => child.kill(), 10_000);
+  try {
+    /*
+     * `child.exited` e não `child.exitCode`: o fim do fluxo de saída chega antes de o runtime anotar
+     * o código, então ler a propriedade logo depois de drenar os fluxos devolve `null` — e um
+     * `null` tratado como "saiu diferente de zero" faz uma listagem que deu certo parecer falha.
+     * Medido: o `/models` respondia `o CLI saiu com null` com a lista cheia do lado de fora.
+     */
+    const [stdout, stderr, codigo] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    const ok = codigo === 0;
+    const models = ok ? parsed(stdout) : [];
+    const error = ok ? "" : stderr.trim() || `o CLI saiu com ${codigo}`;
+    cacheDeModelos = { at: Date.now(), models, error };
+    return { supported: true, models, error };
+  } catch (error) {
+    return { supported: true, models: [], error: String(error) };
+  } finally {
+    clearTimeout(timer);
+    if (child.exitCode === null) child.kill();
+  }
+}
+
 if (import.meta.main) {
   /*
    * Antes de servir: o primeiro turno pode chegar a qualquer instante, e um turno que chega antes da
@@ -483,6 +576,25 @@ if (import.meta.main) {
         );
       }
 
+      if (url.pathname === "/models") {
+        /*
+         * Mesmo token do turno, e não aberto como o `/health`: a lista diz qual assinatura está
+         * ligada e quais modelos ela tem, que é informação de quem opera o deployment, não de quem
+         * alcança a porta.
+         */
+        if (!hasManagedAgentToken(request, MANAGED_AGENT_TOKEN)) {
+          return Response.json({ error: "Unauthorized." }, { status: 401 });
+        }
+        const lista = await listarModelos();
+        return Response.json({
+          cli: CLI,
+          current: MODEL || null,
+          supported: lista.supported,
+          models: lista.models,
+          ...(lista.error ? { error: lista.error } : {}),
+        });
+      }
+
       if (url.pathname === "/ag-ui" && request.method === "POST") {
         if (!hasManagedAgentToken(request, MANAGED_AGENT_TOKEN)) {
           return Response.json({ error: "Unauthorized." }, { status: 401 });
@@ -511,7 +623,9 @@ if (import.meta.main) {
       })
       .catch((error: unknown) => {
         toolsReady = false;
-        console.warn(`Não foi possível conferir as ferramentas: ${String(error)}`);
+        console.warn(
+          `Não foi possível conferir as ferramentas: ${String(error)}`,
+        );
       });
   }
 }

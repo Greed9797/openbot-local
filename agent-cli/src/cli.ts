@@ -45,6 +45,14 @@ export type CliAdapter = {
   }) => string[];
   /** A linha crua do `--format json` traduzida, ou nada quando ela não interessa. */
   read: (line: string) => CliEvent | undefined;
+  /**
+   * Como este CLI lista os modelos da própria conta.
+   *
+   * Ausente é uma resposta, não uma lacuna: um CLI cujo comando de listagem não foi medido diz que
+   * não sabe listar, e o serviço diz isso a quem perguntou, em vez de oferecer uma lista inventada.
+   * O que sai daqui alimenta o seletor de modelo do painel e o catálogo do runtime.
+   */
+  models?: { args: string[]; parse: (stdout: string) => string[] };
 };
 
 /**
@@ -99,7 +107,10 @@ export function readOpencodeEvent(line: string): CliEvent | undefined {
   const event = parsed as Record<string, unknown>;
 
   if (event.type === "error") {
-    return { kind: "failure", message: failureMessage(event.error) ?? "erro sem mensagem" };
+    return {
+      kind: "failure",
+      message: failureMessage(event.error) ?? "erro sem mensagem",
+    };
   }
 
   const part = event.part;
@@ -149,6 +160,19 @@ export const OPENCODE: CliAdapter = {
     prompt,
   ],
   read: readOpencodeEvent,
+  /*
+   * `opencode models` imprime uma linha por modelo da conta, no formato `provedor/modelo` — medido
+   * contra a assinatura, não deduzido. O MiMo não tem o campo: o comando dele não foi medido, e
+   * inventar um seria pior que dizer que não sei listar.
+   */
+  models: {
+    args: ["models"],
+    parse: (stdout) =>
+      stdout
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line !== ""),
+  },
 };
 
 export const MIMO: CliAdapter = {
