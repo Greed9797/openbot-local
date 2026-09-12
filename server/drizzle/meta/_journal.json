@@ -71,6 +71,13 @@
       "when": 1789146316614,
       "tag": "0009_short_madame_web",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789248484682,
+      "tag": "0010_w3_skills",
+      "breakpoints": true
     }
   ]
 }
