@@ -42,6 +42,19 @@ const {
 } = baseEnvironment;
 
 describe("deployment configuration", () => {
+  test("bounds runtime concurrency without increasing it by default", () => {
+    expect(loadConfig(baseEnvironment).agentRuntime.concurrency).toBe(1);
+    expect(
+      loadConfig({ ...baseEnvironment, AGENT_CONCURRENCY: "4" }).agentRuntime
+        .concurrency,
+    ).toBe(4);
+    for (const value of ["0", "5", "1.5", "NaN"]) {
+      expect(() =>
+        loadConfig({ ...baseEnvironment, AGENT_CONCURRENCY: value }),
+      ).toThrow("AGENT_CONCURRENCY");
+    }
+  });
+
   test("defaults to the local runtime, which needs no vendor account", () => {
     const config = loadConfig(baseEnvironment);
 

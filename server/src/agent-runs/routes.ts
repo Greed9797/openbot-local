@@ -119,6 +119,16 @@ export function createAgentRunRoutes(
         ? { provider: body.provider }
         : {}),
       ...(typeof body?.model === "string" ? { model: body.model } : {}),
+      // Condição host-side opcional; o serviço valida a forma e responde 400 quando malformada.
+      ...("completion" in (body ?? {})
+        ? {
+            completion: (body as Record<string, unknown>)
+              .completion as CreateRunInput["completion"],
+          }
+        : {}),
+      ...(typeof body?.metadata === "object" && body?.metadata !== null
+        ? { metadata: body.metadata as Record<string, unknown> }
+        : {}),
       idempotencyKey:
         headerKey ??
         (typeof body?.idempotencyKey === "string" ? body.idempotencyKey : null),

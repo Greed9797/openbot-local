@@ -172,7 +172,8 @@ function rotuloDoPapel(papel: string): string {
  * nem lista de partes, parte sem tipo) é recusado com erro, nunca adivinhado.
  */
 function textoDaMensagem(mensagem: Message): string {
-  const conteudo: unknown = "content" in mensagem ? mensagem.content : undefined;
+  const conteudo: unknown =
+    "content" in mensagem ? mensagem.content : undefined;
   if (conteudo === undefined || conteudo === null) return "";
   if (typeof conteudo === "string") return conteudo;
   if (Array.isArray(conteudo)) {
@@ -260,7 +261,9 @@ export function perguntaDoTurno(input: RunAgentInput): string {
     }
   }
   if (indiceAtual < 0) return "";
-  const atual = blocoDaMensagem(mensagens[indiceAtual]!);
+  const mensagemAtual = mensagens[indiceAtual];
+  if (!mensagemAtual) return "";
+  const atual = blocoDaMensagem(mensagemAtual);
   if (atual.length > LIMITE_CONTEXTO_TURNO) {
     throw new Error(
       `A mensagem atual tem ${atual.length} caracteres e passa do limite de ${LIMITE_CONTEXTO_TURNO} do turno; o turno foi recusado antes do CLI, sem truncar.`,
@@ -277,24 +280,36 @@ export function perguntaDoTurno(input: RunAgentInput): string {
   // então o que cai é sempre o começo — contíguo, sem furar a ordem.
   const cabidos: string[] = [];
   for (let i = historico.length - 1; i >= 0; i--) {
-    if (medir([historico[i]!, ...cabidos], historico.length - (cabidos.length + 1)) <= LIMITE_CONTEXTO_TURNO) {
-      cabidos.unshift(historico[i]!);
+    const bloco = historico[i];
+    if (bloco === undefined) continue;
+    if (
+      medir([bloco, ...cabidos], historico.length - (cabidos.length + 1)) <=
+      LIMITE_CONTEXTO_TURNO
+    ) {
+      cabidos.unshift(bloco);
     } else {
       break;
     }
   }
   // O marcador também conta: se ele estourar o teto, derruba mais uma antiga até caber.
   let omitidas = historico.length - cabidos.length;
-  while (cabidos.length > 0 && medir(cabidos, omitidas) > LIMITE_CONTEXTO_TURNO) {
+  while (
+    cabidos.length > 0 &&
+    medir(cabidos, omitidas) > LIMITE_CONTEXTO_TURNO
+  ) {
     cabidos.shift();
     omitidas += 1;
   }
   if (medir(cabidos, omitidas) > LIMITE_CONTEXTO_TURNO) {
-    throw new Error("A mensagem atual e o aviso de histórico omitido excedem o limite do turno.");
+    throw new Error(
+      "A mensagem atual e o aviso de histórico omitido excedem o limite do turno.",
+    );
   }
-  return [...(omitidas > 0 ? [marcadorDeOmissao(omitidas)] : []), ...cabidos, atual].join(
-    "\n\n",
-  );
+  return [
+    ...(omitidas > 0 ? [marcadorDeOmissao(omitidas)] : []),
+    ...cabidos,
+    atual,
+  ].join("\n\n");
 }
 
 /** Uma skill como o painel a concedeu: os quatro campos que a rota guarda por slug. */
@@ -557,7 +572,9 @@ async function acquireWorkspace(signal: AbortSignal): Promise<() => void> {
   signal.throwIfAborted();
   const previous = workspaceTail;
   let release!: () => void;
-  const held = new Promise<void>((resolve) => { release = resolve; });
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   workspaceTail = previous.then(() => held);
   try {
     await new Promise<void>((resolve, reject) => {
@@ -577,7 +594,10 @@ async function acquireWorkspace(signal: AbortSignal): Promise<() => void> {
   }
 }
 
-export async function runAgent(input: RunAgentInput, signal: AbortSignal): Promise<Response> {
+export async function runAgent(
+  input: RunAgentInput,
+  signal: AbortSignal,
+): Promise<Response> {
   const encoder = new EventEncoder();
   const abort = new AbortController();
   const turnSignal = AbortSignal.any([signal, abort.signal]);

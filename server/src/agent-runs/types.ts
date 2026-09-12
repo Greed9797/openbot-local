@@ -4,6 +4,10 @@
  * Kept apart from the schema so the API, the worker and the channels can agree on the words without
  * importing Drizzle. Nothing here decides anything; it names the things that are decided.
  */
+import type {
+  CompletionCondition,
+  ModelAttemptUsage,
+} from "../agent-runtime/contracts";
 
 /**
  * Where a run is.
@@ -85,6 +89,7 @@ export type RunUsage = {
   modelCalls: number;
   toolCalls: number;
   startedAt?: string;
+  attempts?: ModelAttemptUsage[];
 };
 
 export type RunView = {
@@ -175,6 +180,11 @@ export type CreateRunInput = {
   idempotencyKey?: string | null;
   budget?: Partial<RunBudget>;
   metadata?: Record<string, unknown>;
+  /**
+   * A condição host-side que fecha a tarefa. Validada na criação e persistida no metadata
+   * existente sob chave reservada; ausente é tarefa textual, que conclui sem prova externa.
+   */
+  completion?: CompletionCondition | null;
 };
 
 /** What a worker is asked to execute. The executor is injected; this module never calls a model. */

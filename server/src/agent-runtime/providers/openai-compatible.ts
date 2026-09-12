@@ -13,9 +13,11 @@ import type {
   AgentModelProvider,
   AgentRunInput,
   AgentRunResult,
+  ModelAttemptUsage,
   ModelCapabilities,
   ToolCall,
 } from "../contracts";
+import { tokenCount } from "../contracts";
 import { systemPrompt, toolsAsText, userPrompt } from "../prompt";
 import { decisionFromText } from "./decision";
 import { postJson } from "./http";
@@ -95,15 +97,20 @@ export function createOpenAICompatibleProvider(
         ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
       });
 
+      const model = input.model ?? options.model;
+      const usage = responseUsage(id, model, response);
       return nativeTools && input.tools.length
-        ? readNativeResponse(response)
-        : readTextResponse(response, input);
+        ? readNativeResponse(response, usage)
+        : readTextResponse(response, input, usage);
     },
   };
 }
 
 /** A resposta no formato de ferramentas: `tool_calls` na mensagem. */
-function readNativeResponse(response: Record<string, unknown>): AgentRunResult {
+function readNativeResponse(
+  response: Record<string, unknown>,
+  usage?: ModelAttemptUsage,
+): AgentRunResult {
   const message = firstMessage(response);
   const calls = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
   for (const raw of calls) {
@@ -129,7 +136,7 @@ function readNativeResponse(response: Record<string, unknown>): AgentRunResult {
       arguments: args,
       ...(typeof entry.id === "string" ? { callId: entry.id } : {}),
     };
-    return { kind: "tool_call", call: toolCall };
+    return { kind: "tool_call", call: toolCall, ...(usage ? { usage } : {}) };
   }
 
   const text =
@@ -139,15 +146,17 @@ function readNativeResponse(response: Record<string, unknown>): AgentRunResult {
       kind: "invalid",
       raw: JSON.stringify(response).slice(0, 500),
       error: "A resposta não trouxe chamada de ferramenta nem texto.",
+      ...(usage ? { usage } : {}),
     };
   }
-  return { kind: "final", message: text };
+  return { kind: "final", message: text, ...(usage ? { usage } : {}) };
 }
 
 /** A resposta em texto puro: o JSON proposto é validado contra o mesmo catálogo. */
 function readTextResponse(
   response: Record<string, unknown>,
   input: AgentRunInput,
+  usage?: ModelAttemptUsage,
 ): AgentRunResult {
   const message = firstMessage(response);
   const text = typeof message?.content === "string" ? message.content : "";
@@ -156,9 +165,11 @@ function readTextResponse(
       kind: "invalid",
       raw: JSON.stringify(response).slice(0, 500),
       error: "A resposta veio sem texto.",
+      ...(usage ? { usage } : {}),
     };
   }
-  return decisionFromText(text, input.tools);
+  const decision = decisionFromText(text, input.tools);
+  return usage ? { ...decision, usage } : decision;
 }
 
 function firstMessage(
@@ -171,4 +182,41 @@ function firstMessage(
   return message && typeof message === "object"
     ? (message as Record<string, unknown>)
     : undefined;
+}
+/**
+ * O `usage` do chat completions, quando o provedor mandou um.
+ *
+ * Ausente é ausência: sem o bloco, não há tokens a preservar e o resultado sai sem `usage` — o loop
+ * registra a tentativa com nulls em vez de inventar zeros. Só contadores e identidade viajam aqui;
+ * nada do prompt.
+ */
+function responseUsage(
+  provider: string,
+  model: string,
+  response: Record<string, unknown>,
+): ModelAttemptUsage | undefined {
+  const raw = response.usage;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const usage = raw as Record<string, unknown>;
+  const details = usage.prompt_tokens_details;
+  const nested =
+    details && typeof details === "object" && !Array.isArray(details)
+      ? (details as Record<string, unknown>)
+      : undefined;
+  const input = tokenCount(usage.prompt_tokens);
+  const output = tokenCount(usage.completion_tokens);
+  const cached = tokenCount(usage.cached_tokens ?? nested?.cached_tokens);
+  if (input === null && output === null && cached === null) return undefined;
+  const effective =
+    typeof response.model === "string" && response.model
+      ? response.model
+      : model;
+  return {
+    provider,
+    model: effective,
+    inputTokens: input,
+    outputTokens: output,
+    cachedTokens: cached,
+    cost: null,
+  };
 }

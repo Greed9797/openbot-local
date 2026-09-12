@@ -50,7 +50,10 @@ const ACTIVE: Partial<Record<RunStatus, true>> = {
 export function createAgentRunWorker(
   options: AgentRunWorkerOptions,
 ): AgentRunWorker {
-  const concurrency = Math.max(1, options.concurrency ?? 1);
+  const concurrency = options.concurrency ?? 1;
+  if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 4) {
+    throw new Error("Agent worker concurrency must be between 1 and 4");
+  }
   const inflight = new Set<Promise<void>>();
   const controllers = new Set<AbortController>();
   let timer: ReturnType<typeof setInterval> | undefined;
@@ -76,11 +79,16 @@ export function createAgentRunWorker(
     ) {
       return;
     }
-    const settled = await options.repository.updateOwned(runId, owner, generation, {
-      status: "failed",
-      error,
-      finishedAt: new Date(),
-    });
+    const settled = await options.repository.updateOwned(
+      runId,
+      owner,
+      generation,
+      {
+        status: "failed",
+        error,
+        finishedAt: new Date(),
+      },
+    );
     if (!settled) return;
     await options.repository.appendEvent(runId, "run.status_changed", {
       from: current.status,
@@ -99,7 +107,10 @@ export function createAgentRunWorker(
      * worker that is inside a model call. Two seconds is short enough that "pause" means pause
      * rather than "pause after the next answer", and cheap enough at one row read.
      */
-    const heartbeatMs = Math.max(1_000, Math.min(2_000, options.leaseTtlMs / 3));
+    const heartbeatMs = Math.max(
+      1_000,
+      Math.min(2_000, options.leaseTtlMs / 3),
+    );
     const heartbeat = setInterval(() => {
       void options.repository
         .renewLease(runId, options.owner, generation, options.leaseTtlMs)
@@ -111,7 +122,9 @@ export function createAgentRunWorker(
           const current = await options.repository.get(runId);
           if (current && !ACTIVE[current.status]) {
             abort.abort(
-              new Error("The run was paused or cancelled while it was working."),
+              new Error(
+                "The run was paused or cancelled while it was working.",
+              ),
             );
           }
         })

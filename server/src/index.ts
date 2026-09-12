@@ -13,6 +13,10 @@ import {
   createConfiguredProviders,
   serviceModels,
 } from "./agent-runtime/providers";
+import {
+  createRoutedProvider,
+  routedCatalogEntries,
+} from "./agent-runtime/routed-provider";
 import { createProviderRegistry } from "./agent-runtime/registry";
 import { mintRunAssertion } from "./agents/callback-token";
 import { createAgentProfileStore } from "./agents/profile-store";
@@ -332,8 +336,9 @@ const artifactStore = createArtifactStore({
  * credencial nenhuma sobe com zero provedores: as tarefas falham com `PROVIDER_UNAVAILABLE` e dizem
  * isso, em vez de o servidor não subir.
  */
-const providers = createProviderRegistry(
-  createConfiguredProviders(config.agentRuntime.providers, {
+const configuredProviders = createConfiguredProviders(
+  config.agentRuntime.providers,
+  {
     /*
      * Assinado aqui, onde a chave mora.
      *
@@ -352,7 +357,27 @@ const providers = createProviderRegistry(
      */
     skills: (botId) =>
       pluginStore.listForAgent(botId).then((held) => held.skills),
-  }),
+  },
+);
+/*
+ * O `routed` opt-in (RQ-10): só existe com política configurada e candidatos construídos.
+ * Sem ele, o registro é exatamente o de antes — o padrão continua sendo o primeiro da lista
+ * e nenhum Bot muda de modelo sem ter escolhido `routed`.
+ */
+const routedProvider = createRoutedProvider({
+  policy: config.agentRuntime.routingPolicy,
+  providers: configuredProviders,
+  configs: config.agentRuntime.providers,
+});
+if (config.agentRuntime.routingPolicy && !routedProvider) {
+  console.warn(
+    "AGENT_ROUTING_POLICY está configurada mas nenhum candidato foi construído: o id routed não foi registrado e as tarefas que o escolherem vão falhar com PROVIDER_UNAVAILABLE.",
+  );
+}
+const providers = createProviderRegistry(
+  routedProvider
+    ? [...configuredProviders, routedProvider]
+    : configuredProviders,
 );
 if (config.agentRuntime.enabled && config.agentRuntime.providers.length === 0) {
   console.warn(
@@ -371,13 +396,25 @@ if (config.agentRuntime.enabled && config.agentRuntime.providers.length === 0) {
  * /api/models/refresh`. Um serviço fora do ar no boot custa a lista dele até alguém atualizar, e
  * não o deployment.
  */
-const montarCatalogo = (serviceModels?: Record<string, string[]>) =>
-  buildModelCatalog({
+const montarCatalogo = (serviceModels?: Record<string, string[]>) => {
+  const catalogo = buildModelCatalog({
     providers,
     configurations: config.agentRuntime.providers,
     defaultProvider: config.agentRuntime.defaultProvider,
     ...(serviceModels ? { serviceModels } : {}),
   });
+  // As linhas do `routed`: o id sintético com os modelos reais dos candidatos, nunca `default`.
+  if (config.agentRuntime.routingPolicy) {
+    catalogo.models.push(
+      ...routedCatalogEntries({
+        policy: config.agentRuntime.routingPolicy,
+        providers: configuredProviders,
+        configs: config.agentRuntime.providers,
+      }),
+    );
+  }
+  return catalogo;
+};
 
 let modelCatalog = config.agentRuntime.enabled ? montarCatalogo() : undefined;
 
@@ -756,7 +793,7 @@ if (agentRunService && computerGateway && config.agentRuntime.workerEnabled) {
     owner: `server:${process.pid}`,
     pollMs: config.agentRuntime.pollMs,
     leaseTtlMs: config.agentRuntime.leaseTtlMs,
-    concurrency: 1,
+    concurrency: config.agentRuntime.concurrency,
     housekeeping: async () => {
       await artifactStore.deleteExpired();
       /*

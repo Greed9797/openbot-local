@@ -178,6 +178,8 @@ export type SnapshotResult = {
    * refs are what actions use; this is context, not an address.
    */
   viewport: { width: number; height: number };
+  /** Text collected with these refs, within the same browser document. Never reused across snapshots. */
+  page?: ReadResult;
 };
 
 /** Common to every acting call: which element, and which snapshot the ref came from. */

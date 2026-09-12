@@ -267,6 +267,11 @@ export function createCodexDelegatedProvider(
  * observação deste processo seria uma fotografia de outro momento.
  */
 export function delegatedObjective(input: AgentRunInput): string {
+  // Instruções próprias vão uma única vez, na frente: o serviço não recebe systemPrompt, então sem
+  // isto a pergunta fora do passo ("o que está nesta captura?") chegaria sem o papel dela.
+  const base = input.instructions
+    ? `${input.instructions}\n\nTarefa: ${input.objective}`
+    : input.objective;
   const history = historyBlock(input.history);
-  return history ? `${input.objective}\n\n${history}` : input.objective;
+  return history ? `${base}\n\n${history}` : base;
 }

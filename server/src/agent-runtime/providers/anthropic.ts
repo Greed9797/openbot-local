@@ -10,9 +10,11 @@ import type {
   AgentModelProvider,
   AgentRunInput,
   AgentRunResult,
+  ModelAttemptUsage,
   ModelCapabilities,
   ToolCall,
 } from "../contracts";
+import { tokenCount } from "../contracts";
 import { systemPrompt, userPrompt } from "../prompt";
 import { postJson } from "./http";
 
@@ -41,9 +43,7 @@ export function createAnthropicProvider(
     capabilities: options.capabilities,
 
     async run(input: AgentRunInput, context): Promise<AgentRunResult> {
-      const content: unknown[] = [
-        { type: "text", text: userPrompt(input) },
-      ];
+      const content: unknown[] = [{ type: "text", text: userPrompt(input) }];
       if (input.capabilities.vision) {
         for (const image of input.observation?.images ?? []) {
           content.push({
@@ -57,8 +57,9 @@ export function createAnthropicProvider(
         }
       }
 
+      const model = input.model ?? options.model;
       const body: Record<string, unknown> = {
-        model: options.model,
+        model,
         max_tokens: options.maxTokens ?? 4_096,
         system: systemPrompt(input),
         messages: [{ role: "user", content }],
@@ -85,7 +86,7 @@ export function createAnthropicProvider(
         ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
       });
 
-      return readResponse(response);
+      return readResponse(response, responseUsage(id, model, response));
     },
   };
 }
@@ -94,7 +95,10 @@ export function createAnthropicProvider(
  * O conteúdo é uma lista de blocos. A primeira chamada de ferramenta decide o passo; sem ela, o
  * texto vira a conclusão — que é como um modelo de ferramentas nativas termina.
  */
-function readResponse(response: Record<string, unknown>): AgentRunResult {
+function readResponse(
+  response: Record<string, unknown>,
+  usage?: ModelAttemptUsage,
+): AgentRunResult {
   const blocks = Array.isArray(response.content) ? response.content : [];
   const text = blocks
     .map((block) => {
@@ -113,7 +117,9 @@ function readResponse(response: Record<string, unknown>): AgentRunResult {
     const entry = block as Record<string, unknown>;
     if (entry.type !== "tool_use" || typeof entry.name !== "string") continue;
     const args =
-      entry.input && typeof entry.input === "object" && !Array.isArray(entry.input)
+      entry.input &&
+      typeof entry.input === "object" &&
+      !Array.isArray(entry.input)
         ? (entry.input as Record<string, unknown>)
         : {};
     const call: ToolCall = {
@@ -121,7 +127,12 @@ function readResponse(response: Record<string, unknown>): AgentRunResult {
       arguments: args,
       ...(typeof entry.id === "string" ? { callId: entry.id } : {}),
     };
-    return { kind: "tool_call", call, ...(text ? { text } : {}) };
+    return {
+      kind: "tool_call",
+      call,
+      ...(text ? { text } : {}),
+      ...(usage ? { usage } : {}),
+    };
   }
 
   if (!text) {
@@ -129,7 +140,43 @@ function readResponse(response: Record<string, unknown>): AgentRunResult {
       kind: "invalid",
       raw: JSON.stringify(response).slice(0, 500),
       error: "A resposta não trouxe nem bloco de ferramenta nem texto.",
+      ...(usage ? { usage } : {}),
     };
   }
-  return { kind: "final", message: text };
+  return { kind: "final", message: text, ...(usage ? { usage } : {}) };
+}
+
+/**
+ * O `usage` do Messages API, quando o provedor mandou um.
+ *
+ * Cache de leitura é o reaproveitamento que barateia a chamada; criação de cache também é token de
+ * cache quando só ela foi reportada. Sem o bloco, o resultado sai sem `usage` e o loop registra
+ * nulls. Só contadores e identidade; nada do prompt.
+ */
+function responseUsage(
+  provider: string,
+  model: string,
+  response: Record<string, unknown>,
+): ModelAttemptUsage | undefined {
+  const raw = response.usage;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const usage = raw as Record<string, unknown>;
+  const input = tokenCount(usage.input_tokens);
+  const output = tokenCount(usage.output_tokens);
+  const cached = tokenCount(
+    usage.cache_read_input_tokens ?? usage.cache_creation_input_tokens,
+  );
+  if (input === null && output === null && cached === null) return undefined;
+  const effective =
+    typeof response.model === "string" && response.model
+      ? response.model
+      : model;
+  return {
+    provider,
+    model: effective,
+    inputTokens: input,
+    outputTokens: output,
+    cachedTokens: cached,
+    cost: null,
+  };
 }

@@ -13,9 +13,11 @@ import type {
   AgentModelProvider,
   AgentRunInput,
   AgentRunResult,
+  ModelAttemptUsage,
   ModelCapabilities,
   ToolCall,
 } from "../contracts";
+import { tokenCount } from "../contracts";
 import { systemPrompt, userPrompt } from "../prompt";
 import { postJson, ProviderRejectedError } from "./http";
 
@@ -49,6 +51,9 @@ export function createGeminiProvider(
         );
       }
 
+      // O modelo escolhido pela tarefa vence o do deployment: mandar o padrão quando a tarefa
+      // escolheu outro trocaria o modelo sem dizer nada.
+      const model = input.model ?? options.model;
       const body: Record<string, unknown> = {
         systemInstruction: { parts: [{ text: systemPrompt(input) }] },
         contents: [{ role: "user", parts: userParts(input) }],
@@ -68,7 +73,7 @@ export function createGeminiProvider(
       };
 
       const response = await postJson({
-        url: `${base}/models/${encodeURIComponent(options.model)}:generateContent`,
+        url: `${base}/models/${encodeURIComponent(model)}:generateContent`,
         headers: { "x-goog-api-key": options.apiKey },
         body,
         signal: context.signal,
@@ -76,7 +81,7 @@ export function createGeminiProvider(
         ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
       });
 
-      return readResponse(response);
+      return readResponse(response, responseUsage(id, model, response));
     },
   };
 }
@@ -100,7 +105,10 @@ function userParts(input: AgentRunInput): unknown[] {
 }
 
 /** Uma parte que é função decide o passo; texto solto é a resposta final. */
-function readResponse(response: Record<string, unknown>): AgentRunResult {
+function readResponse(
+  response: Record<string, unknown>,
+  usage?: ModelAttemptUsage,
+): AgentRunResult {
   const candidates = Array.isArray(response.candidates)
     ? response.candidates
     : [];
@@ -130,6 +138,7 @@ function readResponse(response: Record<string, unknown>): AgentRunResult {
       kind: "invalid",
       raw: JSON.stringify(response).slice(0, 500),
       error: `O Gemini não devolveu resposta (${reason}).`,
+      ...(usage ? { usage } : {}),
     };
   }
 
@@ -147,14 +156,17 @@ function readResponse(response: Record<string, unknown>): AgentRunResult {
         kind: "invalid",
         raw: JSON.stringify(entry).slice(0, 500),
         error: "A chamada de ferramenta veio sem nome.",
+        ...(usage ? { usage } : {}),
       };
     }
-    return { kind: "tool_call", call: parsed };
+    return { kind: "tool_call", call: parsed, ...(usage ? { usage } : {}) };
   }
 
   const text = parts
     .map((part) =>
-      part && typeof part === "object" && typeof (part as Record<string, unknown>).text === "string"
+      part &&
+      typeof part === "object" &&
+      typeof (part as Record<string, unknown>).text === "string"
         ? String((part as Record<string, unknown>).text)
         : "",
     )
@@ -171,11 +183,12 @@ function readResponse(response: Record<string, unknown>): AgentRunResult {
         typeof finish === "string" && finish !== "STOP"
           ? `A resposta terminou em ${finish}, sem texto nem chamada de ferramenta.`
           : "A resposta não trouxe nem chamada de ferramenta nem texto.",
+      ...(usage ? { usage } : {}),
     };
   }
 
   // Com ferramentas, texto livre é a tarefa dada por concluída — o loop confere o resto.
-  return { kind: "final", message: text };
+  return { kind: "final", message: text, ...(usage ? { usage } : {}) };
 }
 
 function toCall(call: Record<string, unknown>): ToolCall | undefined {
@@ -188,5 +201,35 @@ function toCall(call: Record<string, unknown>): ToolCall | undefined {
         ? (args as Record<string, unknown>)
         : {},
     ...(typeof call.id === "string" ? { callId: call.id } : {}),
+  };
+}
+
+/**
+ * O `usageMetadata` do generateContent, quando o provedor mandou um.
+ *
+ * Sem o bloco, o resultado sai sem `usage` e o loop registra a tentativa com nulls — nunca zeros.
+ * Só contadores e identidade; nada do prompt.
+ */
+function responseUsage(
+  provider: string,
+  model: string,
+  response: Record<string, unknown>,
+): ModelAttemptUsage | undefined {
+  const raw = response.usageMetadata;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const meta = raw as Record<string, unknown>;
+  const input = tokenCount(meta.promptTokenCount);
+  const output = tokenCount(meta.candidatesTokenCount);
+  const cached = tokenCount(meta.cachedContentTokenCount);
+  if (input === null && output === null && cached === null) return undefined;
+  const version = response.modelVersion;
+  const effective = typeof version === "string" && version ? version : model;
+  return {
+    provider,
+    model: effective,
+    inputTokens: input,
+    outputTokens: output,
+    cachedTokens: cached,
+    cost: null,
   };
 }

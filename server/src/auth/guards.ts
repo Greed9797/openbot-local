@@ -45,8 +45,9 @@ export type AppVariables = {
   viaAgent?: boolean;
   /** The Bot the run assertion named, so a route addressed as `self` knows whose computer it is. */
   agentBotId?: string;
+  /** The run the assertion named, so an agent acting call carries real audit identity. Human calls omit it. */
+  agentRunId?: string;
 };
-
 export function createRoleRepository(database: Database): RoleRepository {
   return {
     rolesForUser: async (userId) => {

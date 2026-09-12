@@ -21,7 +21,7 @@ import {
   SecretPendingError,
   StaleSnapshotError,
 } from "../computer/gateway";
-import type { SnapshotElement } from "../computer/schema";
+import type { SnapshotElement, SnapshotResult } from "../computer/schema";
 import type {
   ToolCall,
   ToolCallContext,
@@ -58,6 +58,15 @@ export function createBrowserTools(options: BrowserToolOptions): ToolCatalog {
         "url",
       ]),
       acting: true,
+    },
+    {
+      name: "fetch_page",
+      description:
+        "Lê uma página pública só pelo texto, sem abrir nada no navegador que a pessoa vê e sem sessão do Bot. É governada como qualquer outra: um endereço proibido volta como recusa definitiva, e a recusa nunca tem fallback para o Chromium. Só uma falha técnica informa o Chromium como alternativa explícita, sujeito às mesmas permissões. Para sessão autenticada ou pixels, continue no Chromium.",
+      parameters: object({ url: string("O endereço completo, com https://") }, [
+        "url",
+      ]),
+      acting: false,
     },
     {
       name: "read_page",
@@ -208,6 +217,29 @@ export function createBrowserTools(options: BrowserToolOptions): ToolCatalog {
       ),
       acting: false,
     },
+    {
+      name: "fill_form",
+      description:
+        "Preenche vários campos do formulário de uma vez, a partir de pares rótulo/valor. Resolve quais campos casam com quais valores, preenche um por vez com as mesmas ações governadas de `type_text` e `select_option` e confere a página antes de cada campo: se a estrutura mudou, para e devolve o que já preencheu e o que ficou pendente. Nunca envia o formulário nem aperta Enter. Os valores preenchidos não voltam na resposta.",
+      parameters: object(
+        {
+          values: array(
+            object(
+              {
+                label: string("O rótulo do campo, como aparece na página"),
+                value: string(
+                  "O valor a preencher; para seleção, o value da opção",
+                ),
+              },
+              ["label", "value"],
+            ),
+            "Os valores a preencher, na ordem em que devem ser aplicados",
+          ),
+        },
+        ["values"],
+      ),
+      acting: true,
+    },
   ];
 
   const acting = new Set(
@@ -244,12 +276,13 @@ export function createBrowserTools(options: BrowserToolOptions): ToolCatalog {
         };
       }
 
+      const { botId, runId: callRun } = context;
       const actor: ActionActor = {
         id: context.actor.id,
         ...(context.actor.userId ? { userId: context.actor.userId } : {}),
-        runId: context.runId,
+        // Human HTTP calls carry no run: the key stays absent rather than becoming a placeholder.
+        ...(callRun ? { runId: callRun } : {}),
       };
-      const botId = context.botId;
 
       try {
         switch (call.name) {
@@ -257,6 +290,9 @@ export function createBrowserTools(options: BrowserToolOptions): ToolCatalog {
             return ok(
               await gateway.navigate(botId, actor, textOf(call, "url")),
             );
+          case "fetch_page": {
+            return await fetchPage(call, botId, actor, context.signal);
+          }
           case "read_page": {
             const page = await gateway.read(botId);
             return ok({
@@ -378,6 +414,9 @@ export function createBrowserTools(options: BrowserToolOptions): ToolCatalog {
               { snapshotId: snapshot.snapshotId },
             );
           }
+          case "fill_form": {
+            return await fillForm(call, context, botId, actor);
+          }
           case "request_help": {
             const reason = textOf(call, "reason");
             const state = await gateway.requestHelp(botId, actor, reason);
@@ -466,6 +505,279 @@ export function createBrowserTools(options: BrowserToolOptions): ToolCatalog {
       waitedMs: Date.now() - startedAt,
       url: page.url,
     });
+  }
+
+  /**
+   * Ler uma página pública pelo motor sem pixels, sem abrir sessão do Bot.
+   *
+   * Passa pelo mesmo gateway governado da navegação: a recusa da política é terminal e nunca
+   * aciona o Chromium por outro caminho — contornar a recusa seria o desvio que o gateway existe
+   * para impedir. Só a falha técnica (o motor não respondeu) informa o Chromium como alternativa
+   * explícita, sujeito às mesmas permissões; o modelo decide, nunca esta ferramenta sozinha.
+   */
+  async function fetchPage(
+    call: ToolCall,
+    botId: string,
+    actor: ActionActor,
+    signal: AbortSignal,
+  ): Promise<ToolOutcome> {
+    let url: string;
+    try {
+      url = textOf(call, "url");
+    } catch (error) {
+      return failure(error, false, signal);
+    }
+    try {
+      return ok(await gateway.fetch(botId, actor, url));
+    } catch (error) {
+      if (
+        error instanceof ActionRefusedError ||
+        error instanceof NavigationRefusedError
+      ) {
+        return failure(error, false, signal);
+      }
+      if (signal.aborted) {
+        return failure(error, false, signal);
+      }
+      if (error instanceof ComputerUnavailableError) {
+        return {
+          ...failure(error, false, signal),
+          result: {
+            fallback: {
+              tool: "navigate",
+              note: "O motor sem pixels não respondeu. Se a leitura continuar necessária, abra o endereço no Chromium com `navigate` e leia com `read_page`: vale a mesma política, e páginas com sessão ou pixels só existem por lá mesmo.",
+            },
+          },
+        };
+      }
+      return failure(error, false, signal);
+    }
+  }
+  /**
+   * Preencher vários campos sem nova chamada do modelo por campo.
+   *
+   * Cada campo passa pelo mesmo caminho governado das ferramentas unitárias
+   * (`gateway.type` / `gateway.select`), então política e auditoria valem por campo:
+   * a ferramenta composta não desvia aprovação nem regra. Antes de cada campo depois
+   * do primeiro, um snapshot novo e um plano novo só para aquele campo — refs e
+   * snapshotId de geração antiga nunca são reutilizados, e se o rótulo não casar mais
+   * a estrutura relevante mudou e a ferramenta para com o parcial. Nunca submit, nunca
+   * Enter, nunca clique: enviar continua decisão do modelo com ferramenta própria.
+   * Concluídos e pendentes carregam rótulos, nunca os valores digitados.
+   */
+  async function fillForm(
+    call: ToolCall,
+    context: ToolCallContext,
+    botId: string,
+    actor: ActionActor,
+  ): Promise<ToolOutcome> {
+    let values: Record<string, string>;
+    try {
+      values = pairsOf(call);
+    } catch (error) {
+      return failure(error, true, context.signal);
+    }
+    const wanted = Object.keys(values);
+    if (wanted.length === 0) {
+      return {
+        ok: false,
+        error: {
+          code: "INVALID_ARGUMENTS",
+          message: `A ferramenta ${call.name} precisa de ao menos um par em "values".`,
+        },
+      };
+    }
+    if (context.signal.aborted) {
+      return {
+        ok: false,
+        error: { code: "STOPPED", message: "A tarefa foi interrompida." },
+        result: { filled: [], pending: wanted, unknown: [] },
+      };
+    }
+    let snapshot: SnapshotResult;
+    try {
+      snapshot = await gateway.snapshot(botId);
+    } catch (error) {
+      return failure(error, false, context.signal);
+    }
+    const firstForm = extractForm(snapshot);
+    const firstPlan = planFill(firstForm, values);
+    if (firstPlan.assignments.length === 0) {
+      return {
+        ok: false,
+        error: {
+          code: "INVALID_ARGUMENTS",
+          message:
+            `Nenhum rótulo de values casou com um campo da página: ` +
+            `${firstPlan.unknown.join(", ")}. Leia o formulário de novo antes de preencher.`,
+        },
+      };
+    }
+    const filled: { label: string; ref: string }[] = [];
+    const queue = [...firstPlan.assignments];
+    let current = snapshot;
+    for (const [index, item] of queue.entries()) {
+      if (context.signal.aborted) {
+        return {
+          ok: false,
+          error: { code: "STOPPED", message: "A tarefa foi interrompida." },
+          result: partial(
+            current,
+            filled,
+            queue.slice(index),
+            firstPlan.unknown,
+          ),
+        };
+      }
+      let ref = item.ref;
+      let how = item.how;
+      if (index > 0) {
+        let fresh: typeof snapshot;
+        try {
+          fresh = await gateway.snapshot(botId);
+        } catch (error) {
+          return {
+            ...failure(error, false, context.signal),
+            result: partial(
+              current,
+              filled,
+              queue.slice(index),
+              firstPlan.unknown,
+            ),
+          };
+        }
+        const freshForm = extractForm(fresh);
+        const renewed = planFill(freshForm, { [item.label]: item.value });
+        const next = renewed.assignments[0];
+        if (!next) {
+          return {
+            ok: false,
+            stale: true,
+            error: {
+              code: "STALE_SNAPSHOT",
+              message:
+                `A página mudou antes do campo "${item.label}": o rótulo não casa ` +
+                `mais com um campo. Mapeie de novo antes de continuar.`,
+            },
+            result: partial(
+              current,
+              filled,
+              queue.slice(index),
+              firstPlan.unknown,
+            ),
+          };
+        }
+        if (
+          fresh.url !== snapshot.url ||
+          freshForm.fields.length !== firstForm.fields.length ||
+          freshForm.fields.some((field, position) => {
+            const original = firstForm.fields[position];
+            return (
+              !original ||
+              field.label !== original.label ||
+              field.kind !== original.kind ||
+              field.role !== original.role ||
+              field.required !== original.required
+            );
+          }) ||
+          next.how !== item.how ||
+          next.kind !== item.kind
+        ) {
+          return {
+            ok: false,
+            stale: true,
+            error: {
+              code: "STALE_SNAPSHOT",
+              message:
+                `A página mudou antes do campo "${item.label}": a estrutura já não é a ` +
+                `mesma do início do preenchimento. Mapeie de novo antes de continuar.`,
+            },
+            result: partial(
+              current,
+              filled,
+              queue.slice(index),
+              firstPlan.unknown,
+            ),
+          };
+        }
+        current = fresh;
+        ref = next.ref;
+        how = next.how;
+      }
+      if (how !== "fill" && how !== "select") {
+        return {
+          ok: false,
+          error: {
+            code: "FIELD_NOT_SUPPORTED",
+            message:
+              `O campo "${item.label}" não é texto nem seleção, e o fill_form só ` +
+              `preenche esses dois.`,
+          },
+          result: partial(
+            current,
+            filled,
+            queue.slice(index),
+            firstPlan.unknown,
+          ),
+        };
+      }
+      try {
+        if (how === "fill") {
+          await gateway.type(
+            botId,
+            actor,
+            { ref, snapshotId: current.snapshotId, text: item.value },
+            context.signal,
+          );
+        } else {
+          await gateway.select(
+            botId,
+            actor,
+            { ref, snapshotId: current.snapshotId, value: item.value },
+            context.signal,
+          );
+        }
+      } catch (error) {
+        return {
+          ...failure(error, true, context.signal),
+          result: partial(
+            current,
+            filled,
+            queue.slice(index),
+            firstPlan.unknown,
+          ),
+        };
+      }
+      filled.push({ label: item.label, ref });
+    }
+    return ok(
+      {
+        url: current.url,
+        filled,
+        pending: [],
+        unknown: firstPlan.unknown,
+        fieldCount: firstForm.fields.length,
+      },
+      { snapshotId: current.snapshotId },
+    );
+  }
+
+  /**
+   * O parcial que acompanha toda parada no meio do preenchimento: rótulos
+   * concluídos e pendentes, nunca os valores.
+   */
+  function partial(
+    current: SnapshotResult,
+    filled: { label: string; ref: string }[],
+    rest: { label: string }[],
+    unknown: string[],
+  ): Record<string, unknown> {
+    return {
+      url: current.url,
+      filled,
+      pending: rest.map((item) => item.label),
+      unknown,
+    };
   }
 }
 

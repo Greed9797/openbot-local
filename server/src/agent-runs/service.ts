@@ -28,6 +28,12 @@ import type {
   RunUsage,
   RunView,
 } from "./types";
+import type { CompletionCondition } from "../agent-runtime/contracts";
+import {
+  metadataWithCompletion,
+  parseCompletionCondition,
+  sanitizeAttempts,
+} from "../agent-runtime/contracts";
 
 /** A request that cannot be carried out, with the reason a caller may show. */
 export class AgentRunError extends Error {
@@ -158,6 +164,11 @@ function usageOf(value: unknown): RunUsage {
     modelCalls: usage?.modelCalls ?? 0,
     toolCalls: usage?.toolCalls ?? 0,
     ...(usage?.startedAt ? { startedAt: usage.startedAt } : {}),
+    // As tentativas viajam no JSON existente, higienizadas: só identidade e contadores chegam
+    // à superfície — nunca prompt, cookie ou credencial.
+    attempts: sanitizeAttempts(
+      (usage as { attempts?: unknown } | null)?.attempts,
+    ),
   };
 }
 
@@ -349,6 +360,24 @@ export function createAgentRunService(options: {
           );
         }
       }
+      /*
+       * A condição de conclusão é declarada pelo host e validada aqui, na fronteira: forma
+       * desconhecida, texto/URL vazios ou URL fora de http(s) recusam a criação antes de
+       * qualquer passo. Ela persiste no JSON de metadata existente sob chave reservada, e
+       * chaves reservadas vindas no metadata arbitrário são descartadas — corpo nenhum forja
+       * resultado verificado.
+       */
+      let completion: CompletionCondition | undefined;
+      try {
+        completion = parseCompletionCondition(input.completion) ?? undefined;
+      } catch (error) {
+        throw new AgentRunError(
+          "INVALID_ACTION",
+          error instanceof Error
+            ? error.message
+            : "Invalid completion condition.",
+        );
+      }
       const budget: RunBudget = { ...defaults.budget, ...input.budget };
       const { run, created: inserted } = await repository.create({
         botId: input.botId,
@@ -373,7 +402,7 @@ export function createAgentRunService(options: {
           modelCalls: 0,
           toolCalls: 0,
         } satisfies RunUsage,
-        metadata: input.metadata ?? {},
+        metadata: metadataWithCompletion(input.metadata, completion),
       });
       // The key already owned a run: hand that one back without a second trail row.
       if (!inserted) return { run, created: false };

@@ -137,7 +137,9 @@ const ALIAS_GROUPS: readonly (readonly string[])[] = [
   ["cor", "color", "colour"],
 ];
 
-export function extractForm(snapshot: Pick<FormSnapshot, "elements">): FormExtract {
+export function extractForm(
+  snapshot: Pick<FormSnapshot, "elements">,
+): FormExtract {
   const fields: FormField[] = [];
   const buttons: FormExtract["buttons"] = [];
   /** O select mais próximo acima: todo `option` dali para frente é opção dele. */
@@ -223,13 +225,18 @@ export function extractForm(snapshot: Pick<FormSnapshot, "elements">): FormExtra
 
   return {
     fields,
-    required: fields.filter((field) => field.required).map((field) => field.ref),
+    required: fields
+      .filter((field) => field.required)
+      .map((field) => field.ref),
     unfilled: fields.filter((field) => !field.filled).map((field) => field.ref),
     buttons,
   };
 }
 
-export function planFill(extract: FormExtract, values: Record<string, string>): FillPlan {
+export function planFill(
+  extract: FormExtract,
+  values: Record<string, string>,
+): FillPlan {
   const assignments: FillAssignment[] = [];
   const unknown: string[] = [];
   const covered = new Set<string>();
@@ -330,7 +337,10 @@ function splitRadioName(label: string): { group: string; option: string } {
   }
   const words = label.split(/\s+/).filter((word) => word !== "");
   if (words.length >= 2) {
-    return { group: words.slice(0, -1).join(" "), option: words[words.length - 1] };
+    return {
+      group: words.slice(0, -1).join(" "),
+      option: words[words.length - 1],
+    };
   }
   return { group: label, option: label };
 }
@@ -338,12 +348,11 @@ function splitRadioName(label: string): { group: string; option: string } {
 /** `*` no rótulo, ou obrigatorio/obrigatoria/required com ou sem acento e em qualquer caixa. */
 function isRequired(label: string): boolean {
   if (label.includes("*")) return true;
-  const flat = label
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase();
+  const flat = label.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
   return (
-    flat.includes("obrigatorio") || flat.includes("obrigatoria") || flat.includes("required")
+    flat.includes("obrigatorio") ||
+    flat.includes("obrigatoria") ||
+    flat.includes("required")
   );
 }
 
@@ -371,23 +380,32 @@ function phraseIn(normalizedLabel: string, member: string): boolean {
 
 /**
  * Primeiro o rótulo exato normalizado, depois um sinônimo conhecido, depois continência —
- * e a continência só quando inequívoca, com exatamente um campo candidato.
+ * e cada etapa só quando inequívoca, com exatamente um campo candidato. Rótulo duplicado não
+ * escolhe o primeiro: devolve indefinido para o plano informar desconhecido e o modelo olhar de novo.
  */
 function findField(fields: FormField[], key: string): FormField | undefined {
   const nk = normalizeLabel(key);
   if (nk === "") return undefined;
 
-  const byExact = fields.find((field) => normalizeLabel(field.label) === nk);
-  if (byExact) return byExact;
+  // Duplicated normalized labels refuse rather than pick the first: typing into one of two
+  // identical fields is a guess, and the caller reports the key as unknown so the model looks again.
+  const exact = fields.filter((field) => normalizeLabel(field.label) === nk);
+  if (exact.length === 1) return exact[0];
+  if (exact.length > 1) return undefined;
 
-  const groups = ALIAS_GROUPS.filter((group) => group.some((member) => phraseIn(nk, member)));
+  const groups = ALIAS_GROUPS.filter((group) =>
+    group.some((member) => phraseIn(nk, member)),
+  );
   if (groups.length > 0) {
-    const byAlias = fields.find((field) => {
+    const aliased = fields.filter((field) => {
       const nl = normalizeLabel(field.label);
       if (nl === "") return false;
-      return groups.some((group) => group.some((member) => phraseIn(nl, member)));
+      return groups.some((group) =>
+        group.some((member) => phraseIn(nl, member)),
+      );
     });
-    if (byAlias) return byAlias;
+    if (aliased.length === 1) return aliased[0];
+    if (aliased.length > 1) return undefined;
   }
 
   const candidates = fields.filter((field) => {

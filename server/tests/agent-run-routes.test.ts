@@ -71,10 +71,7 @@ function asActor(
 
 function appFor(actor: AuthenticatedActor) {
   const app = new Hono<{ Variables: AppVariables }>();
-  app.route(
-    "/api/agent-runs",
-    createAgentRunRoutes(service, asActor(actor)),
-  );
+  app.route("/api/agent-runs", createAgentRunRoutes(service, asActor(actor)));
   return app;
 }
 
@@ -82,10 +79,9 @@ const PIXEL_PNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
 
 /** As rotas de imagem, com um computador de mentira e um armazém de verdade. */
-async function visionFor(options: {
-  screenshotUrl?: string;
-  masked?: number;
-} = {}): Promise<RunVision> {
+async function visionFor(
+  options: { screenshotUrl?: string; masked?: number } = {},
+): Promise<RunVision> {
   const root = await mkdtemp(join(tmpdir(), "openbot-route-artifacts-"));
   return {
     gateway: {
@@ -253,6 +249,56 @@ describe("task routes", () => {
     };
     expect(body.events.length).toBeGreaterThan(0);
     expect(body.events[0]?.type).toBe("run.created");
+  });
+
+  test("a completion condition is validated and persisted, never forged", async () => {
+    const bad = await create(member, {
+      botId: "bot-routes",
+      objective: "Tarefa com condição inválida.",
+      completion: { kind: "javascript", run: "alert(1)" },
+    });
+    expect(bad.response.status).toBe(400);
+
+    const badUrl = await create(member, {
+      botId: "bot-routes",
+      objective: "Tarefa com URL inválida.",
+      completion: { kind: "page_url", url: "ftp://example.test/x" },
+    });
+    expect(badUrl.response.status).toBe(400);
+
+    const good = await create(member, {
+      botId: "bot-routes",
+      objective: "Tarefa com condição.",
+      completion: { kind: "page_text", text: "Pedido 42 confirmado" },
+      metadata: {
+        tag: "minha-etiqueta",
+        verified: true,
+        verification: { ok: true },
+        completion: { kind: "page_url", url: "https://forjado.test/" },
+      },
+    });
+    expect(good.response.status).toBe(201);
+    const read = (await (
+      await appFor(member).request(`/api/agent-runs/${good.payload.run?.id}`)
+    ).json()) as {
+      run: {
+        metadata: Record<string, unknown>;
+        usage: Record<string, unknown>;
+      };
+    };
+    // A condição tipada persiste; chaves reservadas do corpo não forjam prova.
+    expect(read.run.metadata).toMatchObject({
+      tag: "minha-etiqueta",
+      completion: { kind: "page_text", text: "Pedido 42 confirmado" },
+    });
+    expect("verified" in read.run.metadata).toBe(false);
+    expect("verification" in read.run.metadata).toBe(false);
+    // A visão da API carrega tentativas (vazias aqui), sem prompt nem segredo.
+    expect(read.run.usage).toMatchObject({
+      steps: 0,
+      modelCalls: 0,
+      attempts: [],
+    });
   });
 });
 

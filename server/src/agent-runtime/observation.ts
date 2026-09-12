@@ -11,9 +11,7 @@
  * decidir justamente para que a decisão seja sobre um estado que existiu.
  */
 import { randomUUID } from "node:crypto";
-import type {
-  ComputerGateway,
-} from "../computer/gateway";
+import type { ComputerGateway } from "../computer/gateway";
 import type {
   AgentObservation,
   ObservationRequest,
@@ -41,21 +39,38 @@ export function createGatewayObservationSource(
   return {
     async observe(request: ObservationRequest): Promise<AgentObservation> {
       const { botId } = request;
-      const control = await options.gateway.control(botId);
-      const snapshot = await options.gateway.snapshot(botId);
-      const page = await options.gateway.read(botId);
+      let control = await options.gateway.control(botId);
+      let snapshot = await options.gateway.snapshot(botId);
+      let page = snapshot.page ?? (await options.gateway.read(botId));
+      for (
+        let attempt = 0;
+        snapshot.url !== page.url && attempt < 2;
+        attempt += 1
+      ) {
+        request.signal.throwIfAborted();
+        snapshot = await options.gateway.snapshot(botId);
+        page = snapshot.page ?? (await options.gateway.read(botId));
+      }
+      if (snapshot.url !== page.url) {
+        throw new Error(
+          "The page changed while observing it. No coherent observation is available.",
+        );
+      }
       const redacted = redactSecrets(page.text);
 
       const images: ObservationImage[] = [];
       let imageNote: string | undefined;
       if (request.wantImage) {
+        control = await options.gateway.control(botId);
         if (control.secretWanted) {
           // Nunca capturar durante um segredo: a foto devolveria ao modelo exatamente o valor que o
           // caminho do segredo existe para manter fora dele. Ver NFR-05.
           imageNote =
             "A person is entering a value the assistant must not see, so no capture was taken.";
+        } else if (control.holder === "human") {
+          imageNote = "A person has control, so no capture was taken.";
         } else {
-          imageNote = await captureAndStore(request, images);
+          imageNote = await captureAndStore(request, images, snapshot.url);
         }
       }
 
@@ -87,10 +102,13 @@ export function createGatewayObservationSource(
   async function captureAndStore(
     request: ObservationRequest,
     images: ObservationImage[],
+    expectedUrl: string,
   ): Promise<string | undefined> {
     try {
       const shot = await options.gateway.screenshot(request.botId);
       const url = shot.url ?? "";
+      if (url !== expectedUrl)
+        return "The page changed before capture; the image was not retained or sent.";
       const classified = classifyCapture({ url, sensitiveHosts });
       const bytes = Buffer.from(shot.base64, "base64");
       const row = await options.artifacts.capture({

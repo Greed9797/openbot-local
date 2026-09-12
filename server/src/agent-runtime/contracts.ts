@@ -104,13 +104,185 @@ export type ToolOutcome = {
 };
 
 export type ToolCallContext = {
-  runId: string;
+  /** Ausente numa ação humana via HTTP: pessoa não tem run. O runtime sempre passa o id real. */
+  runId?: string;
   /** O computador em que a ferramenta age. Vem do run, nunca do modelo. */
   botId: string;
   stepSeq: number;
   actor: ActionActor;
   signal: AbortSignal;
 };
+
+/**
+ * O que uma tentativa de modelo consumiu, quando o provedor disse.
+ *
+ * Desconhecido é null, nunca zero: zero afirmaria que nada foi gasto, e nenhum adaptador tem como
+ * saber isso quando o provedor não reporta. Custo é null até existir tarifa explícita no contrato
+ * local — nenhuma tabela de preços é inventada aqui. Só identidade e contadores viajam: nenhum
+ * prompt, cookie ou credencial entra na telemetria.
+ */
+export type ModelAttemptUsage = {
+  provider: string;
+  model: string;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cachedTokens: number | null;
+  cost: number | null;
+};
+
+/** Um número não-negativo finito, ou desconhecido. Texto, NaN e negativo viram null. */
+export function tokenCount(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : null;
+}
+
+/**
+ * A condição que fecha a tarefa, declarada pelo host na criação — nunca pelo modelo.
+ *
+ * Três formas, sem JavaScript nem expressão arbitrária: um texto que precisa estar na página
+ * atual, a URL onde a página precisa estar, ou um artefato que precisa pertencer ao run. A
+ * verificação é host-side, contra observação fresca ou artefato real; prosa do modelo nunca
+ * prova efeito externo.
+ */
+export type CompletionCondition =
+  | { kind: "page_text"; text: string }
+  | { kind: "page_url"; url: string }
+  | { kind: "artifact"; artifactId?: string };
+
+const COMPLETION_TEXT_LIMIT = 2_000;
+const COMPLETION_URL_LIMIT = 2_000;
+const COMPLETION_ARTIFACT_ID_LIMIT = 200;
+
+/**
+ * Valida a condição na fronteira de criação. Ausente é tarefa puramente textual, que conclui
+ * sem prova externa. Devolve a condição normalizada, ou undefined quando ausente. Lança um
+ * Error com a causa quando malformada — quem chama converte para o erro de fronteira dele.
+ */
+export function parseCompletionCondition(
+  value: unknown,
+): CompletionCondition | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("A completion condition must be an object.");
+  }
+  const raw = value as Record<string, unknown>;
+  if (raw.kind === "page_text") {
+    if (typeof raw.text !== "string" || !raw.text.trim()) {
+      throw new Error('A "page_text" condition needs a non-empty "text".');
+    }
+    if (raw.text.trim().length > COMPLETION_TEXT_LIMIT) {
+      throw new Error('A "page_text" condition holds at most 2000 characters.');
+    }
+    return { kind: "page_text", text: raw.text.trim() };
+  }
+  if (raw.kind === "page_url") {
+    if (typeof raw.url !== "string" || !raw.url.trim()) {
+      throw new Error('A "page_url" condition needs a non-empty "url".');
+    }
+    const url = raw.url.trim();
+    if (url.length > COMPLETION_URL_LIMIT) {
+      throw new Error('A "page_url" condition holds at most 2000 characters.');
+    }
+    const parsed = URL.parse(url);
+    if (
+      !parsed ||
+      (parsed.protocol !== "http:" && parsed.protocol !== "https:")
+    ) {
+      throw new Error('A "page_url" condition needs an http(s) URL.');
+    }
+    return { kind: "page_url", url };
+  }
+  if (raw.kind === "artifact") {
+    if (raw.artifactId === undefined) return { kind: "artifact" };
+    if (typeof raw.artifactId !== "string" || !raw.artifactId.trim()) {
+      throw new Error(
+        'An "artifact" condition needs a non-empty "artifactId".',
+      );
+    }
+    const artifactId = raw.artifactId.trim();
+    if (artifactId.length > COMPLETION_ARTIFACT_ID_LIMIT) {
+      throw new Error('An "artifact" condition holds at most 200 characters.');
+    }
+    return { kind: "artifact", artifactId };
+  }
+  throw new Error(
+    'A completion condition is one of "page_text", "page_url" or "artifact".',
+  );
+}
+
+/**
+ * Só identidade e contadores entram na telemetria; linha estranha ou sem identidade sai.
+ * O provedor e o modelo reportados são preservados — um wrapper roteado relata a tentativa
+ * subjacente, nunca o próprio id. Custo é sempre null: nenhuma tarifa é inventada aqui.
+ */
+export function sanitizeAttempt(value: unknown): ModelAttemptUsage | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.provider !== "string" || !raw.provider) return null;
+  if (typeof raw.model !== "string" || !raw.model) return null;
+  return {
+    provider: raw.provider,
+    model: raw.model,
+    inputTokens: tokenCount(raw.inputTokens),
+    outputTokens: tokenCount(raw.outputTokens),
+    cachedTokens: tokenCount(raw.cachedTokens),
+    cost: null,
+  };
+}
+
+/** Higieniza a lista persistida: só identidade e contadores sobrevivem — nunca texto. */
+export function sanitizeAttempts(value: unknown): ModelAttemptUsage[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    const clean = sanitizeAttempt(entry);
+    return clean ? [clean] : [];
+  });
+}
+
+/**
+ * A chave reservada onde a condição mora no JSON de metadata existente — sem coluna nova.
+ * `verified` e `verification` são reservadas no mesmo gesto: metadata arbitrário nunca forja
+ * resultado verificado, porque a verificação lê só esta chave, escrita aqui, e ignora o resto.
+ */
+export const COMPLETION_METADATA_KEY = "completion";
+const FORGED_METADATA_KEYS: Record<string, true> = {
+  completion: true,
+  verified: true,
+  verification: true,
+};
+
+/**
+ * Junta o metadata arbitrário com a condição declarada, sem deixar o corpo forjar a prova:
+ * chaves reservadas vindas de fora são descartadas; só o campo tipado escreve `completion`.
+ */
+export function metadataWithCompletion(
+  metadata: Record<string, unknown> | undefined,
+  completion: CompletionCondition | undefined,
+): Record<string, unknown> {
+  const clean: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(metadata ?? {})) {
+    if (!FORGED_METADATA_KEYS[key]) clean[key] = entry;
+  }
+  if (completion) clean[COMPLETION_METADATA_KEY] = { ...completion };
+  return clean;
+}
+
+/** Lê a condição que o host declarou na criação; corpo estranho ou ausente é "sem condição". */
+export function completionOf(metadata: unknown): CompletionCondition | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+  try {
+    return (
+      parseCompletionCondition(
+        (metadata as Record<string, unknown>)[COMPLETION_METADATA_KEY],
+      ) ?? null
+    );
+  } catch {
+    return null;
+  }
+}
 
 export interface ToolCatalog {
   definitions(): ToolDefinition[];
@@ -143,10 +315,18 @@ export type AgentRunInput = {
   /**
    * O que uma pessoa disse desde o último passo, na ordem, e ainda não tinha sido levado ao modelo.
    *
-   * Uma tarefa que parou pedindo ajuda não recomeça do zero: a resposta que a pessoa deu chega aqui,
-   * como ela escreveu. É a única entrada que não veio do próprio modelo ou da página.
+   * Entregue uma única vez: quem conserva a restrição nos passos seguintes é `restrictions`.
    */
   messages?: { author: "person" | "system"; text: string; kind: string }[];
+  /**
+   * Restrições vigentes de mensagens anteriores da pessoa, as mais recentes por último.
+   *
+   * `messages` é entregue uma vez; isto aqui é o que continua valendo nos passos seguintes, até
+   * substituição explícita ou o fim do run. Vem de `repository.messages` (só pessoa, já entregues,
+   * limitadas e truncadas no loop) e chega ao modelo marcada como instrução da pessoa — nunca como
+   * dado de página ou de ferramenta.
+   */
+  restrictions?: { text: string; kind: string }[];
   tools: ToolDefinition[];
   budget: RunBudget;
   usage: RunUsage;
@@ -176,6 +356,8 @@ export type AgentRunContext = {
   signal: AbortSignal;
   /** Streaming text out, for the surfaces that show progress. */
   onDelta?: (text: string) => void;
+  /** Routed providers report each underlying attempt, including failures. */
+  onAttempt?: (usage: ModelAttemptUsage) => void;
 };
 
 /**
@@ -187,15 +369,26 @@ export type AgentRunContext = {
  * being told how it went.
  */
 export type AgentRunResult =
-  | { kind: "tool_call"; call: ToolCall; text?: string }
-  | { kind: "final"; message: string; evidence?: Record<string, unknown> }
-  | { kind: "help"; reason: string }
-  | { kind: "invalid"; raw: string; error: string }
+  | {
+      kind: "tool_call";
+      call: ToolCall;
+      text?: string;
+      usage?: ModelAttemptUsage;
+    }
+  | {
+      kind: "final";
+      message: string;
+      evidence?: Record<string, unknown>;
+      usage?: ModelAttemptUsage;
+    }
+  | { kind: "help"; reason: string; usage?: ModelAttemptUsage }
+  | { kind: "invalid"; raw: string; error: string; usage?: ModelAttemptUsage }
   | {
       kind: "delegated";
       message: string;
       toolCalls: number;
       evidence?: Record<string, unknown>;
+      usage?: ModelAttemptUsage;
     };
 
 export type ModelCapabilities = {

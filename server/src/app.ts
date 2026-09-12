@@ -870,7 +870,11 @@ export function createApp(
             (await agentProfileStore.agentForCallbackToken(hash)) ?? null,
         });
         return verdict.ok
-          ? { botId: verdict.botId, actorId: verdict.actorId }
+          ? {
+              botId: verdict.botId,
+              actorId: verdict.actorId,
+              runId: verdict.runId,
+            }
           : null;
       }
     : undefined;

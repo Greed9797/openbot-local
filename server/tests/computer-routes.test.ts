@@ -40,6 +40,161 @@ describe("computer routes", () => {
     expect(requestedBotIds).toEqual(["bot-17"]);
   });
 });
+/**
+ * The composed fill over HTTP carries the signed run, never a fabricated or body-claimed one.
+ *
+ * What this fixes is who the audit row names: the fill-form route used to execute with a
+ * placeholder run, so every composed fill was recorded under an identity no run ever had. A Bot
+ * now arrives with the assertion this deployment signed, and a person arrives with no run at all.
+ */
+describe("run identity on composed and read routes", () => {
+  const seenActors: unknown[] = [];
+  const gateway = {
+    snapshot: async () => ({
+      snapshotId: 9,
+      url: "https://loja.test/entrega",
+      title: "Entrega",
+      truncated: false,
+      viewport: { width: 1280, height: 800 },
+      elements: [{ ref: "e1", role: "textbox", name: "Nome" }],
+    }),
+    type: async (_botId: string, actor: unknown, input: { text: string }) => {
+      seenActors.push(actor);
+      return {
+        action: "type",
+        characters: input.text.length,
+        url: "https://loja.test/entrega",
+        elapsedMs: 40,
+      };
+    },
+    select: async () => {
+      throw new Error("não deveria selecionar neste formulário");
+    },
+    fetch: async (_botId: string, actor: unknown, url: string) => {
+      seenActors.push(actor);
+      return { url, title: "Preços", text: "Caderno: 29.90", links: [] };
+    },
+  } as unknown as ComputerGateway;
+  const policyStore = {
+    get: () => ({ mode: "enforce", deny: [], allow: [] }),
+  } as unknown as PolicyStore;
+
+  const fillBody = {
+    values: [{ label: "Nome", value: "Marina" }],
+    runId: "forged-in-body",
+  };
+
+  test("a Bot call records the signed run and ignores what the body claimed", async () => {
+    seenActors.length = 0;
+    const routes = createComputerRoutes(
+      gateway,
+      policyStore,
+      asActor(member),
+      async () => true,
+      async () => ({ botId: "bot-1", actorId: "user-9", runId: "run-signed" }),
+    );
+    const response = await routes.request(
+      "http://openbot.test/bot-1/fill-form",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-openbot-agent-token": "obot_agt_presented",
+          "x-openbot-run": "signed-assertion",
+        },
+        body: JSON.stringify(fillBody),
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(seenActors).toEqual([
+      { id: "user-9", userId: "user-9", runId: "run-signed" },
+    ]);
+    const payload = (await response.json()) as {
+      ok: boolean;
+      result: { filled: unknown[] };
+    };
+    expect(payload.ok).toBe(true);
+    expect(payload.result.filled).toEqual([{ label: "Nome", ref: "e1" }]);
+  });
+
+  test("a person calling the same route records no run", async () => {
+    seenActors.length = 0;
+    const routes = createComputerRoutes(
+      gateway,
+      policyStore,
+      asActor(member),
+      async () => true,
+      async () => ({ botId: "bot-1", actorId: "user-9", runId: "run-signed" }),
+    );
+    const response = await routes.request(
+      "http://openbot.test/bot-1/fill-form",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(fillBody),
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(seenActors).toEqual([{ id: "user-1", userId: "user-1" }]);
+  });
+
+  test("a presented token the deployment does not recognise is refused before the gateway", async () => {
+    let typed = 0;
+    const counting = {
+      ...gateway,
+      snapshot: async () => {
+        typed += 1;
+        return gateway.snapshot("bot-1");
+      },
+    } as unknown as ComputerGateway;
+    const routes = createComputerRoutes(
+      counting,
+      policyStore,
+      asActor(member),
+      async () => true,
+      async () => null,
+    );
+    const response = await routes.request(
+      "http://openbot.test/bot-1/fill-form",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-openbot-agent-token": "unknown-token",
+          "x-openbot-run": "whatever",
+        },
+        body: JSON.stringify(fillBody),
+      },
+    );
+    expect(response.status).toBe(401);
+    expect(typed).toBe(0);
+  });
+
+  test("an agent fetch records the same signed run as the acting routes", async () => {
+    seenActors.length = 0;
+    const routes = createComputerRoutes(
+      gateway,
+      policyStore,
+      asActor(member),
+      async () => true,
+      async () => ({ botId: "bot-1", actorId: "user-9", runId: "run-signed" }),
+    );
+    const response = await routes.request("http://openbot.test/bot-1/fetch", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-openbot-agent-token": "obot_agt_presented",
+        "x-openbot-run": "signed-assertion",
+      },
+      body: JSON.stringify({ url: "https://loja.test/precos" }),
+    });
+    expect(response.status).toBe(200);
+    expect(seenActors).toEqual([
+      { id: "user-9", userId: "user-9", runId: "run-signed" },
+    ]);
+    await expect(response.json()).resolves.toMatchObject({ title: "Preços" });
+  });
+});
 
 /**
  * The fleet listing is the one route here that is not about the Bot in its path.

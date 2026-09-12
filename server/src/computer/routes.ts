@@ -15,6 +15,7 @@ import {
   WorkspaceRequestError,
 } from "./gateway";
 import { type PolicyStore, parseActionPolicy } from "./policy-store";
+import { createBrowserTools } from "../agent-runtime/browser-tools";
 
 /**
  * The Bot computer's surface.
@@ -37,8 +38,7 @@ import { type PolicyStore, parseActionPolicy } from "./policy-store";
 export type AgentCallAuthoriser = (input: {
   presented: string;
   run: unknown;
-}) => Promise<{ botId: string; actorId: string } | null>;
-
+}) => Promise<{ botId: string; actorId: string; runId: string } | null>;
 export function createComputerRoutes(
   gateway: ComputerGateway,
   policyStore: PolicyStore,
@@ -96,6 +96,7 @@ export function createComputerRoutes(
       return context.json({ error: "There is no such Bot." }, 404);
     }
     context.set("agentBotId", verdict.botId);
+    context.set("agentRunId", verdict.runId);
 
     /*
      * The audit row wants a person, and the assertion carries their id. The email is filled in with
@@ -238,6 +239,10 @@ export function createComputerRoutes(
             ...(context.var.actor.email === DEV_ACTOR_EMAIL
               ? {}
               : { userId: context.var.actor.id }),
+            // Same verified run as every acting route: the assertion's, never the body's.
+            ...(context.get("agentRunId")
+              ? { runId: context.get("agentRunId") as string }
+              : {}),
           },
           body.url.trim(),
         ),
@@ -278,6 +283,10 @@ export function createComputerRoutes(
             ...(context.var.actor.email === DEV_ACTOR_EMAIL
               ? {}
               : { userId: context.var.actor.id }),
+            // Same verified run as every acting route: the assertion's, never the body's.
+            ...(context.get("agentRunId")
+              ? { runId: context.get("agentRunId") as string }
+              : {}),
           },
           body.url.trim(),
         ),
@@ -371,8 +380,29 @@ export function createComputerRoutes(
             "Escolher uma opção precisa do value da opção, não do texto que aparece na tela.",
         };
       }
-      return gateway.select(botId, actor, { ...ref, value: body.value }, signal);
+      return gateway.select(
+        botId,
+        actor,
+        { ...ref, value: body.value },
+        signal,
+      );
     }),
+  );
+
+  routes.post("/:botId/fill-form", (context) =>
+    act(context, (botId, actor, body, signal) =>
+      createBrowserTools({ gateway }).execute(
+        { name: "fill_form", arguments: body ?? {} },
+        // Only the verified actor carries run identity; human actions have none.
+        {
+          botId,
+          actor,
+          signal,
+          stepSeq: 0,
+          ...(actor.runId ? { runId: actor.runId } : {}),
+        },
+      ),
+    ),
   );
 
   /**
@@ -626,6 +656,11 @@ async function act(
         // actor is not one, so writing it there fails the constraint and loses the row entirely. Who
         // it was is recorded in the payload regardless. See gateway.ts.
         ...(record.email === DEV_ACTOR_EMAIL ? {} : { userId: record.id }),
+        // The run comes from the signed assertion stored by asAgent, never from the body: a caller
+        // naming its own run would write its own audit identity. Human requests carry no run.
+        ...(context.get("agentRunId")
+          ? { runId: context.get("agentRunId") as string }
+          : {}),
       },
       body,
       context.req.raw.signal,

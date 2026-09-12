@@ -246,16 +246,32 @@ async function snapshotPage(
   elements: SnapshotElement[];
   truncated: boolean;
   viewport: { width: number; height: number };
+  page: { url: string; title: string; text: string; truncated: boolean };
 }> {
-  session.snapshotId += 1;
-  const yaml = await target.ariaSnapshot({ mode: "ai" });
-  return {
-    snapshotId: session.snapshotId,
-    url: target.url(),
-    title: await target.title(),
-    ...parseAriaSnapshot(yaml),
-    viewport: target.viewportSize() ?? VIEWPORT,
-  };
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const url = target.url();
+    const documentId = await target.evaluate(() => performance.timeOrigin);
+    session.snapshotId += 1;
+    const yaml = await target.ariaSnapshot({ mode: "ai" });
+    const extract = await readablePageText(target);
+    const title = await target.title();
+    if (
+      target.url() !== url ||
+      (await target.evaluate(() => performance.timeOrigin)) !== documentId
+    )
+      continue;
+    return {
+      snapshotId: session.snapshotId,
+      url,
+      title,
+      ...parseAriaSnapshot(yaml),
+      viewport: target.viewportSize() ?? VIEWPORT,
+      page: { url, title, ...extract },
+    };
+  }
+  throw new Error(
+    "The page changed while observing it. Take a new snapshot before acting.",
+  );
 }
 
 function json(body: unknown, status = 200): Response {
@@ -1098,7 +1114,9 @@ async function performAction(
 
   if (action === "/select") {
     if (!ref) {
-      throw new Error("Choosing an option needs the ref of the select element.");
+      throw new Error(
+        "Choosing an option needs the ref of the select element.",
+      );
     }
     if (typeof body.value !== "string") {
       throw new Error("Choosing an option needs the option's value.");

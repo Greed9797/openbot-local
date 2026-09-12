@@ -13,9 +13,11 @@ import type {
   AgentModelProvider,
   AgentRunInput,
   AgentRunResult,
+  ModelAttemptUsage,
   ModelCapabilities,
   ToolCall,
 } from "../contracts";
+import { tokenCount } from "../contracts";
 import { systemPrompt, userPrompt } from "../prompt";
 import { postJson, ProviderRejectedError } from "./http";
 
@@ -43,8 +45,9 @@ export function createOpenAIResponsesProvider(
     capabilities: options.capabilities,
 
     async run(input: AgentRunInput, context): Promise<AgentRunResult> {
+      const model = input.model ?? options.model;
       const body: Record<string, unknown> = {
-        model: options.model,
+        model,
         instructions: systemPrompt(input),
         input: [userMessage(input)],
         // Sem armazenamento no provedor: o estado da tarefa é o banco deste servidor.
@@ -72,7 +75,7 @@ export function createOpenAIResponsesProvider(
         ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
       });
 
-      return readResponse(response, input);
+      return readResponse(response, responseUsage(id, model, response));
     },
   };
 }
@@ -98,10 +101,9 @@ function userMessage(input: AgentRunInput): Record<string, unknown> {
   return { role: "user", content };
 }
 
-/** O `output` é uma lista de itens; a primeira chamada de função ou o texto decidem o passo. */
 function readResponse(
   response: Record<string, unknown>,
-  input: AgentRunInput,
+  usage?: ModelAttemptUsage,
 ): AgentRunResult {
   const items = Array.isArray(response.output) ? response.output : [];
 
@@ -115,9 +117,10 @@ function readResponse(
           kind: "invalid",
           raw: JSON.stringify(entry),
           error: "A chamada de ferramenta veio sem argumentos utilizáveis.",
+          ...(usage ? { usage } : {}),
         };
       }
-      return { kind: "tool_call", call };
+      return { kind: "tool_call", call, ...(usage ? { usage } : {}) };
     }
   }
 
@@ -144,14 +147,12 @@ function readResponse(
       kind: "invalid",
       raw: JSON.stringify(response).slice(0, 500),
       error: "A resposta não trouxe nem chamada de ferramenta nem texto.",
+      ...(usage ? { usage } : {}),
     };
   }
 
   // Um provedor nativo com ferramentas responde em texto livre quando considera a tarefa concluída.
-  if (!input.tools.length) {
-    return { kind: "final", message: text };
-  }
-  return { kind: "final", message: text };
+  return { kind: "final", message: text, ...(usage ? { usage } : {}) };
 }
 
 function toCall(entry: Record<string, unknown>): ToolCall | undefined {
@@ -180,4 +181,41 @@ export function missingCredential(provider: string): ProviderRejectedError {
   return new ProviderRejectedError(
     `O provedor ${provider} não tem credencial configurada neste deployment.`,
   );
+}
+
+/**
+ * O `usage` da Responses API, quando o provedor mandou um.
+ *
+ * Sem o bloco, o resultado sai sem `usage` e o loop registra a tentativa com nulls — nunca zeros.
+ * Só contadores e identidade; nada do prompt.
+ */
+function responseUsage(
+  provider: string,
+  model: string,
+  response: Record<string, unknown>,
+): ModelAttemptUsage | undefined {
+  const raw = response.usage;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const usage = raw as Record<string, unknown>;
+  const details = usage.input_tokens_details;
+  const nested =
+    details && typeof details === "object" && !Array.isArray(details)
+      ? (details as Record<string, unknown>)
+      : undefined;
+  const input = tokenCount(usage.input_tokens);
+  const output = tokenCount(usage.output_tokens);
+  const cached = tokenCount(nested?.cached_tokens);
+  if (input === null && output === null && cached === null) return undefined;
+  const effective =
+    typeof response.model === "string" && response.model
+      ? response.model
+      : model;
+  return {
+    provider,
+    model: effective,
+    inputTokens: input,
+    outputTokens: output,
+    cachedTokens: cached,
+    cost: null,
+  };
 }

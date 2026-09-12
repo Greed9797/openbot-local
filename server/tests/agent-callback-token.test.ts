@@ -111,6 +111,7 @@ describe("who may call a tool back, and as whom", () => {
       ok: true,
       botId: AGENT_A,
       actorId: "visitor_9",
+      runId: "r1",
     });
   });
 
@@ -163,6 +164,7 @@ describe("who may call a tool back, and as whom", () => {
       ok: true,
       botId: AGENT_A,
       actorId: "visitor_9",
+      runId: "r1",
     });
   });
 

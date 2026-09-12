@@ -11,7 +11,9 @@ test("queued cancellation preserves active files; failure releases the next isol
   let child: Subprocess<"ignore", "pipe", "pipe"> | undefined;
   try {
     const binary = join(root, "opencode");
-    await writeFile(binary, `#!${process.execPath}
+    await writeFile(
+      binary,
+      `#!${process.execPath}
 const name = process.argv.at(-1).split(": ").at(-1);
 const config = await Bun.file("opencode.json").text();
 const skill = await Bun.file(".openbot-skills/" + name + "/SKILL.md").text();
@@ -26,7 +28,8 @@ if (name === "first") {
 if (name === "failed") process.exit(7);
 const unchanged = config === await Bun.file("opencode.json").text();
 console.log(JSON.stringify({type:"text",part:{text:JSON.stringify({name, unchanged, assertion:JSON.parse(config).mcp.openbot.environment.OPENBOT_RUN, skill})}}));
-`);
+`,
+    );
     await chmod(binary, 0o700);
     const entry = resolve(import.meta.dir, "../src/index.ts");
     const runner = `
@@ -68,16 +71,35 @@ console.log("RESULT:"+JSON.stringify({cancelledOutput,beforeRelease,outputs,canc
       child.exited,
     ]);
     expect({ code, stderr }).toEqual({ code: 0, stderr: "" });
-    const resultLine = stdout.split("\n").find((line) => line.startsWith("RESULT:"));
+    const resultLine = stdout
+      .split("\n")
+      .find((line) => line.startsWith("RESULT:"));
     if (!resultLine) throw new Error(`Missing scenario result: ${stdout}`);
     const result = JSON.parse(resultLine.slice(7));
     expect(result.cancelledStarted).toBe(false);
     expect(result.beforeRelease).toBe("first");
     expect(result.cancelledOutput).toContain("RUN_ERROR");
-    const content = (stream: string) => stream.split("\n").filter((line) => line.startsWith("data: ")).map((line) => JSON.parse(line.slice(6))).filter((event) => event.type === "TEXT_MESSAGE_CONTENT").map((event) => event.delta).join("");
-    expect(JSON.parse(content(result.outputs[0]))).toEqual({name:"first", unchanged:true, assertion:"first", skill:"# first\n\nONLY-first\n"});
+    const content = (stream: string) =>
+      stream
+        .split("\n")
+        .filter((line) => line.startsWith("data: "))
+        .map((line) => JSON.parse(line.slice(6)))
+        .filter((event) => event.type === "TEXT_MESSAGE_CONTENT")
+        .map((event) => event.delta)
+        .join("");
+    expect(JSON.parse(content(result.outputs[0]))).toEqual({
+      name: "first",
+      unchanged: true,
+      assertion: "first",
+      skill: "# first\n\nONLY-first\n",
+    });
     expect(result.outputs[1]).toContain("RUN_ERROR");
-    expect(JSON.parse(content(result.outputs[2]))).toEqual({name:"last", unchanged:true, assertion:"last", skill:"# last\n\nONLY-last\n"});
+    expect(JSON.parse(content(result.outputs[2]))).toEqual({
+      name: "last",
+      unchanged: true,
+      assertion: "last",
+      skill: "# last\n\nONLY-last\n",
+    });
   } finally {
     if (child && child.exitCode === null) {
       child.kill();

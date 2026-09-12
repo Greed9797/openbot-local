@@ -157,7 +157,14 @@ describe("a captura chega como imagem", () => {
         method: "tools/call",
         params: { name: "ver_a_tela", arguments: {} },
       })) as {
-        result: { content: { type: string; data?: string; mimeType?: string; text?: string }[] };
+        result: {
+          content: {
+            type: string;
+            data?: string;
+            mimeType?: string;
+            text?: string;
+          }[];
+        };
       }[];
 
       expect(reply.result.content[0]).toEqual({
@@ -174,7 +181,9 @@ describe("a captura chega como imagem", () => {
         mascarados: 2,
       });
       // O base64 aparece uma vez só, como imagem, e nunca de novo dentro do texto.
-      expect(String(reply.result.content[1]?.text)).not.toContain("aVZCT1J3MEtHZ29B");
+      expect(String(reply.result.content[1]?.text)).not.toContain(
+        "aVZCT1J3MEtHZ29B",
+      );
       expect(calls[0]).toContain("/screenshot");
     } finally {
       globalThis.fetch = original;
@@ -203,6 +212,97 @@ describe("a captura chega como imagem", () => {
       expect(reply.result.content).toHaveLength(1);
       expect(reply.result.content[0]?.type).toBe("text");
       expect(String(reply.result.content[0]?.text)).toContain("must not see");
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+});
+
+/**
+ * O preenchimento composto e a leitura rápida pelo MCP do agente.
+ *
+ * O que se prova aqui é o envelope, não a ferramenta: as duas credenciais viajam nos headers que
+ * o servidor confere uma contra a outra, o corpo leva só os argumentos (identidade no corpo seria
+ * forjável), e uma recusa da política volta como texto que o modelo lê em vez de derrubar a chamada.
+ */
+describe("preenchimento e leitura pelo MCP", () => {
+  test("preencher_formulario leva as duas credenciais nos headers e só valores no corpo", async () => {
+    const original = globalThis.fetch;
+    const calls: {
+      url: string;
+      headers: Record<string, string>;
+      body: unknown;
+    }[] = [];
+    globalThis.fetch = (async (
+      url: unknown,
+      init?: { headers?: Record<string, string>; body?: string },
+    ) => {
+      calls.push({
+        url: String(url),
+        headers: init?.headers ?? {},
+        body: init?.body ? JSON.parse(init.body) : undefined,
+      });
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          result: { filled: [{ label: "Nome", ref: "e1" }] },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    try {
+      const [reply] = (await ask({
+        jsonrpc: "2.0",
+        id: 11,
+        method: "tools/call",
+        params: {
+          name: "preencher_formulario",
+          arguments: { values: [{ label: "Nome", value: "Marina" }] },
+        },
+      })) as { result: { content: { type: string; text?: string }[] } }[];
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.url).toContain("/fill-form");
+      expect(calls[0]?.headers["x-openbot-agent-token"]).toBe("token-de-teste");
+      expect(calls[0]?.headers["x-openbot-run"]).toBe("declaracao-de-teste");
+      expect(calls[0]?.body).toEqual({
+        values: [{ label: "Nome", value: "Marina" }],
+      });
+      expect(String(reply.result.content[0]?.text)).toContain("Nome");
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  test("ler_url_rapido recusado volta como recusa legível, não como erro de protocolo", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          error: "Ler este endereço exige aprovação.",
+          rule: "deny[5]",
+        }),
+        { status: 403, headers: { "content-type": "application/json" } },
+      )) as unknown as typeof fetch;
+
+    try {
+      const [reply] = (await ask({
+        jsonrpc: "2.0",
+        id: 12,
+        method: "tools/call",
+        params: {
+          name: "ler_url_rapido",
+          arguments: { url: "https://loja.test/interno" },
+        },
+      })) as { result: { content: { type: string; text?: string }[] } }[];
+
+      const payload = JSON.parse(String(reply.result.content[0]?.text));
+      expect(payload).toEqual({
+        recusado: true,
+        motivo: "Ler este endereço exige aprovação.",
+        regra: "deny[5]",
+      });
     } finally {
       globalThis.fetch = original;
     }

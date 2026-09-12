@@ -211,7 +211,11 @@ const tools: Tool[] = [
     description:
       "Para e chama uma pessoa: login, CAPTCHA, 2FA, ou qualquer decisão que só o operador pode tomar. Use também quando a política recusar uma ação e você não tiver outro caminho.",
     inputSchema: object(
-      { motivo: text("Em uma frase, o que está impedindo e o que a pessoa precisa fazer") },
+      {
+        motivo: text(
+          "Em uma frase, o que está impedindo e o que a pessoa precisa fazer",
+        ),
+      },
       ["motivo"],
     ),
     call: (args) =>
@@ -233,6 +237,27 @@ const tools: Tool[] = [
       ["ref", "snapshotId", "value"],
     ),
     call: (args) => computer("select", { method: "POST", body: args }),
+  },
+  {
+    name: "preencher_formulario",
+    description:
+      "Preenche campos por rótulo em uma operação governada. Não envia o formulário. Para se a estrutura mudar ou um campo falhar e informa o resultado parcial sem repetir valores.",
+    inputSchema: object(
+      {
+        values: {
+          type: "array",
+          items: object(
+            {
+              label: text("Rótulo do campo"),
+              value: text("Valor a preencher"),
+            },
+            ["label", "value"],
+          ),
+        },
+      },
+      ["values"],
+    ),
+    call: (args) => computer("fill-form", { method: "POST", body: args }),
   },
 ];
 

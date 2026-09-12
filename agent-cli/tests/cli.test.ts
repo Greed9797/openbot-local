@@ -192,7 +192,9 @@ describe("os eventos do --format json", () => {
   test("linha que não é JSON é ruído, não queda", () => {
     // O CLI também escreve avisos soltos no stdout. Derrubar o turno por causa deles seria perder a
     // tarefa por causa de um log.
-    expect(readOpencodeEvent("Reading additional input from stdin...")).toBeUndefined();
+    expect(
+      readOpencodeEvent("Reading additional input from stdin..."),
+    ).toBeUndefined();
     expect(readOpencodeEvent("")).toBeUndefined();
   });
 
@@ -215,7 +217,10 @@ describe("os eventos do --format json", () => {
  * Nada aqui precisa do CLI instalado: `perguntaDoTurno` é função pura sobre o `input`.
  */
 describe("o contexto textual do turno", () => {
-  function turnoComMensagens(messages: Message[], threadId = "t1"): RunAgentInput {
+  function turnoComMensagens(
+    messages: Message[],
+    threadId = "t1",
+  ): RunAgentInput {
     return {
       threadId,
       runId: "r1",
@@ -258,11 +263,15 @@ describe("o contexto textual do turno", () => {
     const primeira = perguntaDoTurno(turnoComMensagens(mensagensA, "thread-a"));
     expect(primeira).toContain("Rua das Flores, 123");
 
-    const segunda = perguntaDoTurno(turnoComMensagens([fala("m1", "olá")], "thread-b"));
+    const segunda = perguntaDoTurno(
+      turnoComMensagens([fala("m1", "olá")], "thread-b"),
+    );
     expect(segunda).not.toContain("Rua das Flores");
 
     // Sem memória global: repetir a primeira devolve o mesmo texto, sem vazar nada da segunda.
-    expect(perguntaDoTurno(turnoComMensagens(mensagensA, "thread-a"))).toBe(primeira);
+    expect(perguntaDoTurno(turnoComMensagens(mensagensA, "thread-a"))).toBe(
+      primeira,
+    );
   });
 
   test("histórico longo preserva a atual inteira e sinaliza a omissão (AC3)", () => {
@@ -270,10 +279,14 @@ describe("o contexto textual do turno", () => {
     const antigas: Message[] = [];
     for (let i = 0; i < 200; i++) {
       antigas.push(fala(`u${i}`, `pergunta antiga ${i} ${"x".repeat(500)}`));
-      antigas.push(resposta(`a${i}`, `resposta antiga ${i} ${"y".repeat(500)}`));
+      antigas.push(
+        resposta(`a${i}`, `resposta antiga ${i} ${"y".repeat(500)}`),
+      );
     }
 
-    const pergunta = perguntaDoTurno(turnoComMensagens([...antigas, fala("nova", atual)]));
+    const pergunta = perguntaDoTurno(
+      turnoComMensagens([...antigas, fala("nova", atual)]),
+    );
 
     expect(pergunta).toContain(atual);
     expect(pergunta.length).toBeLessThanOrEqual(LIMITE_CONTEXTO_TURNO);

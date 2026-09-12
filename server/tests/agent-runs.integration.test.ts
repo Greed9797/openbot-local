@@ -80,9 +80,7 @@ afterEach(async () => {
   await database
     .update(agentRuns)
     .set({ status: "paused" })
-    .where(
-      and(inArray(agentRuns.id, created), eq(agentRuns.status, "queued")),
-    );
+    .where(and(inArray(agentRuns.id, created), eq(agentRuns.status, "queued")));
   await database
     .delete(browserProfileLeases)
     .where(inArray(browserProfileLeases.profileId, ["profile-a", "profile-b"]));
@@ -192,9 +190,9 @@ describe("leases", () => {
     expect(
       await repository.updateOwned(run.id, "worker-a", 0, { status: "failed" }),
     ).toBeUndefined();
-    expect(
-      await repository.renewLease(run.id, "worker-b", 1, 30_000),
-    ).toBe(false);
+    expect(await repository.renewLease(run.id, "worker-b", 1, 30_000)).toBe(
+      false,
+    );
 
     await repository.releaseLease(run.id, "worker-a", 1);
     // Back to queued, as a resume or a recovery would leave it; then the next worker claims it and
@@ -301,10 +299,7 @@ describe("steps and events", () => {
     await repository.appendEvent(run.id, "note", { text: "um" });
     await repository.appendEvent(run.id, "note", { text: "dois" });
     const events = await service.events(run.id, 1);
-    expect(events.map((event) => event.payload.text)).toEqual([
-      "um",
-      "dois",
-    ]);
+    expect(events.map((event) => event.payload.text)).toEqual(["um", "dois"]);
   });
 });
 
@@ -318,9 +313,7 @@ describe("the worker", () => {
     await database
       .update(agentRuns)
       .set({ status: "paused" })
-      .where(
-        and(eq(agentRuns.status, "queued"), ne(agentRuns.id, runId)),
-      );
+      .where(and(eq(agentRuns.status, "queued"), ne(agentRuns.id, runId)));
   }
 
   test("claims a queued run and lets its executor settle it", async () => {
@@ -336,16 +329,21 @@ describe("the worker", () => {
       execute: async (request) => {
         seen.push(request.runId);
         const row = await repository.get(request.runId);
-        await repository.updateOwned(request.runId, request.owner, request.generation, {
-          status: "succeeded",
-          finishedAt: new Date(),
-          usage: {
-            steps: 1,
-            activeMs: 10,
-            modelCalls: 1,
-            toolCalls: 0,
+        await repository.updateOwned(
+          request.runId,
+          request.owner,
+          request.generation,
+          {
+            status: "succeeded",
+            finishedAt: new Date(),
+            usage: {
+              steps: 1,
+              activeMs: 10,
+              modelCalls: 1,
+              toolCalls: 0,
+            },
           },
-        });
+        );
         expect(row?.status).toBe("running");
       },
     });
@@ -392,5 +390,46 @@ describe("the worker", () => {
     expect(await worker.tick()).toBe(0);
     await worker.stop();
     expect((await repository.get(run.id))?.status).toBe("waiting_human");
+  });
+
+  test("limits active runs and leaves excess work queued", async () => {
+    const first = await newRun({ botId: "concurrent-a" });
+    await onlyQueued(first.id);
+    const second = await newRun({ botId: "concurrent-b" });
+    const third = await newRun({ botId: "concurrent-c" });
+    const gate = Promise.withResolvers<void>();
+    const worker = createAgentRunWorker({
+      repository,
+      service,
+      owner: "concurrency-worker",
+      pollMs: 60_000,
+      leaseTtlMs: 30_000,
+      concurrency: 2,
+      execute: async (request) => {
+        await gate.promise;
+        await repository.updateOwned(
+          request.runId,
+          request.owner,
+          request.generation,
+          {
+            status: "succeeded",
+            finishedAt: new Date(),
+          },
+        );
+      },
+    });
+    try {
+      await worker.tick();
+      expect((await repository.get(first.id))?.status).toBe("running");
+      expect((await repository.get(second.id))?.status).toBe("running");
+      expect((await repository.get(third.id))?.status).toBe("queued");
+      expect(await worker.tick()).toBe(0);
+      expect((await repository.get(third.id))?.status).toBe("queued");
+    } finally {
+      gate.resolve();
+      await worker.stop();
+    }
+    expect((await repository.get(first.id))?.status).toBe("succeeded");
+    expect((await repository.get(second.id))?.status).toBe("succeeded");
   });
 });

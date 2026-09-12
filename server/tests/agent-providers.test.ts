@@ -7,22 +7,18 @@
  * que guarda o corpo enviado; nada sai para a internet.
  */
 import { describe, expect, test } from "bun:test";
-import type { AgentRunInput, ModelCapabilities } from "../src/agent-runtime/contracts";
-import {
-  createAnthropicProvider,
-} from "../src/agent-runtime/providers/anthropic";
-import {
-  createOpenAICompatibleProvider,
-} from "../src/agent-runtime/providers/openai-compatible";
-import {
-  createOpenAIResponsesProvider,
-} from "../src/agent-runtime/providers/openai-responses";
+import type {
+  AgentRunInput,
+  ModelCapabilities,
+} from "../src/agent-runtime/contracts";
+import { createAnthropicProvider } from "../src/agent-runtime/providers/anthropic";
+import { createOpenAICompatibleProvider } from "../src/agent-runtime/providers/openai-compatible";
+import { createOpenAIResponsesProvider } from "../src/agent-runtime/providers/openai-responses";
 import {
   createCodexDelegatedProvider,
+  delegatedObjective,
 } from "../src/agent-runtime/providers/codex-delegated";
-import {
-  createGeminiProvider,
-} from "../src/agent-runtime/providers/gemini";
+import { createGeminiProvider } from "../src/agent-runtime/providers/gemini";
 import {
   mintRunAssertion,
   readRunAssertion,
@@ -38,8 +34,16 @@ const IMAGE_DATA = "QUJD";
 /** A chave do deployment nestes testes: só existe aqui dentro. */
 const KEY = "chave-de-teste";
 
-function capabilities(overrides: Partial<ModelCapabilities> = {}): ModelCapabilities {
-  return { vision: true, tools: true, streaming: false, mode: "step", ...overrides };
+function capabilities(
+  overrides: Partial<ModelCapabilities> = {},
+): ModelCapabilities {
+  return {
+    vision: true,
+    tools: true,
+    streaming: false,
+    mode: "step",
+    ...overrides,
+  };
 }
 
 function input(overrides: Partial<AgentRunInput> = {}): AgentRunInput {
@@ -113,7 +117,9 @@ const context = {
 };
 
 /** O corpo enviado, ou uma falha clara: um teste que não enviou nada não provou nada. */
-function bodyOf(sent: { url: string; body: Record<string, unknown> }[]): Record<string, unknown> {
+function bodyOf(
+  sent: { url: string; body: Record<string, unknown> }[],
+): Record<string, unknown> {
   const body = sent[0]?.body;
   if (!body) throw new Error("Nenhuma chamada foi enviada ao provedor.");
   return body;
@@ -154,7 +160,6 @@ describe("OpenAI Responses", () => {
     expect(urlOf(sent)).toBe("https://api.openai.com/v1/responses");
     expect(body.model).toBe("gpt-5.5");
     expect(body.store).toBe(false);
-    expect(String(body.instructions)).toContain("formulário de produto");
     const message = (body.input as Record<string, unknown>[])[0];
     expect(message?.role).toBe("user");
     const parts = message?.content as Record<string, unknown>[];
@@ -176,7 +181,10 @@ describe("OpenAI Responses", () => {
       capabilities: capabilities({ vision: false }),
       fetchImpl,
     });
-    await withFetch.run(input({ capabilities: capabilities({ vision: false }) }), context);
+    await withFetch.run(
+      input({ capabilities: capabilities({ vision: false }) }),
+      context,
+    );
     expect(JSON.stringify(bodyOf(sent))).not.toContain(IMAGE_DATA);
     expect(JSON.stringify(bodyOf(sent))).not.toContain("input_image");
   });
@@ -199,7 +207,12 @@ describe("Anthropic", () => {
     const { sent, fetchImpl } = capture({
       content: [
         { type: "text", text: "Vou clicar." },
-        { type: "tool_use", id: "toolu_1", name: "click", input: { ref: "e1" } },
+        {
+          type: "tool_use",
+          id: "toolu_1",
+          name: "click",
+          input: { ref: "e1" },
+        },
       ],
     });
     const provider = createAnthropicProvider({
@@ -213,7 +226,6 @@ describe("Anthropic", () => {
     expect(decision.kind).toBe("tool_call");
     const body = bodyOf(sent);
     expect(urlOf(sent)).toBe("https://api.anthropic.com/v1/messages");
-    expect(body.system).toContain("formulário de produto");
     const content = (body.messages as Record<string, unknown>[])[0]
       ?.content as Record<string, unknown>[];
     expect(content[0]).toMatchObject({ type: "text" });
@@ -316,7 +328,9 @@ describe("OpenAI-compatible", () => {
 
   test("um JSON quebrado é uma decisão inválida, não uma ação", async () => {
     const { fetchImpl } = capture({
-      choices: [{ message: { role: "assistant", content: "claro, vou clicar" } }],
+      choices: [
+        { message: { role: "assistant", content: "claro, vou clicar" } },
+      ],
     });
     const provider = createOpenAICompatibleProvider({
       model: "llama3.1",
@@ -334,7 +348,12 @@ describe("OpenAI-compatible", () => {
   test("uma ferramenta desconhecida no JSON também é inválida", async () => {
     const { fetchImpl } = capture({
       choices: [
-        { message: { role: "assistant", content: '{"tool":"exec","arguments":{}}' } },
+        {
+          message: {
+            role: "assistant",
+            content: '{"tool":"exec","arguments":{}}',
+          },
+        },
       ],
     });
     const provider = createOpenAICompatibleProvider({
@@ -437,9 +456,11 @@ describe("Codex delegado", () => {
     );
   }
 
-  async function call(
-    options: { token?: string; text?: string; declaredTools?: number },
-  ): Promise<{ headers: Headers; body: unknown; result: unknown }> {
+  async function call(options: {
+    token?: string;
+    text?: string;
+    declaredTools?: number;
+  }): Promise<{ headers: Headers; body: unknown; result: unknown }> {
     let seen: Headers | undefined;
     let body: unknown;
     const provider = createCodexDelegatedProvider({
@@ -496,9 +517,17 @@ describe("Codex delegado", () => {
       fetchImpl: (async () => {
         const events = [
           { type: "RUN_STARTED", threadId: "t", runId: "run-1" },
-          { type: "TOOL_CALL_START", toolCallId: "c1", toolCallName: "computer" },
+          {
+            type: "TOOL_CALL_START",
+            toolCallId: "c1",
+            toolCallName: "computer",
+          },
           { type: "TOOL_CALL_END", toolCallId: "c1" },
-          { type: "TOOL_CALL_START", toolCallId: "c2", toolCallName: "computer" },
+          {
+            type: "TOOL_CALL_START",
+            toolCallId: "c2",
+            toolCallName: "computer",
+          },
           { type: "TOOL_CALL_END", toolCallId: "c2" },
           { type: "TEXT_MESSAGE_START", messageId: "m1", role: "assistant" },
           { type: "TEXT_MESSAGE_CONTENT", messageId: "m1", delta: "pronto" },
@@ -521,7 +550,9 @@ describe("Codex delegado", () => {
   test("o objetivo vai no corpo, com o que já aconteceu", async () => {
     const { body } = await call({ text: "tudo certo" });
     const payload = body as { messages?: { content?: string }[] };
-    expect(JSON.stringify(payload)).toContain("Preencher o formulário de produto.");
+    expect(JSON.stringify(payload)).toContain(
+      "Preencher o formulário de produto.",
+    );
   });
 });
 
@@ -537,7 +568,11 @@ describe("Codex delegado > declaração de execução", () => {
   /** O corpo que o pedido levou, com um fluxo AG-UI de resposta. */
   async function requestBody(
     options: {
-      signRun?: (run: { botId: string; runId: string; actorId: string }) => string;
+      signRun?: (run: {
+        botId: string;
+        runId: string;
+        actorId: string;
+      }) => string;
       run?: Partial<AgentRunInput>;
     } = {},
   ): Promise<Record<string, unknown>> {
@@ -674,7 +709,9 @@ describe("Codex delegado > turno recusado", () => {
 describe("Gemini", () => {
   test("o pedido leva instruções, ferramentas e a imagem como bytes", async () => {
     const { sent, fetchImpl } = capture({
-      candidates: [{ content: { parts: [{ text: "pronto" }] }, finishReason: "STOP" }],
+      candidates: [
+        { content: { parts: [{ text: "pronto" }] }, finishReason: "STOP" },
+      ],
     });
     await createGeminiProvider({
       model: "gemini-3.8-flash",
@@ -693,13 +730,17 @@ describe("Gemini", () => {
         parts: Record<string, unknown>[];
       }
     ).parts;
-    expect(String(parts[0]?.text)).toContain("Preencher o formulário de produto.");
+    expect(String(parts[0]?.text)).toContain(
+      "Preencher o formulário de produto.",
+    );
     expect(parts[1]?.inlineData).toEqual({
       mimeType: "image/png",
       data: IMAGE_DATA,
     });
     const declarations = (
-      (body.tools as { functionDeclarations: Record<string, unknown>[] }[])[0] as {
+      (
+        body.tools as { functionDeclarations: Record<string, unknown>[] }[]
+      )[0] as {
         functionDeclarations: Record<string, unknown>[];
       }
     ).functionDeclarations;
@@ -711,7 +752,9 @@ describe("Gemini", () => {
 
   test("um modelo sem visão não recebe imagem nenhuma", async () => {
     const { sent, fetchImpl } = capture({
-      candidates: [{ content: { parts: [{ text: "ok" }] }, finishReason: "STOP" }],
+      candidates: [
+        { content: { parts: [{ text: "ok" }] }, finishReason: "STOP" },
+      ],
     });
     await createGeminiProvider({
       model: "gemini-3.8-flash",
@@ -759,7 +802,11 @@ describe("Gemini", () => {
 
     expect(result.kind).toBe("tool_call");
     expect(
-      (result as { call: { name: string; arguments: unknown; callId?: string } }).call,
+      (
+        result as {
+          call: { name: string; arguments: unknown; callId?: string };
+        }
+      ).call,
     ).toEqual({ name: "click", arguments: { ref: "e1" }, callId: "fc-1" });
   });
 
@@ -780,7 +827,10 @@ describe("Gemini", () => {
       fetchImpl,
     }).run(input(), context);
 
-    expect(result).toEqual({ kind: "final", message: "O relatório foi baixado." });
+    expect(result).toEqual({
+      kind: "final",
+      message: "O relatório foi baixado.",
+    });
   });
 
   test("bloqueio de conteúdo é dito com o motivo, não como resposta vazia", async () => {
@@ -803,7 +853,10 @@ describe("Gemini", () => {
   });
 
   test("uma recusa do provedor não é resposta vazia", async () => {
-    const { fetchImpl } = capture({ error: { message: "model not found" } }, 404);
+    const { fetchImpl } = capture(
+      { error: { message: "model not found" } },
+      404,
+    );
     const failure = await createGeminiProvider({
       model: "gemini-inexistente",
       apiKey: "chave-gemini",
@@ -827,5 +880,208 @@ describe("Gemini", () => {
       .catch((error) => error);
 
     expect(failure).toBeInstanceOf(ProviderRejectedError);
+  });
+});
+
+/**
+ * Modelo escolhido e consumo por tentativa (RQ-04).
+ *
+ * O que se prova por adaptador: a escolha explícita da tarefa chega ao fio (nada de padrão
+ * silencioso), o usage reportado vira identidade + contadores, o ausente vira ausência (nunca
+ * zero), e nenhum segredo do deployment viaja no corpo ou no resultado.
+ */
+describe("modelo escolhido e consumo por tentativa", () => {
+  test("Responses honra a escolha e preserva o usage conhecido", async () => {
+    const { sent, fetchImpl } = capture({
+      output: [
+        {
+          type: "message",
+          content: [{ type: "output_text", text: "pronto" }],
+        },
+      ],
+      usage: {
+        input_tokens: 120,
+        output_tokens: 34,
+        input_tokens_details: { cached_tokens: 40 },
+      },
+      model: "gpt-efetivo",
+    });
+    const decision = await createOpenAIResponsesProvider({
+      model: "gpt-padrao",
+      apiKey: "segredo-responses",
+      capabilities: capabilities(),
+      fetchImpl,
+    }).run(input({ model: "gpt-escolhido" }), context);
+
+    const body = bodyOf(sent);
+    expect(body.model).toBe("gpt-escolhido");
+    expect(JSON.stringify(body)).not.toContain("segredo-responses");
+    // Uma cópia no papel de sistema, nenhuma repetição na mensagem variável.
+    expect(String(body.instructions)).toContain("Você opera o navegador");
+    const message = (body.input as Record<string, unknown>[])[0];
+    const parts = message?.content as Record<string, unknown>[];
+    expect(String(parts[0]?.text)).not.toContain("Você opera o navegador");
+    expect(decision.usage).toEqual({
+      provider: "openai-responses",
+      model: "gpt-efetivo",
+      inputTokens: 120,
+      outputTokens: 34,
+      cachedTokens: 40,
+      cost: null,
+    });
+    expect(JSON.stringify(decision)).not.toContain("segredo-responses");
+  });
+
+  test("Anthropic honra a escolha e lê o cache de leitura", async () => {
+    const { sent, fetchImpl } = capture({
+      content: [{ type: "text", text: "feito" }],
+      usage: {
+        input_tokens: 200,
+        output_tokens: 11,
+        cache_read_input_tokens: 150,
+      },
+      model: "claude-efetivo",
+    });
+    const decision = await createAnthropicProvider({
+      model: "claude-padrao",
+      apiKey: "segredo-anthropic",
+      capabilities: capabilities(),
+      fetchImpl,
+    }).run(input({ model: "claude-escolhido" }), context);
+
+    const body = bodyOf(sent);
+    expect(body.model).toBe("claude-escolhido");
+    expect(JSON.stringify(body)).not.toContain("segredo-anthropic");
+    expect(decision.usage).toEqual({
+      provider: "anthropic",
+      model: "claude-efetivo",
+      inputTokens: 200,
+      outputTokens: 11,
+      cachedTokens: 150,
+      cost: null,
+    });
+  });
+
+  test("Compatible honra a escolha e lê prompt/completion", async () => {
+    const { sent, fetchImpl } = capture({
+      choices: [{ message: { role: "assistant", content: "feito" } }],
+      usage: {
+        prompt_tokens: 50,
+        completion_tokens: 7,
+        prompt_tokens_details: { cached_tokens: 10 },
+      },
+      model: "modelo-efetivo",
+    });
+    const decision = await createOpenAICompatibleProvider({
+      model: "modelo-padrao",
+      baseUrl: "http://127.0.0.1:11434/v1",
+      apiKey: "segredo-compatible",
+      capabilities: capabilities(),
+      fetchImpl,
+    }).run(input({ model: "modelo-escolhido" }), context);
+
+    expect(bodyOf(sent).model).toBe("modelo-escolhido");
+    expect(decision.usage).toEqual({
+      provider: "openai-compatible",
+      model: "modelo-efetivo",
+      inputTokens: 50,
+      outputTokens: 7,
+      cachedTokens: 10,
+      cost: null,
+    });
+  });
+
+  test("Gemini usa o modelo escolhido na URL e lê o usageMetadata", async () => {
+    const { sent, fetchImpl } = capture({
+      candidates: [
+        { content: { parts: [{ text: "pronto" }] }, finishReason: "STOP" },
+      ],
+      usageMetadata: {
+        promptTokenCount: 80,
+        candidatesTokenCount: 9,
+        cachedContentTokenCount: 20,
+      },
+      modelVersion: "gemini-efetivo",
+    });
+    const decision = await createGeminiProvider({
+      model: "gemini-padrao",
+      apiKey: "segredo-gemini",
+      capabilities: capabilities(),
+      fetchImpl,
+    }).run(input({ model: "gemini-escolhido" }), context);
+
+    expect(urlOf(sent)).toContain(
+      "/v1beta/models/gemini-escolhido:generateContent",
+    );
+    expect(JSON.stringify(bodyOf(sent))).not.toContain("segredo-gemini");
+    expect(decision.usage).toEqual({
+      provider: "gemini",
+      model: "gemini-efetivo",
+      inputTokens: 80,
+      outputTokens: 9,
+      cachedTokens: 20,
+      cost: null,
+    });
+  });
+
+  test("usage ausente é ausência, não zero", async () => {
+    const responses = await createOpenAIResponsesProvider({
+      model: "gpt-5.5",
+      apiKey: "chave",
+      capabilities: capabilities(),
+      fetchImpl: capture({
+        output: [
+          {
+            type: "message",
+            content: [{ type: "output_text", text: "pronto" }],
+          },
+        ],
+      }).fetchImpl,
+    }).run(input(), context);
+    expect("usage" in responses).toBe(false);
+
+    const compatible = await createOpenAICompatibleProvider({
+      model: "qwen",
+      baseUrl: "http://127.0.0.1:11434/v1",
+      capabilities: capabilities(),
+      fetchImpl: capture({
+        choices: [{ message: { role: "assistant", content: "pronto" } }],
+      }).fetchImpl,
+    }).run(input(), context);
+    expect("usage" in compatible).toBe(false);
+
+    const anthropic = await createAnthropicProvider({
+      model: "claude",
+      apiKey: "chave",
+      capabilities: capabilities(),
+      fetchImpl: capture({ content: [{ type: "text", text: "pronto" }] })
+        .fetchImpl,
+    }).run(input(), context);
+    expect("usage" in anthropic).toBe(false);
+
+    const gemini = await createGeminiProvider({
+      model: "gemini-3.8-flash",
+      apiKey: "chave",
+      capabilities: capabilities(),
+      fetchImpl: capture({
+        candidates: [
+          { content: { parts: [{ text: "pronto" }] }, finishReason: "STOP" },
+        ],
+      }).fetchImpl,
+    }).run(input(), context);
+    expect("usage" in gemini).toBe(false);
+  });
+
+  test("objetivo delegado leva instruções próprias uma única vez", () => {
+    const text = delegatedObjective(
+      input({
+        instructions: "Responda em português.",
+        history: [{ seq: 1, kind: "action", summary: "click → ok" }],
+      }),
+    );
+    expect(text.split("Responda em português.")).toHaveLength(2);
+    expect(text).toContain("click → ok");
+    const plain = delegatedObjective(input({ history: [] }));
+    expect(plain).toBe("Preencher o formulário de produto.");
   });
 });

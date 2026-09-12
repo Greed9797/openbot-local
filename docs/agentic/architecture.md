@@ -34,8 +34,8 @@ web (POST /api/agent-runs) ou Telegram ("faz X")
   → createAgentRunWorker.tick: recoverExpired, repository.claim (leaseOwner/leaseGeneration/leaseExpiresAt)
   → createAgentRunExecutor.execute:
       repository.acquireProfileLease (browser_profile_leases, uma posse por perfil)
-      observations.observe: gateway.control + gateway.snapshot + gateway.read
-        (+ gateway.screenshot via captureRunScreen quando o passo anterior pediu screenshot)
+      observations.observe: gateway.control + gateway.snapshot (texto e refs do mesmo documento)
+        (+ gateway.read apenas se o snapshot não contiver texto; screenshot apenas sob pedido)
       provider.run(input com observation, history, messages, tools, budget, usage)
       approvals.review(call, observation) → run | approved | requested | denied
       tools.execute(call, {runId, botId, stepSeq, actor, signal})
@@ -52,12 +52,12 @@ estado partindo de `running`/`waiting_model`, e o heartbeat (1–2 s) aborta o p
 
 ## Lightpanda × Chromium
 
-| | Lightpanda (`computer_fetch`, `ler_url_rapido`) | Chromium (todo o resto) |
+| | Lightpanda (`computer_fetch`, `fetch_page`, `ler_url_rapido`) | Chromium (todo o resto) |
 |---|---|---|
 | O que é | Motor sem pixels (`agent-computer/src/lightpanda.ts`) | Navegador persistente por Bot com sessão e perfil |
 | Devolve | `FetchResult`: texto + links, sem abrir nada no computador do Bot | Snapshot ARIA com refs, texto da página aberta, screenshot |
 | Quando usar | "Leia esta página e me diga o conteúdo" | Login, formulário, canvas, qualquer coisa visual ou com estado |
-| No runtime | Não está no catálogo de `createBrowserTools`: a observação é sempre Chromium (`textOnly: false` em `observation.ts`) | `snapshot`, `read`, `screenshot`, todas as ações |
+| No runtime | `fetch_page` no catálogo step; recusa é terminal, falha técnica oferece alternativa explícita `navigate` + `read_page`, ainda governada | Observação e interação com sessão permanecem Chromium (`textOnly: false`) |
 
 ## Diagrama
 
@@ -97,15 +97,62 @@ estado partindo de `running`/`waiting_model`, e o heartbeat (1–2 s) aborta o p
 
 ## Limites e não-objetivos
 
-- Um navegador ativo por vez: `concurrency: 1` no worker (`server/src/index.ts`) e
-  `browser_profile_leases` com geração monotônica — a segunda tarefa volta para `queued`
-  com evento `run.queued_for_profile`, sem falhar.
+- Worker começa com `AGENT_CONCURRENCY=1`; aceita valores inteiros de 1 a 4. Leases por perfil continuam exclusivos: outra tarefa do mesmo perfil aguarda em `queued` com `run.queued_for_profile`.
 - Sem abas, upload, download ou `hover` no catálogo do runtime: só entram quando um caso
-  P0 exigir (decisão D-07 do plano). `select_option` e `read_form`/`plan_form` cobrem o
-  formulário de uma página (caso TikTok P0).
+  P0 exigir (decisão D-07 do plano). `select_option`, `read_form`, `plan_form` e `fill_form` cobrem formulários sem submit implícito.
 - Sem shell governado no modo `step`: o modelo só alcança o que o catálogo expõe; shell
   existe apenas no caminho Codex, fora desta garantia (ver `security.md`).
 - Sem truncamento silencioso: `FetchResult`/leitura carregam `truncated`, e a observação
   carrega `redactions` (contagem do `redactSecrets`).
 - Sem provedor padrão silencioso diferente do configurado: `createProviderRegistry.default()`
   é `providers[0]`, e `AGENT_DEFAULT_PROVIDER` explícito e ausente recusa o boot.
+
+## Contratos de qualidade do runtime
+
+### Memória e isolamento
+
+- CLI recebe histórico do pedido AG-UI com papéis, limitado a 48.000 caracteres. Mensagens antigas saem inteiras, com aviso; mensagem atual nunca é cortada. Excedente irredutível recusa antes de preparar arquivos ou iniciar CLI.
+- Uma fila FIFO por processo protege preparação, configuração, skills e subprocesso. Cancelar um turno aguardando não altera arquivos nem encerra o ativo. Não é sandbox entre processos.
+- Runtime conserva resultados úteis de ferramentas (até 2.000 caracteres por passo, últimos 20 passos), com proveniência não confiável. Instruções de sistema aparecem uma vez; objetivo e mensagens ficam no envelope variável.
+- Mensagens humanas já entregues permanecem inteiras; as mais recentes vêm por último. Acima de 48.000 caracteres de instruções humanas, a tarefa para explicitamente por limite de contexto, sem esquecer uma restrição silenciosamente.
+- Serviço de computador compartilhado mantém perfis/contextos de navegador separados por Bot, mas compartilha processo e `/workspace`. Supervisor/container por Bot é outra camada de isolamento.
+
+### Conclusão observada pelo host
+
+`POST /api/agent-runs` aceita `completion`:
+
+```json
+{"kind":"page_text","text":"Pedido confirmado"}
+```
+
+Também aceita `{"kind":"page_url","url":"https://loja.example/confirmacao"}` ou `{"kind":"artifact"}`. A condição de artefato pode restringir `artifactId`; sem id, exige ao menos um artefato retido, pertencente ao run, com bytes existentes em disco. Metadata arbitrário não pode forjar condição ou resultado verificado.
+
+Na decisão final, o host faz observação fresca para condições de página. Prosa do modelo não confirma efeito externo: resultado incerto ou condição não satisfeita leva a `needs_reconciliation`, sem repetir ação. Tarefa textual sem efeitos dispensa screenshot. No modo delegado, ferramentas usadas sem prova de conclusão são tratadas conservadoramente.
+
+### Consumo e tempo
+
+`usage.modelCalls` conta cada tentativa, inclusive falhas. `usage.attempts` expõe provedor/modelo efetivos e tokens de entrada, saída e cache quando reportados; ausência é `null`. Custo monetário continua desconhecido sem tarifa reportada; não há estimativa inventada nem prompts/credenciais nessa telemetria.
+
+Tempo ativo usa base persistida da retomada mais delta monotônico da execução atual. Espera por pessoa fica fora. Deadline aborta chamada em andamento; pausa/cancelamento prevalecem.
+
+### Observação e formulário composto
+
+Snapshot nativo agrega texto e refs após conferir documento/URL antes e depois da coleta. Não existe cache entre gerações. Leituras incompatíveis são descartadas; screenshot solicitada vale somente para observação seguinte. Controle humano, entrada de segredo e classificação de captura continuam bloqueando envio.
+
+`fill_form` / MCP `preencher_formulario` recebem `values: [{label,value}]`. Cada campo passa por política, auditoria e ação do gateway. Não há Enter ou submit. Rótulos ambíguos não são adivinhados; mudança de URL/estrutura, falha ou takeover interrompe com concluídos/pendentes, sem valores no resultado. A auditoria recebe run da declaração assinada; chamada humana não inventa run.
+
+### Roteamento explícito
+
+Sem `AGENT_ROUTING_POLICY`, seleção fixa permanece igual. Exemplo opt-in:
+
+```sh
+AGENT_ROUTING_POLICY='{"primary":"openai","fallback":"anthropic"}'
+```
+
+Ids devem estar configurados. Política registra provedor sintético `routed`, sem substituir padrão ou Bot existente. Para autorizar seleção automática, a tarefa escolhe `provider: "routed"` sem fixar modelo; modelo explícito fica preso ao candidato correspondente e não autoriza trocar por outro modelo.
+
+Seleção considera capacidades. Falha retentável permite uma escalada para fallback autorizado; tentativas persistidas mantêm escolha nos próximos passos/retomadas. Recusa e cancelamento não escalam. O laço não acrescenta retries ao roteador.
+
+### Evidência local
+
+Validação desta feature usa banco descartável separado do operacional. Foram exercitados CLI local controlado, Chromium em container descartável, preenchimento por gateway com auditoria, mudança estrutural, takeover e leitura Lightpanda de página local sem sessão. Relatório definitivo de gates e revisão independente: `.specs/features/runtime-quality/validation.md`. Resultados históricos de outras baterias não contam como evidência desta mudança.

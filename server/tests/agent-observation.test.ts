@@ -60,7 +60,10 @@ function fakeArtifacts() {
   };
 }
 
-function source(gateway: Partial<ComputerGateway>, sensitiveHosts: string[] = []) {
+function source(
+  gateway: Partial<ComputerGateway>,
+  sensitiveHosts: string[] = [],
+) {
   const artifacts = fakeArtifacts();
   return {
     artifacts,
@@ -73,7 +76,7 @@ function source(gateway: Partial<ComputerGateway>, sensitiveHosts: string[] = []
   };
 }
 
-const baseGateway: Partial<ComputerGateway> = {
+const baseGateway = {
   control: async () => controlState(),
   snapshot: async () => ({
     snapshotId: 12,
@@ -92,7 +95,7 @@ const baseGateway: Partial<ComputerGateway> = {
     text: "Nome do produto\nPublicar",
     truncated: false,
   }),
-};
+} satisfies Partial<ComputerGateway>;
 
 describe("a observação pelo gateway", () => {
   test("junta elementos, texto e a geração dos refs", async () => {
@@ -119,7 +122,7 @@ describe("a observação pelo gateway", () => {
     const { observation } = source({
       ...baseGateway,
       read: async () => ({
-        url: "https://exemplo.test/",
+        url: "https://exemplo.test/form",
         title: "Conta",
         text: "token: sk-proj-abcdefghijklmnopqrstuv e o resto",
         truncated: false,
@@ -178,6 +181,14 @@ describe("a observação pelo gateway", () => {
     const { observation, artifacts } = source(
       {
         ...baseGateway,
+        snapshot: async () => ({
+          ...(await baseGateway.snapshot()),
+          url: "https://app.banco.test/extrato",
+        }),
+        read: async () => ({
+          ...(await baseGateway.read()),
+          url: "https://app.banco.test/extrato",
+        }),
         screenshot: async (): Promise<ScreenshotResult> => ({
           base64: PIXEL_PNG,
           width: 1280,
@@ -240,5 +251,91 @@ describe("a observação pelo gateway", () => {
     });
     expect(result.text).toContain("Nome do produto");
     expect(result.imageNote).toContain("A person is entering a value");
+  });
+
+  test("discard mixed-page reads and return a fresh matching generation", async () => {
+    let reads = 0;
+    const { observation } = source({
+      ...baseGateway,
+      read: async () => ({
+        ...(await baseGateway.read()),
+        url:
+          ++reads === 1 ? "https://other.test/" : "https://exemplo.test/form",
+        text: reads === 1 ? "wrong document" : "coherent document",
+      }),
+    });
+    const result = await observation.observe({
+      runId: "run-1",
+      botId: "bot-1",
+      actor,
+      wantImage: false,
+      signal: new AbortController().signal,
+    });
+    expect(result.text).toBe("coherent document");
+    expect(result.url).toBe("https://exemplo.test/form");
+  });
+
+  test("persistent page changes never produce an actionable observation", async () => {
+    const { observation } = source({
+      ...baseGateway,
+      read: async () => ({
+        ...(await baseGateway.read()),
+        url: "https://other.test/",
+      }),
+    });
+    await expect(
+      observation.observe({
+        runId: "run-1",
+        botId: "bot-1",
+        actor,
+        wantImage: false,
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toThrow("No coherent observation");
+  });
+
+  test("embedded text stays with its snapshot without a second page read", async () => {
+    const { observation } = source({
+      ...baseGateway,
+      snapshot: async () => ({
+        ...(await baseGateway.snapshot()),
+        page: { ...(await baseGateway.read()), text: "same snapshot" },
+      }),
+      read: async () => {
+        throw new Error("A second read could belong to another document");
+      },
+    });
+    const result = await observation.observe({
+      runId: "run-1",
+      botId: "bot-1",
+      actor,
+      wantImage: false,
+      signal: new AbortController().signal,
+    });
+    expect(result.text).toBe("same snapshot");
+    expect(result.snapshotId).toBe(12);
+  });
+
+  test("human takeover while collecting prevents capture", async () => {
+    let controls = 0;
+    const { observation, artifacts } = source({
+      ...baseGateway,
+      control: async () =>
+        controlState({ holder: ++controls === 1 ? "bot" : "human" }),
+      screenshot: async () => {
+        throw new Error("Should not capture");
+      },
+    });
+    const result = await observation.observe({
+      runId: "run-1",
+      botId: "bot-1",
+      actor,
+      wantImage: true,
+      signal: new AbortController().signal,
+    });
+    expect(result.control.holder).toBe("human");
+    expect(result.images).toEqual([]);
+    expect(artifacts.captures).toEqual([]);
+    expect(result.imageNote).toContain("A person has control");
   });
 });

@@ -224,8 +224,7 @@ respondida, pareamento consumido, captura com navegador de verdade e um turno qu
 
 ## 12. Riscos que continuam de pé
 
-- **Um navegador para todos os Bots** — `COMPUTER_SUPERVISOR_URL` separa por Bot, mas o padrão é
-  compartilhado; duas tarefas no mesmo perfil se esperam pelo lease.
+- **Serviço compartilhado, perfis separados por Bot** — sem supervisor, processo e `/workspace` são compartilhados; cada Bot mantém perfil/contexto próprio de navegador. O lease serializa tarefas do mesmo perfil. `COMPUTER_SUPERVISOR_URL` permite separar containers.
 - **Leitura de página é o gargalo** — o modelo decide sobre o texto do snapshot; página que esconde o
   essencial atrás de canvas depende de captura e visão, e essa parte está medida (acima) com o motor
   `opencode`: o que falta ali não é o caminho, é o deployment ter um modelo que enxergue.

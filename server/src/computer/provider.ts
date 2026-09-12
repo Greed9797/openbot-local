@@ -49,9 +49,9 @@ export function describeComputerIsolation(
 
   return {
     isolation: "one shared computer",
-    note: "No supervisor is configured, so every Bot uses the same browser. Sessions, files and logins are shared between them. Set COMPUTER_SUPERVISOR_URL to give each Bot its own.",
+    note: "One shared browser service keeps a separate browser profile for each Bot. Logins and browser sessions are per Bot; the process and /workspace remain shared. Configure COMPUTER_SUPERVISOR_URL for separate containers.",
     warning:
-      "Every Bot shares one browser. Set COMPUTER_SUPERVISOR_URL for a computer each.",
+      "Browser profiles are separate, but process and workspace isolation require a supervisor.",
   };
 }
 

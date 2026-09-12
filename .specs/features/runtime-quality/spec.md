@@ -193,16 +193,16 @@ Como usuário, quero perguntar sobre dados anteriores sem repeti-los.
 |---|---|---|---|
 | RQ-01 | Memória CLI | Contexto | Verified |
 | RQ-02 | Isolamento CLI | Contexto | Verified |
-| RQ-03 | Conclusão | Confiabilidade | Pending |
-| RQ-04 | Consumo | Confiabilidade | Pending |
-| RQ-05 | Relógio | Confiabilidade | Pending |
-| RQ-06 | Contexto útil | Contexto | Pending |
-| RQ-07 | Observação | Eficiência | Pending |
-| RQ-08 | Formulário | Eficiência | Pending |
-| RQ-09 | Leitura pública | Eficiência | Pending |
-| RQ-10 | Roteamento | Operação | Pending |
-| RQ-11 | Concorrência | Operação | Pending |
-| RQ-12 | Documentação | Operação | Pending |
+| RQ-03 | Conclusão | Confiabilidade | Implemented; gates passed |
+| RQ-04 | Consumo | Confiabilidade | Implemented; gates passed |
+| RQ-05 | Relógio | Confiabilidade | Implemented; regression sensor pending |
+| RQ-06 | Contexto útil | Contexto | Implemented; gates passed |
+| RQ-07 | Observação | Eficiência | Implemented; gates passed |
+| RQ-08 | Formulário | Eficiência | Implemented; real browser smoke passed |
+| RQ-09 | Leitura pública | Eficiência | Implemented; real Lightpanda smoke passed |
+| RQ-10 | Roteamento | Operação | Implemented; gates passed |
+| RQ-11 | Concorrência | Operação | Implemented; gates passed |
+| RQ-12 | Documentação | Operação | Implemented; independent review pending |
 
 ## Success Criteria
 

@@ -87,6 +87,18 @@ export type AgentModelConfig = {
 };
 
 /**
+ * Roteamento opt-in de modelos (RQ-10): dois candidatos, no máximo uma escalada.
+ *
+ * Ausente é o modo fixo — provedor e modelo escolhidos são preservados sem substituição.
+ * Presente, o id sintético `routed` passa a existir, e só a tarefa que o escolhe é roteada;
+ * o padrão do deployment nunca vira `routed` sozinho. Ambos os ids precisam estar
+ * configurados neste deployment, ser distintos e nunca ser o próprio `routed`.
+ */
+export type AgentRoutingPolicy = {
+  primary: string;
+  fallback?: string;
+};
+/**
  * The durable task runtime.
  *
  * Absent means the feature is off and its routes are not mounted, like the computer above. The
@@ -98,10 +110,13 @@ export type AgentRuntimeConfig = {
   /** Whether this process runs the queue. One replica says yes; the others would only duplicate. */
   workerEnabled: boolean;
   pollMs: number;
+  concurrency: number;
   defaultProvider: string;
   defaultModel: string;
   /** Os modelos que este deployment pode chamar, na ordem em que são preferidos. */
   providers: AgentModelConfig[];
+  /** Opt-in de roteamento; ausente mantém o modo fixo. Ver `AgentRoutingPolicy`. */
+  routingPolicy?: AgentRoutingPolicy;
   /** How long a run lease lasts without a heartbeat; also the profile lock's TTL. */
   leaseTtlMs: number;
   maxSteps: number;
@@ -868,6 +883,74 @@ function telegramConfig(environment: Environment): TelegramConfig | undefined {
   };
 }
 
+/**
+ * A política opt-in de roteamento, como JSON numa variável.
+ *
+ * `AGENT_ROUTING_POLICY='{"primary":"openai-responses","fallback":"local"}'`: os ids são os
+ * mesmos que a tarefa escolhe em `provider`, e precisam estar configurados — id desconhecido,
+ * auto-referência a `routed` ou primário igual ao fallback recusam o boot em vez de rotear
+ * para um candidato que não existe. Ausente é o modo fixo.
+ */
+function agentRoutingPolicy(
+  environment: Environment,
+  providers: AgentModelConfig[],
+): AgentRoutingPolicy | undefined {
+  const raw = optional(environment, "AGENT_ROUTING_POLICY");
+  if (!raw) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(
+      'AGENT_ROUTING_POLICY must be JSON like {"primary":"openai-responses","fallback":"local"}.',
+    );
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(
+      'AGENT_ROUTING_POLICY must be JSON like {"primary":"openai-responses","fallback":"local"}.',
+    );
+  }
+  const primary =
+    "primary" in parsed && typeof parsed.primary === "string"
+      ? parsed.primary.trim()
+      : "";
+  const fallbackRaw = "fallback" in parsed ? parsed.fallback : undefined;
+  const fallback =
+    typeof fallbackRaw === "string"
+      ? fallbackRaw.trim()
+      : fallbackRaw === undefined
+        ? undefined
+        : "";
+  if (!primary) {
+    throw new Error(
+      'AGENT_ROUTING_POLICY needs a non-empty "primary" provider id.',
+    );
+  }
+  if (fallbackRaw !== undefined && !fallback) {
+    throw new Error(
+      'AGENT_ROUTING_POLICY "fallback" must be a non-empty provider id.',
+    );
+  }
+  for (const id of fallback ? [primary, fallback] : [primary]) {
+    if (id === "routed") {
+      throw new Error(
+        'AGENT_ROUTING_POLICY candidates cannot be "routed" itself.',
+      );
+    }
+    if (!providers.some((provider) => provider.id === id)) {
+      throw new Error(
+        `AGENT_ROUTING_POLICY points at "${id}", which is not configured. Configured: ${providers.map((provider) => provider.id).join(", ") || "none"}`,
+      );
+    }
+  }
+  if (fallback && fallback === primary) {
+    throw new Error(
+      'AGENT_ROUTING_POLICY "primary" and "fallback" must differ.',
+    );
+  }
+  return fallback ? { primary, fallback } : { primary };
+}
+
 function agentRuntimeConfig(environment: Environment): AgentRuntimeConfig {
   const providers = agentModels(environment);
   const defaultProvider =
@@ -890,13 +973,20 @@ function agentRuntimeConfig(environment: Environment): AgentRuntimeConfig {
     optional(environment, "AGENT_DEFAULT_MODEL") ??
     providers.find((provider) => provider.id === defaultProvider)?.model ??
     "default";
+  const concurrency = wholeNumber(environment, "AGENT_CONCURRENCY", 1, 1);
+  if (concurrency > 4) {
+    throw new Error("AGENT_CONCURRENCY must be between 1 and 4");
+  }
+  const routingPolicy = agentRoutingPolicy(environment, providers);
   return {
     enabled: flag(environment, "AGENT_RUNTIME_ENABLED", true),
     workerEnabled: flag(environment, "AGENT_WORKER_ENABLED", true),
     pollMs: wholeNumber(environment, "AGENT_POLL_MS", 1_000, 100),
+    concurrency,
     defaultProvider,
     defaultModel,
     providers,
+    ...(routingPolicy ? { routingPolicy } : {}),
     leaseTtlMs: wholeNumber(environment, "AGENT_LEASE_TTL_MS", 60_000, 5_000),
     maxSteps: wholeNumber(environment, "AGENT_MAX_STEPS", 40, 1),
     maxRunMs: wholeNumber(environment, "AGENT_MAX_RUN_MS", 900_000, 10_000),
