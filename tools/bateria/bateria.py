@@ -5,7 +5,7 @@ Cada tarefa vira um turno novo. O que sai é objetivo: quanto demorou, quantas a
 turno gerou (delta do audit), se a resposta veio com o aviso de "nada foi aberto", e o fim do texto.
 Julgar se a resposta está certa é trabalho de quem lê a tabela.
 """
-import json, subprocess, sys, time, urllib.request
+import json, os, subprocess, sys, time, urllib.request
 
 AGENTE = sys.argv[1] if len(sys.argv) > 1 else "risk-analyst"
 """Quantas vezes repetir cada tarefa.
@@ -15,6 +15,18 @@ chamou a ferramenta uma vez em três, e a passada sortuda foi o que me fez procu
 por meia hora. Repetir é o que separa "funciona" de "funcionou daquela vez".
 """
 REPETICOES = int(next((a.split("=")[1] for a in sys.argv if a.startswith("--repete=")), "1"))
+
+"""O compose do deployment que está de pé.
+
+O caminho da VPS por padrão, porque é lá que a bateria costuma rodar, e sobrescrevível porque a
+contagem de ações — que é a parte objetiva da tabela — depende de alcançar o postgres do deployment
+em teste: numa máquina local o caminho não existe, `psql` falha, e toda tarefa reprova por "houve 0
+ações" mesmo tendo aberto as páginas. Foi medido: `BATERIA_COMPOSE_FILE=docker-compose.yml`.
+"""
+COMPOSE_FILE = os.environ.get(
+    "BATERIA_COMPOSE_FILE", "/opt/openbot-local/docker-compose.yml"
+)
+
 def url_do(agente):
     return f"http://127.0.0.1:3001/api/copilotkit/agent/{agente}/run"
 
@@ -33,15 +45,14 @@ def qual_container(servico="agent-codex"):
     se aprende a ignorar, que é pior do que não ter.
     """
     saida = subprocess.run(
-        ["docker", "compose", "-f", "/opt/openbot-local/docker-compose.yml", "ps",
-         "-q", servico],
+        ["docker", "compose", "-f", COMPOSE_FILE, "ps", "-q", servico],
         capture_output=True, text=True)
     return saida.stdout.strip()
 
 
 def audit():
     saida = subprocess.run(
-        ["docker", "compose", "-f", "/opt/openbot-local/docker-compose.yml", "exec", "-T",
+        ["docker", "compose", "-f", COMPOSE_FILE, "exec", "-T",
          "postgres", "psql", "-U", "openbot", "-d", "openbot", "-tAc",
          "select count(*) from audit_events where event_type like 'computer.action%'"],
         capture_output=True, text=True)

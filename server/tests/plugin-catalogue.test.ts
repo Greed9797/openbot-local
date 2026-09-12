@@ -175,5 +175,11 @@ describe("a deployment that opened the private network for MCP", () => {
 
   test("o formato da URL continua valendo", () => {
     expect(customUrlRefusal("not a url", aberto)).toBe("That is not a URL.");
+    // http, sim; qualquer outro esquema, não: o transporte MCP fala http(s), e guardar um `file:`
+    // aqui viraria uma falha de conexão depois, que diz menos.
+    expect(customUrlRefusal("file:///etc/passwd", aberto)).toContain("http");
+    expect(customUrlRefusal("ftp://arquivos.internos/mcp", aberto)).toContain(
+      "http",
+    );
   });
 });

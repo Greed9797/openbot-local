@@ -282,6 +282,14 @@ export function customUrlRefusal(
   }
 
   if (options.allowPrivate === true) {
+    /*
+     * O interruptor troca https por http, e não por qualquer esquema. Um `file:` ou `ftp:` guardado
+     * aqui vira uma falha de conexão do cliente MCP, que diz menos que esta recusa — e um esquema
+     * que o transporte não fala nunca é um servidor MCP.
+     */
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return "An MCP server must be reached over http or https.";
+    }
     return null;
   }
 
