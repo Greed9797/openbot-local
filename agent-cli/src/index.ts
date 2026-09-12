@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { BaseEvent, RunAgentInput } from "@ag-ui/core";
+import type { BaseEvent, Message, RunAgentInput } from "@ag-ui/core";
 import { EventEncoder } from "@ag-ui/encoder";
 /**
  * Um CLI de agente como Bot, atrás do mesmo contrato do serviço do Codex.
@@ -134,12 +134,167 @@ function modeloDoTurno(input: RunAgentInput): string {
     : "";
 }
 
-/** A pergunta deste turno: a última mensagem da pessoa, que é como o runtime entrega a tarefa. */
+/**
+ * O teto do envelope textual de um turno, em caracteres.
+ *
+ * Determinístico de propósito: conta caracteres, e não tokens do fornecedor — o que cabe é o que
+ * coube, igual em qualquer CLI. Histórico e mensagem atual somados nunca passam daqui.
+ */
+export const LIMITE_CONTEXTO_TURNO = 48_000;
+
+/** O papel como o CLI lê: quem disse o quê, sem sigla. */
+function rotuloDoPapel(papel: string): string {
+  switch (papel) {
+    case "user":
+      return "Pessoa";
+    case "assistant":
+      return "Assistente";
+    case "system":
+    case "developer":
+      return "Sistema";
+    case "tool":
+      return "Ferramenta";
+    case "reasoning":
+      return "Raciocínio";
+    case "activity":
+      return "Atividade";
+    default:
+      return papel;
+  }
+}
+
+/**
+ * O texto de uma mensagem AG-UI, sem transformar objeto em "[object Object]".
+ *
+ * Texto vai como está. Parte multimodal textual vai pelo texto dela; parte de outro tipo
+ * (imagem, áudio, vídeo, documento) vira um marcador explícito — o CLI deste turno só recebe
+ * texto, e o que ficou de fora está escrito, não sumido. Conteúdo fora do contrato (nem texto
+ * nem lista de partes, parte sem tipo) é recusado com erro, nunca adivinhado.
+ */
+function textoDaMensagem(mensagem: Message): string {
+  const conteudo: unknown = "content" in mensagem ? mensagem.content : undefined;
+  if (conteudo === undefined || conteudo === null) return "";
+  if (typeof conteudo === "string") return conteudo;
+  if (Array.isArray(conteudo)) {
+    return conteudo
+      .map((parte: unknown) => {
+        if (typeof parte === "string") return parte;
+        if (!parte || typeof parte !== "object" || !("type" in parte)) {
+          throw new Error(
+            "O turno chegou com parte de mensagem fora do contrato AG-UI e foi recusado.",
+          );
+        }
+        const tipo: unknown = parte.type;
+        if (tipo === "text") {
+          const texto: unknown = "text" in parte ? parte.text : undefined;
+          if (typeof texto !== "string") {
+            throw new Error(
+              "O turno chegou com parte textual sem texto e foi recusado.",
+            );
+          }
+          return texto;
+        }
+        if (typeof tipo !== "string") {
+          throw new Error(
+            "O turno chegou com parte de mensagem fora do contrato AG-UI e foi recusado.",
+          );
+        }
+        return `[conteúdo de ${tipo} não incluído no texto do turno]`;
+      })
+      .join("\n");
+  }
+  throw new Error(
+    "O turno chegou com conteúdo fora do contrato AG-UI (nem texto nem partes) e foi recusado.",
+  );
+}
+
+/**
+ * Uma mensagem como bloco rotulado do prompt. Devolve "" quando não há nada textual a levar
+ * (texto vazio e sem chamada de ferramenta, por exemplo): um rótulo órfão não ajuda o CLI.
+ */
+function blocoDaMensagem(mensagem: Message): string {
+  if (mensagem.role === "activity") {
+    return `Atividade: [atividade ${mensagem.activityType} sem texto; não incluída no turno]`;
+  }
+  const linhas = [textoDaMensagem(mensagem)];
+  if (mensagem.role === "assistant") {
+    for (const chamada of mensagem.toolCalls ?? []) {
+      linhas.push(`[ferramenta chamada: ${chamada.function.name}]`);
+    }
+  }
+  if (
+    mensagem.role === "tool" &&
+    !linhas[0]?.trim() &&
+    typeof mensagem.error === "string" &&
+    mensagem.error
+  ) {
+    linhas[0] = `[erro: ${mensagem.error}]`;
+  }
+  const texto = linhas.filter((linha) => linha.trim()).join("\n");
+  if (!texto) return "";
+  return `${rotuloDoPapel(mensagem.role)}: ${texto}`;
+}
+
+function marcadorDeOmissao(omitidas: number): string {
+  return omitidas === 1
+    ? "[1 mensagem anterior omitida pelo limite de contexto do turno]"
+    : `[${omitidas} mensagens anteriores omitidas pelo limite de contexto do turno]`;
+}
+
+/**
+ * A pergunta deste turno: o contexto textual do pedido, numa única mensagem simples.
+ *
+ * Leva o histórico daquele pedido com papéis marcados e a mensagem atual por último, sem guardar
+ * nada em variável global — cada chamada constrói só do `input` que recebeu, então outra thread
+ * nunca herda dado desta. A atual vai inteira sempre: o que cai fora quando estoura o limite são
+ * as mensagens antigas, inteiras, do começo para o fim, com marcador explícito de quantas caíram.
+ * Se a atual sozinha passar do limite, recusa com erro antes de qualquer spawn, sem truncar.
+ */
 export function perguntaDoTurno(input: RunAgentInput): string {
-  const ultima = [...(input.messages ?? [])]
-    .reverse()
-    .find((message) => message.role === "user");
-  return String(ultima?.content ?? "");
+  const mensagens = input.messages ?? [];
+  let indiceAtual = -1;
+  for (let i = mensagens.length - 1; i >= 0; i--) {
+    if (mensagens[i]?.role === "user") {
+      indiceAtual = i;
+      break;
+    }
+  }
+  if (indiceAtual < 0) return "";
+  const atual = blocoDaMensagem(mensagens[indiceAtual]!);
+  if (atual.length > LIMITE_CONTEXTO_TURNO) {
+    throw new Error(
+      `A mensagem atual tem ${atual.length} caracteres e passa do limite de ${LIMITE_CONTEXTO_TURNO} do turno; o turno foi recusado antes do CLI, sem truncar.`,
+    );
+  }
+  const historico = mensagens
+    .filter((_, i) => i !== indiceAtual)
+    .map(blocoDaMensagem)
+    .filter((bloco) => bloco);
+  const medir = (cabidos: string[], omitidas: number): number =>
+    (omitidas > 0 ? marcadorDeOmissao(omitidas).length + 2 : 0) +
+    [...cabidos, atual].join("\n\n").length;
+  // O sufixo mais recente que cabe: percorre do novo ao antigo e para na primeira que estourar,
+  // então o que cai é sempre o começo — contíguo, sem furar a ordem.
+  const cabidos: string[] = [];
+  for (let i = historico.length - 1; i >= 0; i--) {
+    if (medir([historico[i]!, ...cabidos], historico.length - (cabidos.length + 1)) <= LIMITE_CONTEXTO_TURNO) {
+      cabidos.unshift(historico[i]!);
+    } else {
+      break;
+    }
+  }
+  // O marcador também conta: se ele estourar o teto, derruba mais uma antiga até caber.
+  let omitidas = historico.length - cabidos.length;
+  while (cabidos.length > 0 && medir(cabidos, omitidas) > LIMITE_CONTEXTO_TURNO) {
+    cabidos.shift();
+    omitidas += 1;
+  }
+  if (medir(cabidos, omitidas) > LIMITE_CONTEXTO_TURNO) {
+    throw new Error("A mensagem atual e o aviso de histórico omitido excedem o limite do turno.");
+  }
+  return [...(omitidas > 0 ? [marcadorDeOmissao(omitidas)] : []), ...cabidos, atual].join(
+    "\n\n",
+  );
 }
 
 /** Uma skill como o painel a concedeu: os quatro campos que a rota guarda por slug. */
@@ -460,12 +615,15 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
               : "AUSENTE — sem ferramentas"
           }${skills.length ? `, ${skills.length} skill(s) concedida(s)` : ""}`,
         );
-        await prepararTurno(CLI, assertion, skills);
-
+        /*
+         * O contexto é montado antes de qualquer escrita ou spawn: se a mensagem atual estourar o
+         * limite, o turno é recusado aqui — sem truncar e sem encostar no workspace.
+         */
         const pergunta = perguntaDoTurno(input);
         if (!pergunta.trim()) {
           throw new Error("O turno chegou sem pergunta.");
         }
+        await prepararTurno(CLI, assertion, skills);
 
         const modelo = modeloDoTurno(input);
         if (modelo) {
