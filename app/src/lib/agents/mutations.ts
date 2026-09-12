@@ -9,6 +9,12 @@ export type AgentInput = {
   visibility: AgentVisibility;
   /** Where this coworker runs. Empty means the Bot in the box. */
   endpoint?: string;
+  /**
+   * O provedor e o modelo deste Bot. **Sempre enviados**, e a string vazia é uma decisão: devolve o
+   * Bot ao padrão do deployment. Ausentes, o servidor preserva o que está gravado.
+   */
+  provider?: string;
+  model?: string;
   /** Write-only auth value; omitted when the user leaves the key field empty. */
   auth?: { header: string; value: string };
 };

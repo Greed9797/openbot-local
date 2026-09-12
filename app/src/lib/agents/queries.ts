@@ -18,6 +18,14 @@ export type AgentProfile = {
   visibility: AgentVisibility;
   /** Where this coworker runs. Null for the Bot in the box. */
   endpoint: string | null;
+  /**
+   * O modelo que este Bot escolheu, quando escolheu um.
+   *
+   * Null é "o padrão do deployment" — a resposta do Bot que não decidiu nada —, e a tarefa herda
+   * estes dois quando ela mesma não escolhe.
+   */
+  provider: string | null;
+  model: string | null;
   /** Whether a key is set for it. Never the key itself. */
   hasAuth: boolean;
   /**

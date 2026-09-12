@@ -1,4 +1,5 @@
 import { useForm } from "@tanstack/react-form";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,6 +23,10 @@ import {
   type ConnectionVerdict,
   testAgentConnection,
 } from "@/lib/agents/queries";
+import {
+  modelCatalogQueryOptions,
+  refreshModelCatalogMutationOptions,
+} from "@/lib/models/queries";
 
 export function AgentFields({
   defaultValues,
@@ -49,6 +54,17 @@ export function AgentFields({
 
   const [connection, setConnection] = useState<ConnectionVerdict | null>(null);
   const [testing, setTesting] = useState(false);
+
+  const queryClient = useQueryClient();
+  const catalogo = useQuery(modelCatalogQueryOptions());
+  const atualizar = useMutation(
+    refreshModelCatalogMutationOptions(queryClient),
+  );
+  // Um provedor por id, na ordem em que o servidor listou: o catálogo traz uma linha por modelo, e o
+  // seletor de provedor não pode repetir a mesma linha cinco vezes.
+  const provedores = [
+    ...new Set((catalogo.data ?? []).map((entrada) => entrada.id)),
+  ];
 
   /** Test endpoint reachability from the server, which is what runs will use. */
   const testConnection = async (endpoint: string, key: string) => {
@@ -227,6 +243,123 @@ export function AgentFields({
             );
           }}
         </form.Field>
+        <form.Field name="provider">
+          {(field) => (
+            <Field>
+              <FieldLabel htmlFor="agent-provider">
+                Modelo de IA — provedor
+              </FieldLabel>
+              <div className="flex gap-2">
+                <Select
+                  onValueChange={(value) => {
+                    field.handleChange(value ?? "");
+                    // O modelo do provedor anterior não existe neste: manter o par antigo mandaria
+                    // ao servidor uma escolha que ele recusa por não existir.
+                    form.setFieldValue("model", "");
+                  }}
+                  value={field.state.value}
+                >
+                  <SelectTrigger className="w-full" id="agent-provider">
+                    <SelectValue placeholder="Padrão do deployment" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="">Padrão do deployment</SelectItem>
+                      {provedores.map((id) => (
+                        <SelectItem key={id} value={id}>
+                          {id}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <Button
+                  disabled={atualizar.isPending}
+                  onClick={() => atualizar.mutate()}
+                  type="button"
+                  variant="outline"
+                >
+                  {atualizar.isPending ? "Atualizando…" : "Atualizar modelos"}
+                </Button>
+              </div>
+              {catalogo.isPending ? (
+                <p className="text-muted-foreground text-sm">
+                  Lendo os modelos deste deployment…
+                </p>
+              ) : provedores.length > 0 ? (
+                <p className="text-muted-foreground text-sm">
+                  Sem escolha aqui, este Bot usa o padrão do deployment. A
+                  escolha vale para toda tarefa dele, e uma tarefa pode
+                  sobrepor.
+                </p>
+              ) : (
+                <p className="text-muted-foreground text-sm">
+                  Nenhum modelo listado. O serviço do CLI pode estar fora do ar,
+                  ou esta conta não tem modelo nenhum — suba o serviço e use
+                  &ldquo;Atualizar modelos&rdquo;.
+                </p>
+              )}
+              {atualizar.error ? (
+                <p className="text-destructive text-sm" role="alert">
+                  {atualizar.error.message}
+                </p>
+              ) : null}
+            </Field>
+          )}
+        </form.Field>
+        <form.Subscribe selector={(state) => state.values.provider}>
+          {(provider) => {
+            // Dentro do provedor escolhido, e não no catálogo inteiro: `opencode-go/…` num provedor
+            // que não é o dele seria aceito pela tela e recusado na criação da tarefa. O modelo
+            // marcado como padrão não entra na lista — escolhê-lo é não escolher nada.
+            const doProvedor = (catalogo.data ?? []).filter(
+              (entrada) => entrada.id === provider.trim() && !entrada.default,
+            );
+            const semProvedor = provider.trim() === "";
+            return (
+              <form.Field name="model">
+                {(field) => (
+                  <Field>
+                    <FieldLabel htmlFor="agent-model">Modelo</FieldLabel>
+                    <Select
+                      disabled={semProvedor || doProvedor.length === 0}
+                      onValueChange={(value) => field.handleChange(value ?? "")}
+                      value={field.state.value}
+                    >
+                      <SelectTrigger className="w-full" id="agent-model">
+                        <SelectValue
+                          placeholder={
+                            semProvedor
+                              ? "Escolha o provedor"
+                              : "Padrão do provedor"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="">Padrão do provedor</SelectItem>
+                          {doProvedor.map((entrada) => (
+                            <SelectItem
+                              key={entrada.model}
+                              value={entrada.model}
+                            >
+                              {entrada.model}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-muted-foreground text-sm">
+                      {semProvedor
+                        ? "O modelo pertence a um provedor: escolha o provedor acima para ver o que ele oferece."
+                        : "Vazio usa o modelo que aquele provedor tem configurado."}
+                    </p>
+                  </Field>
+                )}
+              </form.Field>
+            );
+          }}
+        </form.Subscribe>
         <form.Field name="authValue">
           {(field) => (
             <Field>

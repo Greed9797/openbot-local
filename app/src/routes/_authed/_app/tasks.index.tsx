@@ -12,7 +12,6 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -23,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { agentListQueryOptions } from "@/lib/agents/queries";
+import { modelCatalogQueryOptions } from "@/lib/models/queries";
 import { createTaskMutationOptions } from "@/lib/tasks/mutations";
 import { taskListQueryOptions } from "@/lib/tasks/queries";
 
@@ -46,6 +46,16 @@ function TasksPage() {
   const [provedor, setProvedor] = useState("");
   const [modelo, setModelo] = useState("");
   const [erro, setErro] = useState<string | null>(null);
+  const catalogo = useQuery(modelCatalogQueryOptions());
+  // Um provedor por id: o catálogo traz uma linha por modelo, e o seletor não pode repeti-las.
+  const provedores = [
+    ...new Set((catalogo.data ?? []).map((entrada) => entrada.id)),
+  ];
+  // O modelo marcado como padrão fica de fora: escolhê-lo é não escolher nada, e a opção vazia já
+  // diz isso.
+  const modelosDoProvedor = (catalogo.data ?? []).filter(
+    (entrada) => entrada.id === provedor.trim() && !entrada.default,
+  );
   const criar = useMutation(
     createTaskMutationOptions(queryClient, {
       onError: (thrown) => setErro(thrown.message),
@@ -120,23 +130,62 @@ function TasksPage() {
                 <FieldLabel htmlFor="tarefa-provedor">
                   Provedor (opcional)
                 </FieldLabel>
-                <Input
-                  id="tarefa-provedor"
-                  placeholder="Padrão do Bot"
+                <Select
+                  onValueChange={(value) => {
+                    setProvedor(value ?? "");
+                    // O modelo era do provedor anterior: mantê-lo seria pedir um par que não existe.
+                    setModelo("");
+                  }}
                   value={provedor}
-                  onChange={(event) => setProvedor(event.target.value)}
-                />
+                >
+                  <SelectTrigger className="w-full" id="tarefa-provedor">
+                    <SelectValue placeholder="Padrão do Bot" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="">Padrão do Bot</SelectItem>
+                      {provedores.map((id) => (
+                        <SelectItem key={id} value={id}>
+                          {id}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               </Field>
               <Field className="flex-1">
-                <FieldLabel htmlFor="tarefa-modelo">Modelo (opcional)</FieldLabel>
-                <Input
-                  id="tarefa-modelo"
-                  placeholder="Padrão do Bot"
+                <FieldLabel htmlFor="tarefa-modelo">
+                  Modelo (opcional)
+                </FieldLabel>
+                <Select
+                  disabled={!provedor.trim() || modelosDoProvedor.length === 0}
+                  onValueChange={(value) => setModelo(value ?? "")}
                   value={modelo}
-                  onChange={(event) => setModelo(event.target.value)}
-                />
+                >
+                  <SelectTrigger className="w-full" id="tarefa-modelo">
+                    <SelectValue
+                      placeholder={
+                        provedor.trim() ? "Padrão do provedor" : "Padrão do Bot"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="">Padrão do provedor</SelectItem>
+                      {modelosDoProvedor.map((entrada) => (
+                        <SelectItem key={entrada.model} value={entrada.model}>
+                          {entrada.model}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               </Field>
             </div>
+            <p className="text-muted-foreground text-sm">
+              Sem escolha, a tarefa roda com o que o Bot decidiu — e o Bot, com
+              o padrão do deployment. A escolha da tarefa vale só para ela.
+            </p>
           </FieldGroup>
           {erro ? (
             <p className="text-destructive text-sm" role="alert">
@@ -145,9 +194,7 @@ function TasksPage() {
           ) : null}
           <div>
             <Button
-              disabled={
-                !objetivo.trim() || !botEscolhido || criar.isPending
-              }
+              disabled={!objetivo.trim() || !botEscolhido || criar.isPending}
               type="submit"
             >
               {criar.isPending ? "Criando…" : "Criar tarefa"}

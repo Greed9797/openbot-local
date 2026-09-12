@@ -27,6 +27,8 @@ describe("coworker form validation", () => {
         visibility: "private",
         endpoint: "",
         authValue: "",
+        provider: "",
+        model: "",
       }).name,
     ).toBe("Expense Manager");
   });
@@ -38,6 +40,10 @@ describe("coworker form validation", () => {
       roleDescription: "Review receipts.",
       visibility: "private" as const,
       authValue: "",
+      // O formulário sempre manda as duas: vazio é "o padrão do deployment", e é assim que o Bot
+      // volta ao padrão. O que este teste prova é a forma do endpoint.
+      provider: "",
+      model: "",
     };
     // Empty means the Bot in the box, which is what most people want first time.
     expect(agentFormSchema.safeParse({ ...valid, endpoint: "" }).success).toBe(

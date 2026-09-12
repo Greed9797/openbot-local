@@ -117,6 +117,10 @@ export function AgentProfile({ agentId }: { agentId: string }) {
             title: profile.title,
             visibility: profile.visibility,
             endpoint: profile.endpoint ?? "",
+            // Nulo é "o padrão do deployment", e o formulário diz isso com a string vazia que o
+            // servidor interpreta como "volte ao padrão".
+            provider: profile.provider ?? "",
+            model: profile.model ?? "",
             // The server never sends credentials back to the client.
             authValue: "",
           }}

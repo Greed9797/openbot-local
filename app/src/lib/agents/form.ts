@@ -38,6 +38,18 @@ export const agentFormSchema = z.object({
    * always empty when editing, and leaving it empty keeps whatever key is already set.
    */
   authValue: z.string(),
+  /**
+   * O provedor e o modelo que este Bot usa, quando escolheu um.
+   *
+   * Vazio é uma decisão — "o padrão do deployment" —, e é por isso que este formulário manda as duas
+   * chaves sempre: é a string vazia que devolve o Bot ao padrão, e uma chave ausente preservaria a
+   * escolha antiga. O teto de 120 é o mesmo do parser do servidor.
+   */
+  provider: z
+    .string()
+    .trim()
+    .max(120, "Provider must be 120 characters or fewer."),
+  model: z.string().trim().max(120, "Model must be 120 characters or fewer."),
 });
 
 export type AgentFormValues = z.infer<typeof agentFormSchema>;
@@ -49,6 +61,8 @@ export const emptyAgentForm: AgentFormValues = {
   visibility: "private",
   endpoint: "",
   authValue: "",
+  provider: "",
+  model: "",
 };
 
 /** Convert form values to API input; omit an empty key so editing preserves the current credential. */
@@ -59,6 +73,13 @@ export function agentInputFrom(values: AgentFormValues) {
     roleDescription: values.roleDescription,
     visibility: values.visibility,
     endpoint: values.endpoint,
+    /*
+     * As duas sempre, inclusive vazias: é a string vazia que devolve o Bot ao padrão do deployment,
+     * e o servidor distingue "vazio" de "ausente" exatamente por isso. Diferente da chave, que é
+     * write-only e some quando não foi tocada.
+     */
+    provider: values.provider.trim(),
+    model: values.model.trim(),
     ...(values.authValue.trim()
       ? { auth: { header: "Authorization", value: values.authValue.trim() } }
       : {}),
