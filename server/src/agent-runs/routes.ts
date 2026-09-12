@@ -8,8 +8,8 @@
 import type { Context, MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import type { AppVariables } from "../auth/guards";
-import { captureRunScreen } from "./capture";
 import type { RunVision } from "./capture";
+import { captureRunScreen } from "./capture";
 import type { AgentRunRow } from "./repository";
 import type { AgentRunService } from "./service";
 import { AgentRunError, eventView, runView, stepView } from "./service";
@@ -30,7 +30,17 @@ function statusOf(error: unknown): {
   body: { error: string; code?: string };
 } {
   if (error instanceof AgentRunError) {
-    const status = error.code === "NOT_FOUND" ? 404 : 409;
+    /*
+     * `INVALID_ACTION` é o único código que descreve um pedido malformado — provedor ou modelo que
+     * não existe neste deployment —, e um pedido malformado é 400, não 409. Os outros descrevem
+     * estado: a tarefa não está onde o pedido supõe.
+     */
+    const status =
+      error.code === "NOT_FOUND"
+        ? 404
+        : error.code === "INVALID_ACTION"
+          ? 400
+          : 409;
     return { status, body: { error: error.message, code: error.code } };
   }
   return {
@@ -52,7 +62,11 @@ export function createAgentRunRoutes(
    * Its owner, or an administrator. A run with no owner (an API client with a service token) is
    * readable by administrators only, which is the same rule the rest of the admin surface uses.
    */
-  function maySee(row: AgentRunRow, actorId: string, isAdmin: boolean): boolean {
+  function maySee(
+    row: AgentRunRow,
+    actorId: string,
+    isAdmin: boolean,
+  ): boolean {
     if (isAdmin) return true;
     return row.userId !== null && row.userId === actorId;
   }
@@ -63,7 +77,9 @@ export function createAgentRunRoutes(
   ): Promise<AgentRunRow> {
     const row = await service.getRun(id);
     if (!row) throw new AgentRunError("NOT_FOUND", `No run ${id}.`);
-    if (!maySee(row, context.var.actor.id, context.var.actor.role === "admin")) {
+    if (
+      !maySee(row, context.var.actor.id, context.var.actor.role === "admin")
+    ) {
       // Same answer as absent, so a run id cannot be used to learn that somebody else has one.
       throw new AgentRunError("NOT_FOUND", `No run ${id}.`);
     }
@@ -83,9 +99,10 @@ export function createAgentRunRoutes(
         400,
       );
     }
-    const botId = typeof body?.botId === "string" && body.botId.trim()
-      ? body.botId.trim()
-      : "default";
+    const botId =
+      typeof body?.botId === "string" && body.botId.trim()
+        ? body.botId.trim()
+        : "default";
     const headerKey = context.req.header("idempotency-key")?.trim();
     const input: CreateRunInput = {
       botId,
@@ -95,8 +112,12 @@ export function createAgentRunRoutes(
           ? body.origin
           : "web",
       objective,
-      ...(typeof body?.threadId === "string" ? { threadId: body.threadId } : {}),
-      ...(typeof body?.provider === "string" ? { provider: body.provider } : {}),
+      ...(typeof body?.threadId === "string"
+        ? { threadId: body.threadId }
+        : {}),
+      ...(typeof body?.provider === "string"
+        ? { provider: body.provider }
+        : {}),
       ...(typeof body?.model === "string" ? { model: body.model } : {}),
       idempotencyKey:
         headerKey ??
@@ -111,10 +132,7 @@ export function createAgentRunRoutes(
         input,
         context.var.actor.id,
       );
-      return context.json(
-        { run: runView(run), created },
-        created ? 201 : 200,
-      );
+      return context.json({ run: runView(run), created }, created ? 201 : 200);
     } catch (error) {
       const { status, body: failure } = statusOf(error);
       return context.json(failure, status);
@@ -127,7 +145,10 @@ export function createAgentRunRoutes(
       .split(",")
       .map((value) => value.trim())
       .filter(Boolean) as RunStatus[];
-    const requested = Number.parseInt(url.searchParams.get("limit") ?? "50", 10);
+    const requested = Number.parseInt(
+      url.searchParams.get("limit") ?? "50",
+      10,
+    );
     const isAdmin = context.var.actor.role === "admin";
     const rows = await service.listRuns({
       ...(url.searchParams.get("botId")
@@ -220,9 +241,7 @@ export function createAgentRunRoutes(
             .then((events) => {
               for (const event of events) {
                 cursor = event.seq;
-                write(
-                  `data: ${JSON.stringify(eventView(event))}\n\n`,
-                );
+                write(`data: ${JSON.stringify(eventView(event))}\n\n`);
               }
               return serviceRef.getRun(runId);
             })

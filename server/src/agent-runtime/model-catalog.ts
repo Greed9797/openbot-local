@@ -41,8 +41,16 @@ export function buildModelCatalog(options: {
   /** O que o ambiente declarou, na ordem de preferência. */
   configurations: AgentModelConfig[];
   defaultProvider: string;
+  /**
+   * Os modelos que cada serviço delegado diz ter, por id de provedor.
+   *
+   * Vem de fora porque só o serviço sabe: a conta do CLI tem modelos que o ambiente não escreveu, e
+   * uma lista escrita à mão no `.env` envelhece no dia seguinte. Serviço que não respondeu fica
+   * fora — o catálogo mostra o que existe de fato, nunca o que deveria existir.
+   */
+  serviceModels?: Record<string, string[]>;
 }): ModelCatalog {
-  const { providers, configurations, defaultProvider } = options;
+  const { providers, configurations, defaultProvider, serviceModels } = options;
 
   const models: CatalogModel[] = [];
   for (const config of configurations) {
@@ -57,6 +65,23 @@ export function buildModelCatalog(options: {
       capabilities: provider.capabilities,
       default: config.id === defaultProvider,
     });
+
+    /*
+     * E os outros modelos do mesmo serviço, que o ambiente não conhece.
+     *
+     * São escolhas de tarefa: `default` é falso em todas, porque quem conduz a tarefa sem escolha
+     * continua sendo o modelo que o serviço tem configurado — este catálogo não muda isso.
+     */
+    for (const model of serviceModels?.[config.id] ?? []) {
+      if (model === config.model) continue;
+      models.push({
+        id: config.id,
+        model,
+        transport: config.transport,
+        capabilities: provider.capabilities,
+        default: false,
+      });
+    }
   }
 
   return { default: defaultProvider, models };

@@ -29,6 +29,9 @@ type AgentInputObject = {
   visibility?: unknown;
   endpoint?: unknown;
   auth?: unknown;
+  provider?: unknown;
+  model?: unknown;
+  allowPrivateNavigation?: unknown;
 };
 
 /**
@@ -104,10 +107,60 @@ export function parseAgentInput(
     }
   }
 
+  /*
+   * O provedor e o modelo, como o formulário os manda.
+   *
+   * Presente é uma decisão — inclusive presente e vazio, que quer dizer "volte ao padrão do
+   * deployment"; ausente é preservar o que está gravado, que é o que permite ao Telegram e a um
+   * script editarem o título sem apagar uma escolha que eles nem conhecem.
+   */
+  const provider = escolhaDeTexto(
+    input.provider,
+    "A provider must be text up to 120 characters.",
+  );
+  if (provider !== undefined && typeof provider !== "string") return provider;
+  const model = escolhaDeTexto(
+    input.model,
+    "A model must be text up to 120 characters.",
+  );
+  if (model !== undefined && typeof model !== "string") return model;
+
   return {
     ok: true,
-    value: { name, title, roleDescription, visibility, endpoint, auth },
+    value: {
+      name,
+      title,
+      roleDescription,
+      visibility,
+      endpoint,
+      auth,
+      ...(provider === undefined ? {} : { provider }),
+      ...(model === undefined ? {} : { model }),
+      ...(input.allowPrivateNavigation === undefined
+        ? {}
+        : { allowPrivateNavigation: input.allowPrivateNavigation === true }),
+    },
   };
+}
+
+/**
+ * Um dos campos de escolha do Bot: presente, texto, até 120 caracteres — e vazio é permitido.
+ *
+ * Não usa `boundedText` de propósito: aquele recusa vazio, o que está certo para nome e título e
+ * errado aqui, onde vazio é uma decisão legítima ("volte ao padrão"). O teto existe porque isto
+ * vira argumento de linha de comando num serviço e identificador de modelo em outro.
+ *
+ * Quem responde se o provedor existe é a criação da tarefa, contra o catálogo — a única pergunta
+ * cuja resposta muda sem reiniciar o deployment.
+ */
+function escolhaDeTexto(
+  value: unknown,
+  error: string,
+): string | undefined | { ok: false; error: string } {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") return { ok: false, error };
+  const trimmed = value.trim();
+  return trimmed.length <= 120 ? trimmed : { ok: false, error };
 }
 
 function isAgentInputObject(input: unknown): input is AgentInputObject {
@@ -377,6 +430,17 @@ function agentDto(actor: AgentActor, agent: AgentProfile) {
     // Published so the edit form can show it. Safe to expose: it is an address the person supplied,
     // and any credential for it lives in the vault, never in this row.
     endpoint: agent.endpoint,
+    // A escolha de modelo do Bot. Null é uma resposta — "o padrão do deployment" —, e é o que o
+    // formulário precisa para mostrar o campo vazio em vez de um provedor que ninguém escolheu.
+    provider: agent.provider,
+    model: agent.model,
+    /**
+     * Se o navegador deste Bot pode entrar na rede interna.
+     *
+     * Vai no DTO porque é configuração do Bot, não política do deployment: quem edita o Bot precisa
+     * ver o que está ligado, e o padrão (falso) é o que a ausência significa.
+     */
+    allowPrivateNavigation: agent.allowPrivateNavigation,
     hasAuth: agent.hasAuth,
     // Whether one exists, never what it is.
     hasCallbackToken: agent.hasCallbackToken,

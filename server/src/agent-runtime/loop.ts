@@ -8,10 +8,15 @@
  * fakes and still describe the production path.
  */
 import { createHash } from "node:crypto";
-import type { ActionActor } from "../computer/gateway";
-import type { RunExecutionRequest, RunError, RunStatus, RunUsage } from "../agent-runs/types";
 import type { AgentRunRepository, AgentRunRow } from "../agent-runs/repository";
-import { recordAuditEvent, type AuditStore } from "../audit";
+import type {
+  RunError,
+  RunExecutionRequest,
+  RunStatus,
+  RunUsage,
+} from "../agent-runs/types";
+import { type AuditStore, recordAuditEvent } from "../audit";
+import type { ActionActor } from "../computer/gateway";
 import type {
   AgentObservation,
   AgentRunInput,
@@ -248,7 +253,11 @@ export function createAgentRunExecutor(
       ...(patch.error ? { reason: patch.error.code } : {}),
       ...(patch.message ? { message: patch.message } : {}),
     });
-    await repository.releaseLease(request.runId, request.owner, request.generation);
+    await repository.releaseLease(
+      request.runId,
+      request.owner,
+      request.generation,
+    );
     return true;
   }
 
@@ -257,8 +266,16 @@ export function createAgentRunExecutor(
     if (!loaded) return;
     if (loaded.status !== "running") return;
 
-    const provider =
-      options.providers.get(loaded.provider) ?? options.providers.default();
+    /*
+     * O provedor que o run nomeia, e só ele.
+     *
+     * Havia aqui um `?? options.providers.default()`, que trocava um provedor desconhecido pelo
+     * padrão sem dizer nada: a tarefa pedia um modelo e rodava em outro, e a única pista era a
+     * resposta parecer estranha. Agora um provedor que não existe fecha o run com
+     * PROVIDER_UNAVAILABLE e o nome — quem cria a tarefa valida antes (a rota devolve 400), então
+     * chegar aqui é sinal de que o deployment mudou debaixo de um run.
+     */
+    const provider = options.providers.get(loaded.provider);
     if (!provider) {
       await settle(request, "failed", {
         error: {
@@ -329,7 +346,8 @@ export function createAgentRunExecutor(
         const latest = await repository.get(request.runId);
         // `executing` é um passo em andamento deste mesmo worker: voltar ao topo do laço depois de
         // uma ação não é outra pessoa ter assumido a tarefa.
-        if (latest?.status !== "running" && latest?.status !== "executing") return;
+        if (latest?.status !== "running" && latest?.status !== "executing")
+          return;
 
         const budget = budgetOf(latest);
         const used = usageOf(latest);
@@ -440,6 +458,19 @@ export function createAgentRunExecutor(
             seq,
           );
         }
+        /*
+         * O modelo escolhido, quando houve escolha.
+         *
+         * `loaded.model` é `NOT NULL` e sempre traz alguma coisa — o padrão do deployment quando
+         * ninguém escolheu. Mandar esse padrão adiante como se fosse decisão apagaria a diferença
+         * entre "o Bot pediu este modelo" e "o deployment tem este modelo", e é justamente essa
+         * diferença que deixa o serviço do CLI usar o modelo dele quando ninguém pediu nada.
+         */
+        const modeloEscolhido =
+          loaded.model && loaded.model !== options.defaultModel
+            ? loaded.model
+            : undefined;
+
         const input: AgentRunInput = {
           runId: request.runId,
           botId: loaded.botId,
@@ -458,6 +489,7 @@ export function createAgentRunExecutor(
                 })),
               }
             : {}),
+          ...(modeloEscolhido ? { model: modeloEscolhido } : {}),
           tools: options.tools.definitions(),
           budget,
           usage: used,
@@ -466,7 +498,9 @@ export function createAgentRunExecutor(
 
         const marked = await advance("waiting_model", {});
         if (marked?.status !== "waiting_model") {
-          await repository.finishStep(request.runId, seq, { status: "skipped" });
+          await repository.finishStep(request.runId, seq, {
+            status: "skipped",
+          });
           return;
         }
 
@@ -474,7 +508,11 @@ export function createAgentRunExecutor(
         // page did not change.
         let decision: AgentRunResult | undefined;
         let providerError = "";
-        for (let attempt = 0; attempt <= options.maxProviderRetries; attempt += 1) {
+        for (
+          let attempt = 0;
+          attempt <= options.maxProviderRetries;
+          attempt += 1
+        ) {
           try {
             decision = await provider.run(input, { signal: request.signal });
             break;
@@ -513,7 +551,9 @@ export function createAgentRunExecutor(
         });
         if (backToWork?.status !== "running") {
           // Paused or cancelled while the model was thinking: the step is closed without acting.
-          await repository.finishStep(request.runId, seq, { status: "skipped" });
+          await repository.finishStep(request.runId, seq, {
+            status: "skipped",
+          });
           return;
         }
 
@@ -671,7 +711,9 @@ export function createAgentRunExecutor(
          */
         const acting = await advance("executing", {});
         if (acting?.status !== "executing") {
-          await repository.finishStep(request.runId, seq, { status: "skipped" });
+          await repository.finishStep(request.runId, seq, {
+            status: "skipped",
+          });
           return;
         }
 

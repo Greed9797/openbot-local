@@ -62,7 +62,10 @@ export function createOpenAICompatibleProvider(
       }
 
       const body: Record<string, unknown> = {
-        model: options.model,
+        // O modelo escolhido pela tarefa vence o do deployment: num gateway que serve vários
+        // modelos pelo mesmo endereço, escolher um e receber outro seria o defeito mais silencioso
+        // possível.
+        model: input.model ?? options.model,
         messages: [
           { role: "system", content: systemPrompt(input) },
           { role: "user", content },
@@ -129,7 +132,8 @@ function readNativeResponse(response: Record<string, unknown>): AgentRunResult {
     return { kind: "tool_call", call: toolCall };
   }
 
-  const text = typeof message?.content === "string" ? message.content.trim() : "";
+  const text =
+    typeof message?.content === "string" ? message.content.trim() : "";
   if (!text) {
     return {
       kind: "invalid",

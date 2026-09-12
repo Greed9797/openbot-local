@@ -43,6 +43,21 @@ export type AgentProfileStore = {
     actor: AgentActor,
     id: string,
   ): Promise<AgentProfile | null>;
+  /**
+   * O que a execução de uma tarefa precisa saber deste Bot, sem passar por um ator.
+   *
+   * `get` é escopado por quem pergunta, e aqui quem pergunta é o runtime: quem cria a tarefa já
+   * decidiu que aquela pessoa pode usar aquele Bot, e o gateway do computador decide política e
+   * auditoria pelo id do Bot. Pedir um ator de mentira emprestado faria esta leitura parecer um
+   * acesso de pessoa, que é o defeito que a auditoria inteira existe para não ter.
+   *
+   * Bot que não existe devolve `null` — e quem chama decide o que fazer com isso.
+   */
+  runtimeSettings(botId: string): Promise<{
+    provider: string | null;
+    model: string | null;
+    allowPrivateNavigation: boolean;
+  } | null>;
   create(actor: AgentActor, input: CreateAgentInput): Promise<AgentProfile>;
   update(
     actor: AgentActor,
@@ -150,6 +165,9 @@ function mapProfile(
     hidden: row.hiddenAt !== null,
     deletedAt: row.deletedAt,
     endpoint: endpointOf(row.configuration),
+    provider: textoDe(row.configuration, "provider"),
+    model: textoDe(row.configuration, "model"),
+    allowPrivateNavigation: flagDe(row.configuration, "allowPrivateNavigation"),
     // Whether a key is set, never which. The form needs to show "a key is set" so a person does not
     // wipe one by saving an unrelated edit; showing the value would put a secret in a screenshot.
     hasAuth: authFromConfiguration(row.configuration) !== null,
@@ -168,6 +186,42 @@ function endpointOf(configuration: unknown): string | null {
   if (!configuration || typeof configuration !== "object") return null;
   const endpoint = (configuration as { endpoint?: unknown }).endpoint;
   return typeof endpoint === "string" ? endpoint : null;
+}
+
+/**
+ * Uma chave de texto do jsonb, normalizada.
+ *
+ * Vazio é `null`, e não string vazia: "este Bot não escolheu provedor" e "este Bot escolheu o
+ * provedor de nome vazio" são a mesma coisa para quem lê, mas só a primeira é verdade. É aqui que o
+ * `""` que o formulário manda quando a pessoa limpa o campo vira ausência.
+ */
+function textoDe(
+  configuration: unknown,
+  chave: "provider" | "model",
+): string | null {
+  if (!configuration || typeof configuration !== "object") return null;
+  // `in` e não um índice por string: com a chave literal o TypeScript estreita o tipo e entrega
+  // `unknown`, que é validado abaixo. Um `Record<string, unknown>` aqui seria uma afirmação sobre a
+  // forma do jsonb que ninguém checou.
+  const valor =
+    chave === "provider"
+      ? "provider" in configuration
+        ? configuration.provider
+        : undefined
+      : "model" in configuration
+        ? configuration.model
+        : undefined;
+  return typeof valor === "string" && valor.trim() ? valor.trim() : null;
+}
+
+/** Uma chave booleana do jsonb. Ausente, de outro tipo, ou `false`: as três são "não". */
+function flagDe(
+  configuration: unknown,
+  chave: "allowPrivateNavigation",
+): boolean {
+  if (!configuration || typeof configuration !== "object") return false;
+  if (!(chave in configuration)) return false;
+  return configuration.allowPrivateNavigation === true;
 }
 
 async function findAccessibleProfile(
@@ -288,6 +342,29 @@ export function createAgentProfileStore(
       return findAccessibleProfile(executor, actor, id);
     },
 
+    async runtimeSettings(botId) {
+      /*
+       * Lê a linha do agente direto, sem ator: quem chama é execução — criar uma tarefa, decidir se
+       * o navegador pode entrar na rede interna —, e o ator dessas decisões é o Bot, identificado
+       * pelo id. Um Bot apagado devolve null, e o chamador trata como "sem escolha nenhuma", que é
+       * a resposta que não amplia nada.
+       */
+      const [row] = await database
+        .select({ configuration: agents.configuration })
+        .from(agents)
+        .where(eq(agents.id, botId))
+        .limit(1);
+      if (!row) return null;
+      return {
+        provider: textoDe(row.configuration, "provider"),
+        model: textoDe(row.configuration, "model"),
+        allowPrivateNavigation: flagDe(
+          row.configuration,
+          "allowPrivateNavigation",
+        ),
+      };
+    },
+
     create(actor, input) {
       return database.transaction(async (transaction) => {
         const id = newAgentId();
@@ -304,6 +381,17 @@ export function createAgentProfileStore(
             ...(input.endpoint
               ? { endpoint: input.endpoint }
               : managedConfiguration),
+            /*
+             * A escolha de modelo e a permissão de rede nascem com o Bot, quando alguém as deu.
+             * Ausentes somem do jsonb: um Bot sem provedor escolhido é o caso comum, e uma chave
+             * `provider: null` gravada nele faria toda leitura futura carregar uma decisão que
+             * ninguém tomou.
+             */
+            ...(input.provider ? { provider: input.provider } : {}),
+            ...(input.model ? { model: input.model } : {}),
+            ...(input.allowPrivateNavigation
+              ? { allowPrivateNavigation: true }
+              : {}),
             ...(input.auth && vault
               ? {
                   auth: await storeAgentAuth({
@@ -355,7 +443,7 @@ export function createAgentProfileStore(
             .from(agents)
             .where(eq(agents.id, id))
             .limit(1);
-          const configuration = {
+          const configuration: Record<string, unknown> = {
             ...((row?.configuration ?? {}) as Record<string, unknown>),
             ...(input.endpoint ? { endpoint: input.endpoint } : {}),
             ...(input.auth && vault
@@ -370,6 +458,36 @@ export function createAgentProfileStore(
                 }
               : {}),
           };
+
+          /*
+           * O que a pessoa limpou sai, e o que ela não tocou fica.
+           *
+           * O formulário manda provedor e modelo sempre, então string vazia é "volte ao padrão do
+           * deployment" — não há outro jeito de desfazer a escolha. Ausente é outra coisa: um
+           * cliente que não conhece estes campos (o Telegram, um script) edita o título sem apagar
+           * a configuração de modelo que não sabe que existe.
+           */
+          if (input.provider !== undefined) {
+            if (input.provider.trim()) {
+              configuration.provider = input.provider.trim();
+            } else {
+              delete configuration.provider;
+            }
+          }
+          if (input.model !== undefined) {
+            if (input.model.trim()) {
+              configuration.model = input.model.trim();
+            } else {
+              delete configuration.model;
+            }
+          }
+          if (input.allowPrivateNavigation !== undefined) {
+            if (input.allowPrivateNavigation) {
+              configuration.allowPrivateNavigation = true;
+            } else {
+              delete configuration.allowPrivateNavigation;
+            }
+          }
           await transaction
             .update(agents)
             .set({ name: input.name, configuration, updatedAt })

@@ -1,9 +1,6 @@
 import { serve } from "bun";
-import { mintRunAssertion } from "./agents/callback-token";
-import { createAgentProfileStore } from "./agents/profile-store";
-import { createRuntimeAgentLoader } from "./agents/runtime-agents";
-import { createAgentRunRepository } from "./agent-runs/repository";
 import { createApprovalGate } from "./agent-runs/approvals";
+import { createAgentRunRepository } from "./agent-runs/repository";
 import { createAgentRunService } from "./agent-runs/service";
 import { createAgentRunWorker } from "./agent-runs/worker";
 import { createArtifactStore } from "./agent-runtime/artifact-store";
@@ -12,8 +9,14 @@ import { createAgentRunExecutor } from "./agent-runtime/loop";
 import { buildModelCatalog } from "./agent-runtime/model-catalog";
 import { createModelConfigurationStore } from "./agent-runtime/model-configurations";
 import { createGatewayObservationSource } from "./agent-runtime/observation";
+import {
+  createConfiguredProviders,
+  serviceModels,
+} from "./agent-runtime/providers";
 import { createProviderRegistry } from "./agent-runtime/registry";
-import { createConfiguredProviders } from "./agent-runtime/providers";
+import { mintRunAssertion } from "./agents/callback-token";
+import { createAgentProfileStore } from "./agents/profile-store";
+import { createRuntimeAgentLoader } from "./agents/runtime-agents";
 import { createApp } from "./app";
 import { createAuditReader, createAuditStore, recordAuditEvent } from "./audit";
 import { createAuth } from "./auth";
@@ -32,12 +35,6 @@ import { createThreadIdentity } from "./channels/thread-identity";
 import { createSandboxedStore } from "./components/sandboxed";
 import { createComponentStore } from "./components/store";
 import { createComputerGateway } from "./computer/gateway";
-import { createTelegramClient } from "./telegram/client";
-import { createTelegramHandler } from "./telegram/handler";
-import { createTelegramNotifier } from "./telegram/notifier";
-import { createTelegramPoller } from "./telegram/poller";
-import { createTelegramSender } from "./telegram/sender";
-import { createTelegramStore } from "./telegram/store";
 import {
   createPolicyStore,
   DEFAULT_ACTION_POLICY,
@@ -65,6 +62,12 @@ import { createDatabase } from "./db/client";
 import { createPeopleStore } from "./people/store";
 import { createPluginStore } from "./plugins/store";
 import { grantedTools } from "./plugins/tools";
+import { createTelegramClient } from "./telegram/client";
+import { createTelegramHandler } from "./telegram/handler";
+import { createTelegramNotifier } from "./telegram/notifier";
+import { createTelegramPoller } from "./telegram/poller";
+import { createTelegramSender } from "./telegram/sender";
+import { createTelegramStore } from "./telegram/store";
 import {
   createPackageStatusReader,
   loadTenantPackage,
@@ -274,6 +277,21 @@ const agentRunService = config.agentRuntime.enabled
         },
         leaseTtlMs: config.agentRuntime.leaseTtlMs,
       },
+      // O que o Bot escolheu, lido do perfil na hora de criar a tarefa: mudar a escolha vale para a
+      // próxima tarefa sem reiniciar nada.
+      botModel: (botId) => agentProfileStore.runtimeSettings(botId),
+      /*
+       * O catálogo em memória, lido a cada criação.
+       *
+       * Assim um `POST /api/models/refresh` passa a valer imediatamente: o serviço do CLI ganha
+       * modelos sem deploy, e uma escolha nova não é recusada por uma lista velha.
+       */
+      knownModel: (provider, model) =>
+        (modelCatalog?.models ?? []).some(
+          (entrada) =>
+            entrada.id === provider &&
+            (model === "" || entrada.model === model),
+        ),
     })
   : undefined;
 
@@ -321,20 +339,37 @@ if (config.agentRuntime.enabled && config.agentRuntime.providers.length === 0) {
  *
  * `undefined` com o runtime desligado, como as rotas que ele descreve: um deployment que não tem
  * tarefas não ganha uma tela de modelos que só descreveria tarefas.
+ *
+ * `let` e não `const` porque os serviços delegados entram depois do boot: a conta do CLI tem
+ * modelos que só ela conhece, e a lista é perguntada a ela — no boot e a cada `POST
+ * /api/models/refresh`. Um serviço fora do ar no boot custa a lista dele até alguém atualizar, e
+ * não o deployment.
  */
-const modelCatalog = config.agentRuntime.enabled
-  ? buildModelCatalog({
-      providers,
-      configurations: config.agentRuntime.providers,
-      defaultProvider: config.agentRuntime.defaultProvider,
-    })
-  : undefined;
+const montarCatalogo = (serviceModels?: Record<string, string[]>) =>
+  buildModelCatalog({
+    providers,
+    configurations: config.agentRuntime.providers,
+    defaultProvider: config.agentRuntime.defaultProvider,
+    ...(serviceModels ? { serviceModels } : {}),
+  });
+
+let modelCatalog = config.agentRuntime.enabled ? montarCatalogo() : undefined;
+
+const atualizarCatalogo = async (): Promise<void> => {
+  if (!config.agentRuntime.enabled) return;
+  const listados = await serviceModels(config.agentRuntime.providers);
+  modelCatalog = montarCatalogo(listados);
+};
+
 const modelConfigurationStore = createModelConfigurationStore(database);
 void modelConfigurationStore
   .sync(config.agentRuntime.providers)
   .catch((error) => {
     console.error("Não foi possível gravar os modelos configurados.", error);
   });
+void atualizarCatalogo().catch((error) => {
+  console.warn("Não foi possível perguntar os modelos aos serviços.", error);
+});
 
 /**
  * What a Bot can reach beyond its own computer.
@@ -412,12 +447,17 @@ console.info(
     providers: providers.list().length,
     defaultProvider: config.agentRuntime.defaultProvider,
     artifactsDir: config.agentRuntime.artifactsDir,
-    approvals: config.agentRuntime.approvalPatterns.length > 0 ? "extra-patterns" : "default",
+    approvals:
+      config.agentRuntime.approvalPatterns.length > 0
+        ? "extra-patterns"
+        : "default",
     telegram: config.telegram
       ? {
           bot: config.telegram.botId,
           allowedUsers: config.telegram.allowedUserIds.length,
-          running: Boolean(agentRunService && config.agentRuntime.workerEnabled),
+          running: Boolean(
+            agentRunService && config.agentRuntime.workerEnabled,
+          ),
         }
       : "off",
   }),
@@ -638,7 +678,8 @@ const app = createApp(
   // o passo anterior a ter tarefas.
   telegram ? telegram.store : undefined,
   // Quais modelos existem. Descreve o mesmo runtime que o serviço acima; com ele desligado, some.
-  modelCatalog,
+  config.agentRuntime.enabled ? () => modelCatalog : undefined,
+  config.agentRuntime.enabled ? atualizarCatalogo : undefined,
 );
 
 /**
@@ -654,6 +695,8 @@ if (agentRunService && computerGateway && config.agentRuntime.workerEnabled) {
     repository: agentRunRepository,
     auditStore: bootAuditStore,
     providers,
+    // O que distingue uma escolha de um padrão: ver `AgentRunInput.model`.
+    defaultModel: config.agentRuntime.defaultModel,
     observations: createGatewayObservationSource({
       gateway: computerGateway,
       artifacts: artifactStore,

@@ -107,10 +107,80 @@ export function createConfiguredProviders(
 /** O que o provedor delegado assina, do lado de quem tem a chave. */
 export type CodexSignRun = NonNullable<CodexDelegatedOptions["signRun"]>;
 
+/**
+ * Os modelos que cada serviço delegado diz ter.
+ *
+ * O serviço é quem tem a conta, então é ele quem sabe — o runtime pergunta em vez de manter uma
+ * lista paralela no `.env`, que envelhece toda vez que a assinatura ganha um modelo.
+ *
+ * O endereço do catálogo é o do turno sem o `/ag-ui`: o serviço serve os dois na mesma porta, e
+ * derivar em vez de exigir outra variável é o que mantém um serviço novo como uma variável só.
+ * Falha é aviso, nunca erro de boot: um CLI fora do ar custa a lista dele, não o deployment.
+ */
+export async function serviceModels(
+  configs: AgentModelConfig[],
+  options: {
+    fetchImpl?: typeof fetch;
+    timeoutMs?: number;
+  } = {},
+): Promise<Record<string, string[]>> {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const timeoutMs = options.timeoutMs ?? 3_000;
+  const listados: Record<string, string[]> = {};
+
+  await Promise.all(
+    configs
+      .filter(
+        (config) => config.transport === "delegated" && Boolean(config.baseUrl),
+      )
+      .map(async (config) => {
+        const endereco = new URL(config.baseUrl as string);
+        endereco.pathname = "/models";
+        endereco.search = "";
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          const response = await fetchImpl(endereco.toString(), {
+            headers: config.agentToken
+              ? { "x-openbot-agent-token": config.agentToken }
+              : {},
+            signal: controller.signal,
+          });
+          if (!response.ok) {
+            console.warn(
+              `${config.id}: não foi possível listar os modelos do serviço (HTTP ${response.status}).`,
+            );
+            return;
+          }
+          const body = (await response.json()) as { models?: unknown };
+          const models = Array.isArray(body.models)
+            ? body.models.filter(
+                (model): model is string => typeof model === "string",
+              )
+            : [];
+          if (models.length) listados[config.id] = models;
+          else {
+            console.warn(
+              `${config.id}: o serviço não listou modelo nenhum — o seletor vai mostrar só o padrão.`,
+            );
+          }
+        } catch (error) {
+          console.warn(
+            `${config.id}: não foi possível listar os modelos do serviço (${String(error)}).`,
+          );
+        } finally {
+          clearTimeout(timer);
+        }
+      }),
+  );
+
+  return listados;
+}
+
 export {
   createAnthropicProvider,
-  createGeminiProvider,
   createCodexDelegatedProvider,
+  createGeminiProvider,
   createOpenAICompatibleProvider,
   createOpenAIResponsesProvider,
 };

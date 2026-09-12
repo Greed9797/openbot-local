@@ -6,9 +6,10 @@
  * catalog, and answers with a tool call or a final message. Everything else — policy, audit,
  * navigation, screenshots — is the same code for every provider.
  */
+
+import type { RunBudget, RunUsage } from "../agent-runs/types";
 import type { ActionActor } from "../computer/gateway";
 import type { SnapshotElement } from "../computer/schema";
-import type { RunBudget, RunUsage } from "../agent-runs/types";
 
 /**
  * An image the model may look at.
@@ -138,6 +139,14 @@ export type AgentRunInput = {
   tools: ToolDefinition[];
   budget: RunBudget;
   usage: RunUsage;
+  /**
+   * O modelo que esta tarefa escolheu, quando escolheu um.
+   *
+   * Ausente é o caso comum e não é lacuna: o padrão vive no deployment (o ambiente) ou no serviço
+   * que conduz o turno, e mandá-lo de volta como se fosse escolha apagaria essa distinção. Quem
+   * escolheu é o Bot, ou a pessoa na tarefa — ver `agent_runs.model`.
+   */
+  model?: string;
   /** A person approved something and the run is resuming: the model should know why. */
   resumeNote?: string;
   /** The provider's own capabilities, repeated here so an adapter can refuse without a lookup. */
@@ -171,7 +180,12 @@ export type AgentRunResult =
   | { kind: "final"; message: string; evidence?: Record<string, unknown> }
   | { kind: "help"; reason: string }
   | { kind: "invalid"; raw: string; error: string }
-  | { kind: "delegated"; message: string; toolCalls: number; evidence?: Record<string, unknown> };
+  | {
+      kind: "delegated";
+      message: string;
+      toolCalls: number;
+      evidence?: Record<string, unknown>;
+    };
 
 export type ModelCapabilities = {
   vision: boolean;
@@ -286,4 +300,12 @@ export type RunExecutorOptions = {
   maxRefusals: number;
   /** How many times a provider error is retried before the run fails. */
   maxProviderRetries: number;
+  /**
+   * O modelo que este deployment usa quando ninguém escolheu.
+   *
+   * Existe para o loop saber distinguir uma escolha de um padrão: `agent_runs.model` é `NOT NULL` e
+   * sempre traz alguma coisa, então é a comparação com este valor que diz se a tarefa pediu um
+   * modelo ou só herdou o de sempre. Ver `AgentRunInput.model`.
+   */
+  defaultModel?: string;
 };

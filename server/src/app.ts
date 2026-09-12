@@ -1,6 +1,9 @@
 import type { Hono as HonoApp, MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
+import { createAgentRunRoutes, type RunVision } from "./agent-runs/routes";
+import type { AgentRunService } from "./agent-runs/service";
+import type { ModelCatalog } from "./agent-runtime/model-catalog";
 import { authoriseAgentCall } from "./agents/callback-token";
 import type { BotAccessCheck } from "./agents/profile-policy";
 import type { AgentProfileStore } from "./agents/profile-store";
@@ -32,11 +35,6 @@ import type { ComputerGateway } from "./computer/gateway";
 import type { PolicyStore } from "./computer/policy-store";
 import { createComputerRoutes } from "./computer/routes";
 import { configuredAuthProviders, type DeploymentConfig } from "./config";
-import { createAgentRunRoutes, type RunVision } from "./agent-runs/routes";
-import type { ModelCatalog } from "./agent-runtime/model-catalog";
-import { createTelegramRoutes } from "./telegram/routes";
-import type { TelegramStore } from "./telegram/store";
-import type { AgentRunService } from "./agent-runs/service";
 import type { ConnectorAdminService } from "./connectors";
 import type { KnowledgeSearch } from "./connectors/knowledge-search";
 import type { CredentialAdminService, CredentialInput } from "./credentials";
@@ -44,6 +42,8 @@ import type { PeopleStore } from "./people/store";
 import { createPluginRoutes } from "./plugins/routes";
 import type { PluginStore } from "./plugins/store";
 import { REFUSAL_MARKER } from "./plugins/tools";
+import { createTelegramRoutes } from "./telegram/routes";
+import type { TelegramStore } from "./telegram/store";
 import type { PackageStatusReader } from "./tenant-package";
 
 /**
@@ -179,8 +179,13 @@ export function createApp(
   /**
    * Os modelos que este deployment tem, para quem precisa conferir o que foi configurado sem abrir o
    * `.env` de ninguém. Ausente desmonta a rota, junto com o runtime que ela descreve.
+   *
+   * Função e não objeto porque a lista cresce depois do boot: o serviço do CLI responde quais
+   * modelos a conta tem, e `POST /api/models/refresh` pergunta de novo sem reiniciar o deployment.
    */
-  modelCatalog?: ModelCatalog,
+  modelCatalog?: () => ModelCatalog | undefined,
+  /** Pergunta de novo aos serviços e atualiza o catálogo. Ausente desmonta a atualização. */
+  refreshModelCatalog?: () => Promise<void>,
 ) {
   const app = new Hono<{ Variables: AppVariables }>();
 
@@ -936,7 +941,27 @@ export function createApp(
    * ver `buildModelCatalog`.
    */
   if (modelCatalog) {
-    app.get("/api/models", requireUser, (context) => context.json(modelCatalog));
+    const lerCatalogo = modelCatalog;
+    app.get("/api/models", requireUser, (context) => {
+      const catalog = lerCatalogo();
+      return catalog
+        ? context.json(catalog)
+        : context.json({ error: "Not found." }, 404);
+    });
+    if (refreshModelCatalog) {
+      /*
+       * Perguntar de novo aos serviços. Existe porque a conta do CLI ganha modelos sem que este
+       * deployment reinicie: sem isto, um modelo novo só apareceria no seletor depois de um deploy,
+       * e quem acabou de assinar um plano olharia para uma lista velha.
+       */
+      app.post("/api/models/refresh", requireUser, async (context) => {
+        await refreshModelCatalog();
+        const catalog = lerCatalogo();
+        return catalog
+          ? context.json(catalog)
+          : context.json({ error: "Not found." }, 404);
+      });
+    }
   }
 
   if (agentRunService) {
@@ -947,7 +972,10 @@ export function createApp(
   }
 
   if (telegramStore) {
-    app.route("/api/telegram", createTelegramRoutes(telegramStore, requireUser));
+    app.route(
+      "/api/telegram",
+      createTelegramRoutes(telegramStore, requireUser),
+    );
   }
 
   if (agentProfileStore) {

@@ -202,7 +202,7 @@ describe("a rota /api/models", () => {
       undefined,
       undefined,
       undefined,
-      catalog,
+      () => catalog,
     );
   }
 

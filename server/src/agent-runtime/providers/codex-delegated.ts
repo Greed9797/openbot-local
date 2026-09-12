@@ -11,7 +11,11 @@
  * com `PROVIDER_UNAVAILABLE` em vez de fingir que executou.
  */
 import { HttpAgent } from "@ag-ui/client";
-import type { AgentModelProvider, AgentRunInput, AgentRunResult } from "../contracts";
+import type {
+  AgentModelProvider,
+  AgentRunInput,
+  AgentRunResult,
+} from "../contracts";
 import { historyBlock } from "../prompt";
 import { ProviderRejectedError, ProviderUnavailableError } from "./http";
 
@@ -41,11 +45,7 @@ export type CodexDelegatedOptions = {
    * Vive aqui como função, e não como chave: quem tem a chave é o processo que monta o provedor, e
    * este módulo não guarda segredo nenhum.
    */
-  signRun?: (run: {
-    botId: string;
-    runId: string;
-    actorId: string;
-  }) => string;
+  signRun?: (run: { botId: string; runId: string; actorId: string }) => string;
   /**
    * Se o modelo que roda dentro do CLI enxerga a página.
    *
@@ -142,6 +142,14 @@ export function createCodexDelegatedProvider(
             forwardedProps: {
               objective: input.objective,
               botId: input.botId,
+              /*
+               * O modelo que a tarefa escolheu, quando escolheu um.
+               *
+               * O padrão continua sendo do serviço — é ele que tem a conta e sabe o que a assinatura
+               * inclui. Isto aqui é a escolha do Bot ou da pessoa vencendo esse padrão para este
+               * turno, e vai pelo mesmo canal da declaração de execução.
+               */
+              ...(input.model ? { model: input.model } : {}),
               ...(options.signRun && input.actorId
                 ? {
                     openbotRun: options.signRun({
@@ -175,7 +183,8 @@ export function createCodexDelegatedProvider(
              */
             onCustomEvent: ({ event }) => {
               if (event.name !== "openbot.tools") return;
-              const declared = (event.value as { count?: unknown } | null)?.count;
+              const declared = (event.value as { count?: unknown } | null)
+                ?.count;
               if (typeof declared === "number" && declared > toolCalls) {
                 toolCalls = declared;
               }

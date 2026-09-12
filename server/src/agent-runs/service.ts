@@ -32,7 +32,11 @@ import type {
 /** A request that cannot be carried out, with the reason a caller may show. */
 export class AgentRunError extends Error {
   constructor(
-    readonly code: "NOT_FOUND" | "INVALID_STATE" | "CONFLICT",
+    readonly code:
+      | "NOT_FOUND"
+      | "INVALID_STATE"
+      | "CONFLICT"
+      | "INVALID_ACTION",
     message: string,
   ) {
     super(message);
@@ -197,9 +201,12 @@ export function stepView(row: AgentRunStepRow): RunStepView {
     kind: row.kind,
     status: row.status,
     observation: (row.observation as Record<string, unknown> | null) ?? null,
-    modelDecision: (row.modelDecision as Record<string, unknown> | null) ?? null,
-    proposedAction: (row.proposedAction as Record<string, unknown> | null) ?? null,
-    policyDecision: (row.policyDecision as Record<string, unknown> | null) ?? null,
+    modelDecision:
+      (row.modelDecision as Record<string, unknown> | null) ?? null,
+    proposedAction:
+      (row.proposedAction as Record<string, unknown> | null) ?? null,
+    policyDecision:
+      (row.policyDecision as Record<string, unknown> | null) ?? null,
     executionResult:
       (row.executionResult as Record<string, unknown> | null) ?? null,
     artifactId: row.artifactId,
@@ -254,8 +261,26 @@ export function createAgentRunService(options: {
   repository: AgentRunRepository;
   auditStore: AuditStore;
   defaults: AgentRunDefaults;
+  /**
+   * A escolha de modelo do Bot, quando ele tem uma.
+   *
+   * Injetada porque este serviço não conhece perfis de Bot e não deve conhecer: quem sabe ler o
+   * jsonb de configuração é o store de perfis, e quem sabe o que existe é o catálogo. Aqui só se
+   * aplica a precedência — tarefa, depois Bot, depois deployment.
+   */
+  botModel?: (
+    botId: string,
+  ) => Promise<{ provider: string | null; model: string | null } | null>;
+  /**
+   * Se este provedor oferece este modelo, segundo o catálogo.
+   *
+   * Sem isto, um provedor que não existe é aceito na criação e trocado pelo padrão na execução —
+   * que era o comportamento até agora, e a pior resposta possível: a tarefa roda, com outro modelo,
+   * e nada diz isso.
+   */
+  knownModel?: (provider: string, model: string) => boolean;
 }): AgentRunService {
-  const { repository, auditStore, defaults } = options;
+  const { repository, auditStore, defaults, botModel, knownModel } = options;
 
   async function created(
     run: AgentRunRow,
@@ -297,6 +322,33 @@ export function createAgentRunService(options: {
       if (!input.botId.trim()) {
         throw new AgentRunError("INVALID_STATE", "A run needs a Bot.");
       }
+      /*
+       * A precedência: a tarefa, depois o Bot, depois o deployment.
+       *
+       * Vazio é ausência, e a normalização mora aqui de propósito: `""` chega do formulário que
+       * limpou o campo e do cliente que mandou a chave sem valor, e as duas coisas significam "não
+       * escolhi". Tratadas como escolha, `provider: ""` ia para a linha e a tarefa só falhava na
+       * execução, dizendo que aquele provedor não existe.
+       *
+       * A validação só olha para o que alguém escolheu. Sem escolha nenhuma, o valor é o padrão do
+       * deployment — e um deployment sem provedor configurado precisa continuar criando a tarefa
+       * para que ela falhe dizendo `PROVIDER_UNAVAILABLE`, que é o diagnóstico útil. Recusar na
+       * porta esconderia o motivo verdadeiro atrás de um erro de formulário.
+       */
+      const escolhaDoBot = await botModel?.(input.botId);
+      const escolhidoProvider =
+        input.provider?.trim() || escolhaDoBot?.provider || null;
+      const escolhidoModel = input.model?.trim() || escolhaDoBot?.model || null;
+      if (escolhidoProvider && knownModel) {
+        if (!knownModel(escolhidoProvider, escolhidoModel ?? "")) {
+          throw new AgentRunError(
+            "INVALID_ACTION",
+            knownModel(escolhidoProvider, "")
+              ? `The provider "${escolhidoProvider}" does not offer "${escolhidoModel ?? ""}" here.`
+              : `No model is configured for provider "${escolhidoProvider}" in this deployment.`,
+          );
+        }
+      }
       const budget: RunBudget = { ...defaults.budget, ...input.budget };
       const { run, created: inserted } = await repository.create({
         botId: input.botId,
@@ -305,8 +357,14 @@ export function createAgentRunService(options: {
         origin: input.origin,
         sourceMessageId: input.sourceMessageId ?? null,
         idempotencyKey: input.idempotencyKey ?? null,
-        provider: input.provider ?? defaults.provider,
-        model: input.model ?? defaults.model,
+        /*
+         * O que a tarefa pediu, senão o que o Bot escolheu, senão o padrão do deployment.
+         *
+         * A linha gravada é a decisão final: o painel mostra `provider/model` do run, e quem lê
+         * depois precisa ver o que de fato conduziu a tarefa, não o que alguém deixou em branco.
+         */
+        provider: escolhidoProvider ?? defaults.provider,
+        model: escolhidoModel ?? defaults.model,
         objective: input.objective,
         budget: { ...budget },
         usage: {
@@ -510,7 +568,8 @@ export function createAgentRunService(options: {
         from: before.status,
         to: run.status,
         by: actor.id,
-        reason: before.status === "needs_reconciliation" ? "reconciled" : "resumed",
+        reason:
+          before.status === "needs_reconciliation" ? "reconciled" : "resumed",
       });
       await recordAuditEvent(auditStore, {
         eventType: "agent_run.status_changed",
@@ -528,12 +587,9 @@ export function createAgentRunService(options: {
 
     async cancel(id: string, actor: RunActor) {
       const before = requireRun(await repository.get(id), id);
-      const run = await repository.updateStatus(
-        id,
-        CANCELLABLE,
-        "cancelled",
-        { finishedAt: new Date() },
-      );
+      const run = await repository.updateStatus(id, CANCELLABLE, "cancelled", {
+        finishedAt: new Date(),
+      });
       if (!run) {
         throw new AgentRunError(
           "INVALID_STATE",
