@@ -159,6 +159,12 @@ export type PluginStoreOptions = {
   encryptionKey: string;
   /** Read at call time, never captured, so a policy changed a moment ago applies to this call. */
   policy: () => ActionPolicy;
+  /**
+   * Se um administrador pode registrar um servidor MCP fora do catálogo revisado, num endereço da
+   * rede interna e sem https. Vem de `PLUGINS_ALLOW_PRIVATE_MCP` (desligada por padrão) e vale só
+   * para o registro por URL: cada servidor que dependeu dela diz isso na auditoria.
+   */
+  allowPrivateMcp?: boolean;
 };
 
 export function createPluginStore(options: PluginStoreOptions) {
@@ -287,8 +293,16 @@ export function createPluginStore(options: PluginStoreOptions) {
       credentialId?: string;
       by: string;
     }): Promise<ServerRecord> {
-      const refusal = customUrlRefusal(input.url);
+      const allowPrivate = options.allowPrivateMcp === true;
+      const refusal = customUrlRefusal(input.url, { allowPrivate });
       if (refusal) throw new CustomServerRefusedError(refusal);
+      /*
+       * Se este endereço só passou porque o interruptor está ligado, isso vai para a auditoria: é a
+       * resposta de "quem apontou este deployment para dentro da rede", e ela não deveria exigir
+       * adivinhar o .env do dia em que o servidor foi registrado.
+       */
+      const precisouDoInterruptor =
+        allowPrivate && customUrlRefusal(input.url) !== null;
 
       // A custom server may not take a curated entry's slug. The slug prefixes tool names and is
       // what a grant and a policy rule are written against, so allowing a shadow would let a custom
@@ -338,6 +352,7 @@ export function createPluginStore(options: PluginStoreOptions) {
           // Named in the trail, because "who added a server nobody reviewed" is a question somebody
           // will ask and the answer should not require reading the catalogue of a past build.
           provenance: "custom",
+          ...(precisouDoInterruptor ? { privateNetwork: true } : {}),
         },
       });
 

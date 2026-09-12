@@ -242,10 +242,20 @@ export function classifyTool(
  * No address literals, localhost or internal suffixes, because those point at the deployment rather
  * than a vendor service.
  *
+ * `allowPrivate` is the administrator's key to the second two. An API of their own usually lives
+ * inside the network and speaks plaintext, and refusing it forever would mean the only reachable
+ * servers are vendors'. What it does **not** lift is the cloud metadata endpoint and its aliases:
+ * those are not somebody's API, they are this deployment's own credentials, and no switch makes
+ * them a service. Every refusal that this switch would have lifted says its name, so an
+ * administrator who hits the wall can find the door.
+ *
  * This is static URL validation: it checks the literal host string and scheme before storage. DNS
  * resolution and per-request network policy are separate deployment controls.
  */
-export function customUrlRefusal(raw: string): string | null {
+export function customUrlRefusal(
+  raw: string,
+  options: { allowPrivate?: boolean } = {},
+): string | null {
   let url: URL;
   try {
     url = new URL(raw);
@@ -253,18 +263,38 @@ export function customUrlRefusal(raw: string): string | null {
     return "That is not a URL.";
   }
 
-  if (url.protocol !== "https:") {
-    return "An MCP server must be reached over https.";
+  // IPv6 chega entre colchetes (`URL.hostname` os mantém), então tirá-los aqui deixa as regras
+  // abaixo valerem para as duas formas, e o teste do `:` reconhece o literal de qualquer jeito.
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+
+  /*
+   * Antes de qualquer regra que o interruptor abra. Estes endereços respondem com credencial de
+   * nuvem a quem os alcança, e um servidor MCP apontado para lá é um leitor de credencial com
+   * token do cofre no cabeçalho. Não é uma API da pessoa nem com o interruptor ligado, e por isso
+   * a faixa link-local inteira fica fora: nenhum serviço de alguém mora ali.
+   */
+  if (
+    METADATA_HOSTNAMES.has(host) ||
+    host.startsWith("169.254.") ||
+    host.startsWith("fd00:ec2::")
+  ) {
+    return "That address serves this deployment's own cloud credentials, not an MCP server.";
   }
 
-  const host = url.hostname.toLowerCase();
+  if (options.allowPrivate === true) {
+    return null;
+  }
 
-  // Bracketed IPv6 arrives with the brackets already stripped by URL, so the colon test catches it.
+  const switchName = "PLUGINS_ALLOW_PRIVATE_MCP=true";
+  if (url.protocol !== "https:") {
+    return `An MCP server must be reached over https. For a server of your own inside the network, set ${switchName} and use http.`;
+  }
+
   if (host.includes(":") || /^[0-9.]+$/.test(host)) {
-    return "Give a hostname rather than an IP address.";
+    return `Give a hostname rather than an IP address. For a server of your own inside the network, set ${switchName}.`;
   }
   if (host === "localhost" || host.endsWith(".localhost")) {
-    return "That address is local to the deployment.";
+    return `That address is local to the deployment. For a server of your own inside the network, set ${switchName}.`;
   }
   if (
     host.endsWith(".internal") ||
@@ -272,8 +302,16 @@ export function customUrlRefusal(raw: string): string | null {
     host.endsWith(".localdomain") ||
     !host.includes(".")
   ) {
-    return "That address is not reachable from outside this network.";
+    return `That address is not reachable from outside this network. For a server of your own inside the network, set ${switchName}.`;
   }
 
   return null;
 }
+
+/** Cloud metadata and its aliases, which stay refused with the private-network switch on. */
+const METADATA_HOSTNAMES = new Set([
+  "metadata.google.internal",
+  "metadata.goog",
+  "metadata",
+  "instance-data",
+]);

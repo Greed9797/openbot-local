@@ -65,7 +65,12 @@ export type ComputerConfig = DockerComputerConfig | SharedComputerConfig;
  */
 export type AgentModelConfig = {
   id: string;
-  transport: "responses" | "messages" | "chat-completions" | "gemini" | "delegated";
+  transport:
+    | "responses"
+    | "messages"
+    | "chat-completions"
+    | "gemini"
+    | "delegated";
   model: string;
   baseUrl?: string;
   apiKey?: string;
@@ -176,6 +181,17 @@ export function configuredAuthProviders(
   return providers;
 }
 
+/**
+ * O que este deployment aceita registrar como servidor MCP que não veio do catálogo revisado.
+ *
+ * `allowPrivateMcp` levanta a exigência de https e as regras de host do registro por URL — é o que
+ * permite registrar uma API da casa. O endereço de credencial de nuvem continua recusado com ela
+ * ligada, e por isso isto não é "qualquer endereço": é "os endereços deste deployment".
+ */
+export type PluginsConfig = {
+  allowPrivateMcp: boolean;
+};
+
 export type DeploymentConfig = {
   databaseUrl: string;
   keyEncryptionKey: string;
@@ -246,6 +262,8 @@ export type DeploymentConfig = {
    * e sem laço de leitura, em vez de recusar o boot por falta de uma credencial de canal.
    */
   telegram?: TelegramConfig;
+  /** O que pode ser registrado como servidor MCP além do catálogo revisado. */
+  plugins: PluginsConfig;
 };
 
 export type TelegramConfig = {
@@ -759,7 +777,8 @@ function agentModels(environment: Environment): AgentModelConfig[] {
     optional(environment, "GEMINI_API_KEY") ??
     optional(environment, "GOOGLE_API_KEY");
   if (geminiKey) {
-    const model = optional(environment, "AGENT_GEMINI_MODEL") ?? "gemini-3.8-flash";
+    const model =
+      optional(environment, "AGENT_GEMINI_MODEL") ?? "gemini-3.8-flash";
     const baseUrl = optional(environment, "AGENT_GEMINI_BASE_URL");
     models.push({
       id: "gemini",
@@ -882,7 +901,8 @@ function agentRuntimeConfig(environment: Environment): AgentRuntimeConfig {
     maxSteps: wholeNumber(environment, "AGENT_MAX_STEPS", 40, 1),
     maxRunMs: wholeNumber(environment, "AGENT_MAX_RUN_MS", 900_000, 10_000),
     maxCorrections: wholeNumber(environment, "AGENT_MAX_CORRECTIONS", 2, 0),
-    artifactsDir: optional(environment, "AGENT_ARTIFACTS_DIR") ?? "./.artifacts",
+    artifactsDir:
+      optional(environment, "AGENT_ARTIFACTS_DIR") ?? "./.artifacts",
     artifactRetentionDays: wholeNumber(
       environment,
       "AGENT_ARTIFACT_RETENTION_DAYS",
@@ -907,6 +927,25 @@ function agentRuntimeConfig(environment: Environment): AgentRuntimeConfig {
       10,
       1,
     ),
+  };
+}
+
+/**
+ * O que este deployment aceita registrar como servidor MCP, além do catálogo revisado.
+ *
+ * `PLUGINS_ALLOW_PRIVATE_MCP` é a decisão do administrador de apontar o deployment para uma API
+ * própria, que quase sempre mora na rede interna e fala http em vez de https. Ela não é uma
+ * permissão de Bot nem de tarefa: vale para o registro, e o que ela abre é o servidor passar a
+ * fazer requisição para onde for apontado, com o token do cofre no cabeçalho. Desligada por padrão,
+ * e cada servidor registrado por essa porta diz na auditoria que veio por ela.
+ *
+ * O endereço de credencial de nuvem continua fora mesmo com o interruptor ligado — a regra está em
+ * `plugins/catalogue.ts`, junto das outras do formato da URL.
+ */
+function pluginsConfig(environment: Environment): PluginsConfig {
+  return {
+    allowPrivateMcp:
+      optional(environment, "PLUGINS_ALLOW_PRIVATE_MCP") === "true",
   };
 }
 
@@ -946,5 +985,6 @@ export function loadConfig(
       ? { agentToolToken: optional(environment, "AGENT_TOOL_TOKEN") as string }
       : {}),
     ...(telegram ? { telegram } : {}),
+    plugins: pluginsConfig(environment),
   };
 }

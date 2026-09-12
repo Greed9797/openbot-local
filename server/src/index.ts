@@ -412,6 +412,7 @@ const pluginStore = createPluginStore({
   credentials: credentialStore,
   encryptionKey: config.keyEncryptionKey,
   policy: () => policyStore.get(),
+  allowPrivateMcp: config.plugins.allowPrivateMcp,
 });
 
 void recordAuditEvent(bootAuditStore, {

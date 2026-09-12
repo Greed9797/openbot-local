@@ -437,6 +437,20 @@ describe("deployment configuration", () => {
       }),
     ).toThrow(`${urlName} must be a valid URL`);
   });
+
+  test("keeps the private network out of the MCP registry unless asked", () => {
+    expect(loadConfig(baseEnvironment).plugins.allowPrivateMcp).toBe(false);
+    expect(
+      loadConfig({ ...baseEnvironment, PLUGINS_ALLOW_PRIVATE_MCP: "true" })
+        .plugins.allowPrivateMcp,
+    ).toBe(true);
+    // Qualquer outra coisa é "não": uma variável que abre a rede interna não pode ser ligada por
+    // engano com "1", "yes" ou o nome de outro interruptor.
+    expect(
+      loadConfig({ ...baseEnvironment, PLUGINS_ALLOW_PRIVATE_MCP: "1" }).plugins
+        .allowPrivateMcp,
+    ).toBe(false);
+  });
 });
 
 describe("accessibility", () => {

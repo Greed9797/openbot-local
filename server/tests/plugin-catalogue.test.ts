@@ -125,15 +125,14 @@ describe("a URL an administrator typed", () => {
     expect(customUrlRefusal("https://mcp.example.com/mcp")).toBeNull();
   });
 
-  test("plaintext is refused", () => {
+  test("plaintext is refused, and the refusal names the switch that lifts it", () => {
     expect(customUrlRefusal("http://mcp.example.com")).toContain("https");
+    expect(customUrlRefusal("http://mcp.example.com")).toContain(
+      "PLUGINS_ALLOW_PRIVATE_MCP",
+    );
   });
 
   test("an address literal is refused", () => {
-    // The cloud metadata endpoint, which is the reason this check exists.
-    expect(
-      customUrlRefusal("https://169.254.169.254/latest/meta-data/"),
-    ).toContain("hostname");
     expect(customUrlRefusal("https://127.0.0.1/mcp")).toContain("hostname");
     expect(customUrlRefusal("https://[::1]/mcp")).toContain("hostname");
   });
@@ -147,5 +146,34 @@ describe("a URL an administrator typed", () => {
 
   test("nonsense is refused rather than thrown", () => {
     expect(customUrlRefusal("not a url")).toBe("That is not a URL.");
+  });
+});
+
+describe("a deployment that opened the private network for MCP", () => {
+  const aberto = { allowPrivate: true };
+
+  test("a server of the administrator's own is accepted, https ou não, com nome ou IP", () => {
+    expect(customUrlRefusal("http://192.168.0.10:8080/mcp", aberto)).toBeNull();
+    expect(customUrlRefusal("http://api.interna/mcp", aberto)).toBeNull();
+    expect(customUrlRefusal("http://localhost:4000/sse", aberto)).toBeNull();
+    expect(customUrlRefusal("http://[fd00::1]/mcp", aberto)).toBeNull();
+  });
+
+  test("o endereço de credencial de nuvem continua recusado", () => {
+    // A faixa link-local inteira e os apelidos de metadados: nenhum serviço de alguém mora ali, e o
+    // que responde é a credencial da própria nuvem deste deployment.
+    expect(
+      customUrlRefusal("http://169.254.169.254/latest/meta-data/", aberto),
+    ).toContain("credentials");
+    expect(
+      customUrlRefusal("http://metadata.google.internal/x", aberto),
+    ).toContain("credentials");
+    expect(customUrlRefusal("http://[fd00:ec2::254]/x", aberto)).toContain(
+      "credentials",
+    );
+  });
+
+  test("o formato da URL continua valendo", () => {
+    expect(customUrlRefusal("not a url", aberto)).toBe("That is not a URL.");
   });
 });
