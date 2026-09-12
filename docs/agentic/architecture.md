@@ -16,7 +16,8 @@ modelos pagos ou VPS).
 | Observação | `server/src/agent-runtime/observation.ts` (`createGatewayObservationSource`) | Snapshot + texto + captura classificada |
 | Catálogo | `server/src/agent-runtime/browser-tools.ts` (`createBrowserTools`) | 13 ferramentas (`navigate`, `read_page`, `snapshot_page`, `click`, `type_text`, `press_key`, `scroll`, `select_option`, `screenshot`, `wait_for`, `request_help`, `read_form`, `plan_form`); só ele executa |
 | Provedores | `server/src/agent-runtime/providers/*`, `registry.ts` | OpenAI Responses, Anthropic Messages, Gemini (API nativa), `/v1/chat/completions` local e o transporte `delegated` — Codex e os CLIs de agente |
-| Catálogo de modelos | `server/src/agent-runtime/model-catalog.ts`, `GET /api/models` em `app.ts` | O que este deployment alcança: id, modelo, transporte, `capabilities` e o padrão |
+| Catálogo de modelos | `server/src/agent-runtime/model-catalog.ts`, `GET /api/models` e `POST /api/models/refresh` em `app.ts` | O que este deployment alcança: id, modelo, transporte, `capabilities` e o padrão — inclusive os modelos que cada serviço delegado diz ter (`GET /models`), recoletados sem deploy pelo refresh |
+| Escolha de modelo | `agents.configuration` (`provider`/`model`) + `agent-runs/service.ts` | Tarefa → Bot → deployment, resolvido na criação; provedor ou modelo fora do catálogo é 400 na porta, e um provedor que sumiu do deployment fecha a tarefa com `PROVIDER_UNAVAILABLE` |
 | Portão de aprovação | `server/src/agent-runs/approvals.ts` (`createApprovalGate`) + `server/src/agent-runtime/sensitive-actions.ts` (`classifyAction`) | Sensível exige pessoa antes do navegador |
 | Gateway | `server/src/computer/gateway.ts` (`govern`, `resolve`) | Política CEL, auditoria antes da ação, resolução de ref contra geração do snapshot |
 | Navegador | `agent-computer/src/index.ts` | Chromium/Playwright por Bot, máscaras de screenshot, segredos, controle humano |

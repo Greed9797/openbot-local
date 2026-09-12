@@ -87,13 +87,38 @@ ou seja, a análise pode usar um modelo diferente do da tarefa. Sem nenhum com v
    recusa o boot com erro explícito.
 3. Sem credencial nenhuma: zero provedores, aviso no boot, tarefas falham com
    `PROVIDER_UNAVAILABLE`.
-4. Em execução: `providers.get(run.provider) ?? providers.default()` (`loop.ts`).
+4. Em execução: `providers.get(run.provider)`, e só isso (`loop.ts`). Um provedor que não
+   existe fecha a tarefa com `PROVIDER_UNAVAILABLE` nomeando-o; o `?? providers.default()`
+   que havia aqui rodava outro modelo sem dizer nada.
+
+## Quem escolhe o modelo
+
+Três degraus, nesta ordem: a **tarefa** (`POST /api/agent-runs` com `provider`/`model`), o
+**Bot** (`agents.configuration`, mesma tela do endpoint) e o **deployment**
+(`AGENT_DEFAULT_PROVIDER`/`AGENT_DEFAULT_MODEL`). A resolução acontece uma vez, na criação
+da tarefa, e é ela que a linha `agent_runs` grava.
+
+- No jsonb, presente é decisão, **string vazia devolve ao padrão** e ausente preserva o que
+  está gravado — é o que permite ao Telegram e a um script editarem o título sem apagar uma
+  escolha que eles não conhecem.
+- Provedor ou modelo que o catálogo não tem: **400 `INVALID_ACTION`** na porta, com a frase
+  que diz qual dos dois falhou. Sem escolha nenhuma, nada é validado: um deployment sem
+  provedor configurado precisa criar a tarefa para ela poder falhar dizendo
+  `PROVIDER_UNAVAILABLE`, que é o diagnóstico útil.
+- O modelo desce ao motor pelo `forwardedProps.model` quando alguém escolheu — o loop
+  compara com o padrão do deployment antes disso, porque `agent_runs.model` é `NOT NULL` e
+  sempre traz alguma coisa. No transporte `chat-completions` ele vence o modelo configurado.
+- A lista do seletor vem do serviço delegado (`GET /models`, atrás do token do deployment),
+  cacheada 60 s e recoletada por `POST /api/models/refresh`: quem ganha modelo é a conta do
+  CLI, não o runtime. Um serviço que ainda não tem a rota (imagem velha) responde 404 e o
+  catálogo mostra só o que o `.env` declarou, com um aviso no boot — não há lista inventada.
 
 O que este deployment tem, para quem precisa conferir depois de subir um serviço novo, é
 `GET /api/models` (`model-catalog.ts` + rota em `app.ts`, atrás de sessão): o id de cada provedor,
-o modelo declarado, transporte e `capabilities` — a interseção entre o que o `.env` declarou e o que
-o registro construiu, sem credencial e sem endereço no corpo. Um `AGENT_OPENCODE_URL` que não chegou
-ao runtime aparece aqui como ausência, que é o que o deploy precisa ver.
+o modelo declarado, transporte e `capabilities` — a interseção entre o que o `.env` declarou, ou o
+serviço delegado respondeu, e o que o registro construiu, sem credencial e sem endereço no corpo. Um
+`AGENT_OPENCODE_URL` que não chegou ao runtime aparece aqui como ausência, que é o que o deploy
+precisa ver.
 
 Visão é presumida pelo nome (`visionFor`: `gpt-5|gpt-4o|gpt-4.1|o3|o4|claude|gemini|
 llava|qwen.*vl|pixtral|internvl`), negável por id em `AGENT_TEXT_ONLY_PROVIDERS` e
@@ -114,3 +139,10 @@ verificação manual — nenhum caminho automático o faz.
   O OpenCode, que é o mesmo tronco, foi medido de ponta a ponta — CLI local dirigindo o
   navegador da VPS pelo gateway, com a linha `computer.action_allowed` nomeando o Bot e a
   pessoa da declaração assinada.
+- Modelo por turno no serviço do Codex: o `forwardedProps.model` vai, e o serviço do Codex
+  não lê esse campo — quem honra é o `agent-cli`. Escolher modelo para um Bot que roda pelo
+  Codex não muda nada lá dentro (o catálogo dele lista um modelo só, então a tela não oferece
+  outro).
+- O caminho do modelo escolhido foi medido com o serviço do CLI rodando do fonte
+  (`bun agent-cli/src/index.ts`), com a linha `turno …: modelo escolhido pela tarefa` e o
+  `modelID` do CLI no log; a imagem do compose precisa de rebuild para carregar o `/models`.
