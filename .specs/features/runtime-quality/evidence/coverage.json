@@ -1,0 +1,13 @@
+{
+  "base": "824893b",
+  "target": "d29e339ea878bbbffa91ea43abafc34b618efd35",
+  "covered_added_executable_lines": 1394,
+  "instrumented_added_executable_lines": 1637,
+  "percentage": 85.16,
+  "uninstrumented_files": [
+    "agent-computer/src/index.ts",
+    "server/src/agent-runs/types.ts",
+    "server/src/computer/schema.ts",
+    "server/src/index.ts"
+  ]
+}

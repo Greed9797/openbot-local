@@ -1,6 +1,6 @@
 # Runtime Quality Specification
 
-Status: implementação integral autorizada, com delegação independente.
+Status: implementação integral P0–P2 verificada localmente; parecer independente PASS em `validation.md`.
 Base: `824893b`, branch `local-fork`.
 Fonte: `docs/agentic/architecture-improvement-proposal.md`.
 
@@ -193,16 +193,16 @@ Como usuário, quero perguntar sobre dados anteriores sem repeti-los.
 |---|---|---|---|
 | RQ-01 | Memória CLI | Contexto | Verified |
 | RQ-02 | Isolamento CLI | Contexto | Verified |
-| RQ-03 | Conclusão | Confiabilidade | Implemented; gates passed |
-| RQ-04 | Consumo | Confiabilidade | Implemented; gates passed |
-| RQ-05 | Relógio | Confiabilidade | Implemented; regression sensor pending |
-| RQ-06 | Contexto útil | Contexto | Implemented; gates passed |
-| RQ-07 | Observação | Eficiência | Implemented; gates passed |
-| RQ-08 | Formulário | Eficiência | Implemented; real browser smoke passed |
-| RQ-09 | Leitura pública | Eficiência | Implemented; real Lightpanda smoke passed |
-| RQ-10 | Roteamento | Operação | Implemented; gates passed |
-| RQ-11 | Concorrência | Operação | Implemented; gates passed |
-| RQ-12 | Documentação | Operação | Implemented; independent review pending |
+| RQ-03 | Conclusão | Confiabilidade | Verified |
+| RQ-04 | Consumo | Confiabilidade | Verified |
+| RQ-05 | Relógio | Confiabilidade | Verified; regression sensor M3 |
+| RQ-06 | Contexto útil | Contexto | Verified |
+| RQ-07 | Observação | Eficiência | Verified |
+| RQ-08 | Formulário | Eficiência | Verified; real browser smoke |
+| RQ-09 | Leitura pública | Eficiência | Verified; real Lightpanda smoke |
+| RQ-10 | Roteamento | Operação | Verified; real router resume and sensor M7 |
+| RQ-11 | Concorrência | Operação | Verified |
+| RQ-12 | Documentação | Operação | Verified; independent PASS report |
 
 ## Success Criteria
 

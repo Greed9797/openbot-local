@@ -1,0 +1,36 @@
+{
+  "temporary_paths": [
+    {
+      "path": "/tmp/openbot-rq-sensor-rb5_sa4j",
+      "absent": true
+    },
+    {
+      "path": "/tmp/openbot-observation.vHzCVe",
+      "absent": true
+    },
+    {
+      "path": "/tmp/openbot-runtime-quality-gates",
+      "absent": true
+    },
+    {
+      "path": "/tmp/openbot-runtime-quality-sensor.py",
+      "absent": true
+    },
+    {
+      "path": "/tmp/openbot-runtime-quality-sensor-result.json",
+      "absent": true
+    },
+    {
+      "path": "/tmp/openbot-runtime-quality-sensor-result.d29e339-run1.json",
+      "absent": true
+    }
+  ],
+  "disposable_running_containers": [],
+  "temporary_lightpanda_image_removed": true,
+  "operational_running_containers": [
+    "openbotw3-agent-cli-1",
+    "openbotw3-agent-computer-1",
+    "openbotw3-postgres-1"
+  ],
+  "evidence_retained": "JSON files in .specs/features/runtime-quality/evidence; raw temporary logs removed"
+}

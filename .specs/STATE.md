@@ -2,7 +2,7 @@
 
 ## Feature ativa
 
-`runtime-quality` — implementação integral P0–P2 autorizada, com delegação de partes independentes. Validação independente final ainda pendente. Base: `824893b`.
+`runtime-quality` — implementação integral P0–P2 verificada localmente. Parecer independente PASS e sensor 7/7 contra `d29e339`. Base: `824893b`. Relatório: `.specs/features/runtime-quality/validation.md`.
 
 ## Decisões
 
@@ -17,11 +17,13 @@
 
 - `5ae73f1`: contexto CLI, gate 20 testes sem falha.
 - `fa896e9`: fila CLI, gate 21 testes sem falha com executável local e arquivos reais.
-- Gate amplo anterior: typecheck/build passaram; 1.281 testes passaram, zero falhas. Lint bloqueou por optional chaining inseguro de um teste; corrigido.
+- Gates finais em `d29e339`: typecheck/build/lint exit 0; 1.286 pass, 5 skips ambientais, zero falhas. Lint: 24 warnings e 1 informação; build: aviso de chunk acima de 500 kB.
 - Formulário real: dois campos preenchidos via gateway com auditoria e sem submit; estrutura alterada e takeover interrompem segundo campo, com parcial correto.
 - Lightpanda real: leu página local sem sessão através de `fetch_page`, gateway e auditoria.
-- Endurecimento posterior da memória encontrou lote de dez mensagens omitindo pendências; corrigido para ler estado canônico completo antes de aplicar limite explícito. Gates definitivos e relatório do Verifier registrarão resultado final, sem reaproveitar contagens antigas.
+- Cobertura medida: 1.394/1.637 = 85,16% das linhas executáveis novas instrumentadas; quatro arquivos não instrumentados, explicitados no relatório.
+- Revisão independente encontrou F1/F2 de roteamento; correções verificadas em `d29e339`. Sensor independente final detectou sete mutações; primeira seleção inadequada de teste do sensor foi corrigida e preservada como evidência.
+- Limpeza comprovada: banco e imagem Lightpanda descartáveis encerrados/removidos; snapshots, scripts e logs temporários removidos. Containers operacionais preservados. Evidência durável em `.specs/features/runtime-quality/evidence/`.
 
-## Próximo passo
+## Entrega local
 
-Concluir gates após correção do lote de mensagens, registrar tarefas verificadas, realizar revisão independente e sensor em cópia isolada, executar `validate_state.py`. Não declarar feature concluída antes do relatório PASS.
+Nenhum push, deploy ou chamada paga autorizado/executado. T3–T12 ficaram num único commit de integração (`3a94b94`), desvio de granularidade documentado. Relatório e gates estruturais finais encerram a entrega local; homologação externa e alegações de economia permanecem fora do escopo.

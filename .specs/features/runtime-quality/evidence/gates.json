@@ -1,0 +1,36 @@
+{
+  "commit": "d29e339ea878bbbffa91ea43abafc34b618efd35",
+  "executor": "Main",
+  "commands": [
+    {
+      "command": "bun run typecheck",
+      "exit": 0,
+      "log_sha256": "c1116a8183911b83d7cc22cde5fbd7dd4f2b37f25b55ca0d79f5d5d24c96143b"
+    },
+    {
+      "command": "bun run build",
+      "exit": 0,
+      "log_sha256": "c67c57eb5a7fd3f3d824bc4c54719748b290788c284e78cbf4b20864d81b2fb1"
+    },
+    {
+      "command": "bun run lint",
+      "exit": 0,
+      "log_sha256": "241e6604140d8c052e0ccef5f4e65ee4c5ef177bef6b2c4c070224e3238198f3"
+    },
+    {
+      "command": "bun run test:ci",
+      "exit": 0,
+      "log_sha256": "002554ca534d1966c521d749ab98abec7794d354a15c94595bd52c92d62ea3bc"
+    }
+  ],
+  "tests": {
+    "pass": 1286,
+    "skip": 5,
+    "fail": 0
+  },
+  "lint": {
+    "warnings": 24,
+    "info": 1
+  },
+  "build_warning": "frontend chunk exceeds 500 kB"
+}

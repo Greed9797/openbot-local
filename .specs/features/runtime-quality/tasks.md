@@ -105,7 +105,7 @@ Cobertura RQ-02 AC1–AC3 ↔ `agent-cli/tests/workspace.test.ts`, teste `queued
 **Reuses**: now injetável, usage, settle e sinal de execução.
 **Requirement**: RQ-05
 **Done when**:
-- [ ] Reprodução anterior da contagem falha antes e passa após correção.
+- [x] Reprodução anterior da contagem falha antes e passa após correção.
 - [x] Três intervalos de 1 segundo resultam em 3 segundos; espera humana excluída.
 - [x] Deadline aborta modelo; pausa e cancelamento não são sobrescritos.
 **Tests**: integration — server/tests/agent-runtime-loop.integration.test.ts, relógio e provedor controlados, estado real persistido.
@@ -295,10 +295,12 @@ Gates executados em 2026-09-12, com `DATABASE_URL` explícita do banco descartá
 - `bun run typecheck`: exit 0.
 - `bun run build`: exit 0; aviso de chunk frontend maior que 500 kB.
 - `bun run lint`: exit 0; 24 warnings e 1 informação de versão do schema Biome. Nenhuma supressão acrescentada.
-- `bun run test:ci`: 1.283 pass, 5 skip, 0 fail.
+- `bun run test:ci`: 1.286 pass, 5 skip, 0 fail.
 - Chromium real por gateway: dois campos, duas ações auditadas, zero submit; mudança estrutural e takeover param antes do campo seguinte.
 - Lightpanda real por gateway: página de teste local devolveu título/texto, sem sessão do Bot.
 
-T4 mantém aberta somente a prova de discriminação antes/depois, a ser produzida em cópia isolada. Cobertura percentual de linhas novas não foi medida; contagens acima não equivalem a esse percentual. Relatório final deve citar testes por nome e linhas atuais: referências de T1 anteriores à formatação são históricas.
+Sensor independente contra `d29e339`: sete baselines verdes e sete mutações detectadas por assertions, sem modificar checkout. T4/M3 reintroduz dupla contagem: teste espera 3.000 ms e recebe 6.000 ms; fonte íntegra passa. M7 reproduz perda de pin após retomada. A primeira seleção de teste para M6 não discriminava plano obsoleto porque outra guarda preservava o caso de re-render; autor independente manteve a mutação e selecionou o teste existente de preenchimento estável. Primeira falha e resultado final preservados em `evidence/sensor-initial.json` e `evidence/sensor.json`.
 
-Integração dos módulos compartilhados T3–T12 foi validada conjuntamente após as slices paralelas, em vez de gates intermediários durante edições concorrentes. A revisão independente ainda decide aceitação final.
+Cobertura medida: 1.394/1.637 = 85,16% das linhas executáveis adicionadas e instrumentadas. Não inclui `agent-computer/src/index.ts`, `server/src/index.ts`, `server/src/agent-runs/types.ts` ou `server/src/computer/schema.ts`; não é percentual de todo o código novo. Contagens de testes não substituem essa medição. Referências de T1 anteriores à formatação são históricas; `validation.md` usa linhas atuais.
+
+T3–T12 foram integradas em `3a94b94`, em vez de um commit por tarefa; desvio de granularidade registrado, sem reescrever histórico. Revisão independente identificou perda de pin igual ao padrão e fallback de modo incompatível; ambos corrigidos em `d29e339`, com gates e sensor posteriores. Veredito definitivo em `validation.md`.

@@ -1,0 +1,19 @@
+{
+  "validators": [
+    {
+      "command": "validate_spec.py .specs/features/runtime-quality/spec.md --strict",
+      "exit": 0
+    },
+    {
+      "command": "validate_tasks.py .specs/features/runtime-quality/tasks.md --strict",
+      "exit": 0
+    },
+    {
+      "command": "validate_state.py runtime-quality",
+      "exit": 0
+    }
+  ],
+  "valid_file_line_citations": 102,
+  "invalid_citations": [],
+  "final_artifact_lint_exit": 0
+}

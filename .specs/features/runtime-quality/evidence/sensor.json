@@ -1,0 +1,234 @@
+{
+  "sensor": "openbot-runtime-quality-sensor",
+  "commit": "d29e339ea878bbbffa91ea43abafc34b618efd35",
+  "commit_short": "d29e339",
+  "snapshot": "/tmp/openbot-rq-sensor-rb5_sa4j",
+  "database": {
+    "host": "127.0.0.1",
+    "port": "55439",
+    "user": "openbot",
+    "database": "runtime_quality_sensor",
+    "url": "postgres://openbot:***@127.0.0.1:55439/runtime_quality_sensor",
+    "note": "disposable container openbot-runtime-quality-db; original test DB untouched"
+  },
+  "started": "2026-09-12T09:46:45-0300",
+  "prior_runs": [
+    {
+      "commit": "d29e339",
+      "date": "2026-09-12",
+      "killed": [
+        "M1",
+        "M2",
+        "M3",
+        "M4",
+        "M5",
+        "M7"
+      ],
+      "survived": [
+        "M6-form-structure-guard-removed"
+      ],
+      "note": "M6 survived honestly: replacing the fresh per-field re-plan with the stale first plan does not defeat the independent structural guard (fields.length/label/kind), so the removed-field test still stops with STALE_SNAPSHOT. The mutant was kept and re-targeted at the stable multi-field fill contract as M6-form-stale-plan-reuse; the survivor was neither discarded nor counted as killed."
+    }
+  ],
+  "baseline": [
+    {
+      "mutant": "M1-cli-history-loss",
+      "command": "bun test agent-cli/tests/cli.test.ts",
+      "exit": 0,
+      "log": "/tmp/openbot-rq-sensor-rb5_sa4j/logs/baseline-M1-cli-history-loss.log",
+      "excerpt": "bun test v1.3.12 (700fc117)\n\nagent-cli/tests/cli.test.ts:\n(pass) adaptadores > o OpenCode lê o config do projeto e aprova com --auto [1.24ms]\n(pass) adaptadores > o MiMo tem outro binário, outro arquivo e outra flag de aprovação [0.08ms]\n(pass) adaptadores > sem modelo escolhido, nenhuma flag de modelo vai [0.01ms]\n(pass) adaptadores > o degrau de raciocínio vai como --variant, antes do prompt [0.02ms]\n(pass) adaptadores > sem degrau escolhido, nenhuma flag de degrau vai [0.02ms]\n(pass) adaptadores > CLI desconhecido é recusado com a lista do que existe [0.53ms]\n(pass) o config que dá o navegador ao CLI > o servidor MCP local sobe o mesmo mcp-computer dos outros serviços [0.09ms]\n(pass) o config que dá o navegador ao CLI > busca embutida do CLI é negada: a web só entra pelo gateway [0.01ms]\n(pass) os eventos do --format json > texto vira a resposta do turno [0.41ms]\n(pass) os eventos do --format json > chamada de ferramenta é contada [0.02ms]\n(pass) os eventos do --format json > o erro do CLI traz a mensagem de dentro, não só o nome [0.01ms]\n(pass) os eventos do --format json > linha que não é JSON é ruído, não queda [0.03ms]\n(pass) os eventos do --format json > evento de passo não vira texto nem falha [0.04ms]\n(pass) o contexto textual do turno > o segundo turno recebe o dado do primeiro, com papéis marcados (AC1) [0.01ms]\n(pass) o contexto textual do turno > outra thread não herda o dado da primeira (AC2) [0.18ms]\n(pass) o contexto textual do turno > histórico longo preserva a atual inteira e sinaliza a omissão (AC3) [0.82ms]\n(pass) o contexto textual do turno > mensagem atual acima do limite é recusada, nunca truncada (AC4) [0.03ms]\n(pass) o contexto textual do turno > parte multimodal vira marcador explícito, nunca [object Object] [0.04ms]\n(pass) o contexto textual do turno > conteúdo fora do contrato é recusado com erro explícito [0.04ms]\n(pass) o contexto textual do turno > chamada de ferramenta do assistente entra no histórico sem virar silêncio [0.02ms]\n\n 20 pass\n 0 fail\n 37 expect() calls\nRan 20 tests across 1 file. [53.00ms]"
+    },
+    {
+      "mutant": "M2-cli-serialization-bypass",
+      "command": "bun test agent-cli/tests/workspace.test.ts",
+      "exit": 0,
+      "log": "/tmp/openbot-rq-sensor-rb5_sa4j/logs/baseline-M2-cli-serialization-bypass.log",
+      "excerpt": "bun test v1.3.12 (700fc117)\n\nagent-cli/tests/workspace.test.ts:\n(pass) queued cancellation preserves active files; failure releases the next isolated turn [251.44ms]\n\n 1 pass\n 0 fail\n 7 expect() calls\nRan 1 test across 1 file. [273.00ms]"
+    },
+    {
+      "mutant": "M3-active-time-double-count",
+      "command": "bun test server/tests/agent-runtime-loop.integration.test.ts -t três intervalos ativos de 1.000 ms acumulam 3.000 ms",
+      "exit": 0,
+      "log": "/tmp/openbot-rq-sensor-rb5_sa4j/logs/baseline-M3-active-time-double-count.log",
+      "excerpt": "bun test v1.3.12 (700fc117)\n\nserver/tests/agent-runtime-loop.integration.test.ts:\n(pass) the agent loop > três intervalos ativos de 1.000 ms acumulam 3.000 ms [47.48ms]\n\n 1 pass\n 36 filtered out\n 0 fail\n 2 expect() calls\nRan 1 test across 1 file. [90.00ms]"
+    },
+    {
+      "mutant": "M4-attempt-count-collapse",
+      "command": "bun test server/tests/agent-runtime-loop.integration.test.ts -t duas falhas e um sucesso contam três chamadas com identidade",
+      "exit": 0,
+      "log": "/tmp/openbot-rq-sensor-rb5_sa4j/logs/baseline-M4-attempt-count-collapse.log",
+      "excerpt": "bun test v1.3.12 (700fc117)\n\nserver/tests/agent-runtime-loop.integration.test.ts:\n(pass) uso por tentativa e contexto útil (RQ-04/RQ-06) > duas falhas e um sucesso contam três chamadas com identidade [1558.01ms]\n\n 1 pass\n 36 filtered out\n 0 fail\n 5 expect() calls\nRan 1 test across 1 file. [1.60s]"
+    },
+    {
+      "mutant": "M5-prose-treated-as-proof",
+      "command": "bun test server/tests/agent-runtime-loop.integration.test.ts -t prosa de sucesso após clique sem prova estaciona sem repetir a ação",
+      "exit": 0,
+      "log": "/tmp/openbot-rq-sensor-rb5_sa4j/logs/baseline-M5-prose-treated-as-proof.log",
+      "excerpt": "bun test v1.3.12 (700fc117)\n\nserver/tests/agent-runtime-loop.integration.test.ts:\n(pass) conclusão verificável e relatos roteados (RQ-03/RQ-04) > prosa de sucesso após clique sem prova estaciona sem repetir a ação [45.74ms]\n\n 1 pass\n 36 filtered out\n 0 fail\n 5 expect() calls\nRan 1 test across 1 file. [86.00ms]"
+    },
+    {
+      "mutant": "M6-form-stale-plan-reuse",
+      "command": "bun test server/tests/agent-browser-tools.test.ts -t fill_form preenche vários campos estáveis numa execução, sem devolver valores",
+      "exit": 0,
+      "log": "/tmp/openbot-rq-sensor-rb5_sa4j/logs/baseline-M6-form-stale-plan-reuse.log",
+      "excerpt": "bun test v1.3.12 (700fc117)\n\nserver/tests/agent-browser-tools.test.ts:\n(pass) browser tools > fill_form preenche vários campos estáveis numa execução, sem devolver valores [1.48ms]\n\n 1 pass\n 35 filtered out\n 0 fail\n 10 expect() calls\nRan 1 test across 1 file. [94.00ms]"
+    },
+    {
+      "mutant": "M7-model-pinned-preservation-removed",
+      "command": "bun test server/tests/agent-runtime-loop.integration.test.ts -t preserva modelo igual ao padrão após retomada",
+      "exit": 0,
+      "log": "/tmp/openbot-rq-sensor-rb5_sa4j/logs/baseline-M7-model-pinned-preservation-removed.log",
+      "excerpt": "bun test v1.3.12 (700fc117)\n\nserver/tests/agent-runtime-loop.integration.test.ts:\n(pass) pin explícito no roteador real > preserva modelo igual ao padrão após retomada [51.65ms]\n\n 1 pass\n 36 filtered out\n 0 fail\n 3 expect() calls\nRan 1 test across 1 file. [90.00ms]"
+    }
+  ],
+  "mutants": [
+    {
+      "id": "M1-cli-history-loss",
+      "rq": "RQ-01 AC1",
+      "file": "agent-cli/src/index.ts",
+      "line": 272,
+      "description": "Drop all prior-turn history from the CLI envelope (historico forced empty); the second turn must lose the address.",
+      "test_command": "bun test agent-cli/tests/cli.test.ts",
+      "baseline_exit": 0,
+      "log": "/tmp/openbot-rq-sensor-rb5_sa4j/logs/mutant-M1-cli-history-loss.log",
+      "verdict": "killed",
+      "exit": 1,
+      "diagnostic_excerpt": "Received: \"Pessoa: confirme que anotou\"\n\n      at <anonymous> (/private/tmp/openbot-rq-sensor-rb5_sa4j/agent-cli/tests/cli.test.ts:264:22)\n(fail) o contexto textual do turno > outra thread não herda o dado da primeira (AC2) [0.01ms]\n288 |       turnoComMensagens([...antigas, fala(\"nova\", atual)]),\n289 |     );\n290 | \n291 |     expect(pergunta).toContain(atual);\n292 |     expect(pergunta.length).toBeLessThanOrEqual(LIMITE_CONTEXTO_TURNO);\n293 |     expect(pergunta).toMatch(/omitid/);\n                           ^\nerror: expect(received).toMatch(expected)\n\nExpected substring or pattern: /omitid/\nReceived: \"Pessoa: responda terminando com a palavra PINEAPPLE\"\n\n      at <anonymous> (/private/tmp/openbot-rq-sensor-rb5_sa4j/agent-cli/tests/cli.test.ts:293:22)\n(fail) o contexto textual do turno > histórico longo preserva a atual inteira e sinaliza a omissão (AC3) [0.25ms]\n(pass) o contexto textual do turno > mensagem atual acima do limite é recusada, nunca truncada (AC4) [0.07ms]\n(pass) o contexto textual do turno > parte multimodal vira marcador explícito, nunca [object Object] [0.05ms]\n(pass) o contexto textual do turno > conteúdo fora do contrato é recusado com erro explícito [0.01ms]\n348 |         } as unknown as Message,\n349 |         fala(\"m3\", \"e agora?\"),\n350 |       ]),\n351 |     );\n352 | \n353 |     expect(pergunta).toContain(\"openbot_navigate\");\n                           ^\nerror: expect(received).toContain(expected)\n\nExpected to contain: \"openbot_navigate\"\nReceived: \"Pessoa: e agora?\"\n\n      at <anonymous> (/private/tmp/openbot-rq-sensor-rb5_sa4j/agent-cli/tests/cli.test.ts:353:22)\n(fail) o contexto textual do turno > chamada de ferramenta do assistente entra no histórico sem virar silêncio [0.05ms]\n\n 16 pass\n 4 fail\n 31 expect() calls\nRan 20 tests across 1 file. [31.00ms]",
+      "mutation": {
+        "old": "  const historico = mensagens\n    .filter((_, i) => i !== indiceAtual)\n    .map(blocoDaMensagem)\n    .filter((bloco) => bloco);",
+        "new": "  const historico: string[] = [];",
+        "expected_occurrences": 1
+      }
+    },
+    {
+      "id": "M2-cli-serialization-bypass",
+      "rq": "RQ-02 AC1",
+      "file": "agent-cli/src/index.ts",
+      "line": 678,
+      "description": "Skip workspace admission (no acquireWorkspace); concurrent turns must overlap config/skills instead of serializing.",
+      "test_command": "bun test agent-cli/tests/workspace.test.ts",
+      "baseline_exit": 0,
+      "log": "/tmp/openbot-rq-sensor-rb5_sa4j/logs/mutant-M2-cli-serialization-bypass.log",
+      "verdict": "killed",
+      "exit": 1,
+      "diagnostic_excerpt": "agent-cli/tests/workspace.test.ts:\n68 |     const [stdout, stderr, code] = await Promise.all([\n69 |       new Response(child.stdout).text(),\n70 |       new Response(child.stderr).text(),\n71 |       child.exited,\n72 |     ]);\n73 |     expect({ code, stderr }).toEqual({ code: 0, stderr: \"\" });\n                                  ^\nerror: expect(received).toEqual(expected)\n\n  {\n-   \"code\": 0,\n-   \"stderr\": \"\",\n+   \"code\": 1,\n+   \"stderr\": \n+ \" 9 | const second = await runAgent(input(\"cancelled\"), cancelled.signal);\n+ 10 | const third = await runAgent(input(\"failed\"), new AbortController().signal);\n+ 11 | const fourth = await runAgent(input(\"last\"), new AbortController().signal);\n+ 12 | cancelled.abort(new Error(\"cancelled in queue\"));\n+ 13 | const cancelledOutput = await second.text();\n+ 14 | const beforeRelease = JSON.parse(await Bun.file(\"opencode.json\").text()).mcp.openbot.environment.OPENBOT_RUN;\n+                                 ^\n+ SyntaxError: JSON Parse error: Unrecognized token '\u0000'\n+       at /private/tmp/openbot-workspace-jMEsMp/[eval]:14:28\n+ \n+ Bun v1.3.12 (macOS arm64)\n+ \"\n+ ,\n  }\n\n- Expected  - 2\n+ Received  + 15\n\n      at <anonymous> (/private/tmp/openbot-rq-sensor-rb5_sa4j/agent-cli/tests/workspace.test.ts:73:30)\n(fail) queued cancellation preserves active files; failure releases the next isolated turn [186.24ms]\n\n 0 pass\n 1 fail\n 1 expect() calls\nRan 1 test across 1 file. [210.00ms]",
+      "mutation": {
+        "old": "        releaseWorkspace = await acquireWorkspace(turnSignal);",
+        "new": "        releaseWorkspace = undefined;",
+        "expected_occurrences": 1
+      }
+    },
+    {
+      "id": "M3-active-time-double-count",
+      "rq": "RQ-05 AC1",
+      "file": "server/src/agent-runtime/loop.ts",
+      "line": 471,
+      "description": "Count the live delta twice in activeNow; three 1000ms intervals must report 6000ms instead of 3000ms.",
+      "test_command": "bun test server/tests/agent-runtime-loop.integration.test.ts -t três intervalos ativos de 1.000 ms acumulam 3.000 ms",
+      "baseline_exit": 0,
+      "log": "/tmp/openbot-rq-sensor-rb5_sa4j/logs/mutant-M3-active-time-double-count.log",
+      "verdict": "killed",
+      "exit": 1,
+      "diagnostic_excerpt": "bun test v1.3.12 (700fc117)\n\nserver/tests/agent-runtime-loop.integration.test.ts:\n536 |     });\n537 |     await drive(run.id, executorFor({ provider, tools, now: () => t }));\n538 |     const row = await repository.get(run.id);\n539 |     expect(row?.status).toBe(\"succeeded\");\n540 |     const usage = row?.usage as { activeMs: number };\n541 |     expect(usage?.activeMs).toBe(3_000);\n                                  ^\nerror: expect(received).toBe(expected)\n\nExpected: 3000\nReceived: 6000\n\n      at <anonymous> (/private/tmp/openbot-rq-sensor-rb5_sa4j/server/tests/agent-runtime-loop.integration.test.ts:541:29)\n(fail) the agent loop > três intervalos ativos de 1.000 ms acumulam 3.000 ms [53.15ms]\n\n 0 pass\n 36 filtered out\n 1 fail\n 2 expect() calls\nRan 1 test across 1 file. [99.00ms]",
+      "mutation": {
+        "old": "    const activeNow = (): number => resumeBase + (now() - started);",
+        "new": "    const activeNow = (): number => resumeBase + (now() - started) + (now() - started);",
+        "expected_occurrences": 1
+      }
+    },
+    {
+      "id": "M4-attempt-count-collapse",
+      "rq": "RQ-04 AC1",
+      "file": "server/src/agent-runtime/loop.ts",
+      "line": 876,
+      "description": "Persist +1 model call per step instead of +spentAttempts.length; fail/fail/success must count 1 call instead of 3.",
+      "test_command": "bun test server/tests/agent-runtime-loop.integration.test.ts -t duas falhas e um sucesso contam três chamadas com identidade",
+      "baseline_exit": 0,
+      "log": "/tmp/openbot-rq-sensor-rb5_sa4j/logs/mutant-M4-attempt-count-collapse.log",
+      "verdict": "killed",
+      "exit": 1,
+      "diagnostic_excerpt": "bun test v1.3.12 (700fc117)\n\nserver/tests/agent-runtime-loop.integration.test.ts:\n660 |     expect(row?.status).toBe(\"succeeded\");\n661 |     const usage = row?.usage as {\n662 |       modelCalls: number;\n663 |       attempts: Record<string, unknown>[];\n664 |     };\n665 |     expect(usage.modelCalls).toBe(3);\n                                   ^\nerror: expect(received).toBe(expected)\n\nExpected: 3\nReceived: 1\n\n      at <anonymous> (/private/tmp/openbot-rq-sensor-rb5_sa4j/server/tests/agent-runtime-loop.integration.test.ts:665:30)\n(fail) uso por tentativa e contexto útil (RQ-04/RQ-06) > duas falhas e um sucesso contam três chamadas com identidade [1554.20ms]\n\n 0 pass\n 36 filtered out\n 1 fail\n 2 expect() calls\nRan 1 test across 1 file. [1.59s]",
+      "mutation": {
+        "old": "          modelCalls: used.modelCalls + spentAttempts.length,",
+        "new": "          modelCalls: used.modelCalls + 1,",
+        "expected_occurrences": 1
+      }
+    },
+    {
+      "id": "M5-prose-treated-as-proof",
+      "rq": "RQ-03 AC4",
+      "file": "server/src/agent-runtime/loop.ts",
+      "line": 518,
+      "description": "Accept textual completion even when an external effect is unconfirmed (guard forced true); prose after a click must wrongly succeed instead of parking for reconciliation.",
+      "test_command": "bun test server/tests/agent-runtime-loop.integration.test.ts -t prosa de sucesso após clique sem prova estaciona sem repetir a ação",
+      "baseline_exit": 0,
+      "log": "/tmp/openbot-rq-sensor-rb5_sa4j/logs/mutant-M5-prose-treated-as-proof.log",
+      "verdict": "killed",
+      "exit": 1,
+      "diagnostic_excerpt": "bun test v1.3.12 (700fc117)\n\nserver/tests/agent-runtime-loop.integration.test.ts:\n903 |       { kind: \"final\", message: \"Publiquei o formulário com sucesso!\" },\n904 |     ]);\n905 |     const tools = toolCatalog();\n906 |     await drive(run.id, executorFor({ provider, tools }));\n907 |     const row = await repository.get(run.id);\n908 |     expect(row?.status).toBe(\"needs_reconciliation\");\n                              ^\nerror: expect(received).toBe(expected)\n\nExpected: \"needs_reconciliation\"\nReceived: \"succeeded\"\n\n      at <anonymous> (/private/tmp/openbot-rq-sensor-rb5_sa4j/server/tests/agent-runtime-loop.integration.test.ts:908:25)\n(fail) conclusão verificável e relatos roteados (RQ-03/RQ-04) > prosa de sucesso após clique sem prova estaciona sem repetir a ação [47.56ms]\n\n 0 pass\n 36 filtered out\n 1 fail\n 1 expect() calls\nRan 1 test across 1 file. [88.00ms]",
+      "mutation": {
+        "old": "        if (!mayHaveEffect) return { met: true, message: \"textual\" };",
+        "new": "        if (!mayHaveEffect || true) return { met: true, message: \"textual\" };",
+        "expected_occurrences": 1
+      }
+    },
+    {
+      "id": "M6-form-stale-plan-reuse",
+      "rq": "RQ-08 AC1",
+      "file": "server/src/agent-runtime/browser-tools.ts",
+      "line": 650,
+      "description": "Reuse the stale first plan instead of re-planning each field against its fresh snapshot: fields after the first are driven with the first assignment's ref/how. (Adjudicated 2026-09-12: this does NOT remove the independent structural guard fields.length/label/kind comparison, so the removed-field test still stops; the discriminating contract is the stable multi-field fill, whose per-field refs/snapshotIds must come from the current generation.)",
+      "test_command": "bun test server/tests/agent-browser-tools.test.ts -t fill_form preenche vários campos estáveis numa execução, sem devolver valores",
+      "baseline_exit": 0,
+      "log": "/tmp/openbot-rq-sensor-rb5_sa4j/logs/mutant-M6-form-stale-plan-reuse.log",
+      "verdict": "killed",
+      "exit": 1,
+      "diagnostic_excerpt": "bun test v1.3.12 (700fc117)\n\nserver/tests/agent-browser-tools.test.ts:\n510 |           ],\n511 |         },\n512 |       },\n513 |       context,\n514 |     );\n515 |     expect(outcome.ok).toBe(true);\n                             ^\nerror: expect(received).toBe(expected)\n\nExpected: true\nReceived: false\n\n      at <anonymous> (/private/tmp/openbot-rq-sensor-rb5_sa4j/server/tests/agent-browser-tools.test.ts:515:24)\n(fail) browser tools > fill_form preenche vários campos estáveis numa execução, sem devolver valores [4.57ms]\n\n 0 pass\n 35 filtered out\n 1 fail\n 1 expect() calls\nRan 1 test across 1 file. [88.00ms]",
+      "mutation": {
+        "old": "        const renewed = planFill(freshForm, { [item.label]: item.value });",
+        "new": "        const renewed = firstPlan;",
+        "expected_occurrences": 1
+      }
+    },
+    {
+      "id": "M7-model-pinned-preservation-removed",
+      "rq": "RQ-10 (F1: pin explícito igual ao default)",
+      "file": "server/src/agent-runtime/loop.ts",
+      "line": 753,
+      "description": "Revert to the F1 bug: choose the model only when it differs from the deployment default, discarding the explicit modelPinned flag; an explicit pin equal to the default must then lose its pin on resume and wrongly escalate to fallback.",
+      "test_command": "bun test server/tests/agent-runtime-loop.integration.test.ts -t preserva modelo igual ao padrão após retomada",
+      "baseline_exit": 0,
+      "log": "/tmp/openbot-rq-sensor-rb5_sa4j/logs/mutant-M7-model-pinned-preservation-removed.log",
+      "verdict": "killed",
+      "exit": 1,
+      "diagnostic_excerpt": "bun test v1.3.12 (700fc117)\n\nserver/tests/agent-runtime-loop.integration.test.ts:\n1310 |       run.id,\n1311 |       executorFor({ provider: routed, defaultModel: \"scripted-1\" }),\n1312 |     );\n1313 |     const row = await repository.get(run.id);\n1314 |     if (!row) throw new Error(\"The persisted run disappeared.\");\n1315 |     expect(row.status).toBe(status);\n                              ^\nerror: expect(received).toBe(expected)\n\nExpected: \"failed\"\nReceived: \"succeeded\"\n\n      at <anonymous> (/private/tmp/openbot-rq-sensor-rb5_sa4j/server/tests/agent-runtime-loop.integration.test.ts:1315:24)\n(fail) pin explícito no roteador real > preserva modelo igual ao padrão após retomada [53.30ms]\n\n 0 pass\n 36 filtered out\n 1 fail\n 2 expect() calls\nRan 1 test across 1 file. [92.00ms]",
+      "mutation": {
+        "old": "        const modeloEscolhido =\n          modelPinned === false\n            ? undefined\n            : modelPinned === true || loaded.model !== options.defaultModel\n              ? loaded.model\n              : undefined;",
+        "new": "        const modeloEscolhido =\n          loaded.model !== options.defaultModel ? loaded.model : undefined;",
+        "expected_occurrences": 1
+      }
+    }
+  ],
+  "checkout_porcelain_before": "",
+  "checkout_unchanged": true,
+  "summary": {
+    "total": 7,
+    "killed": 7,
+    "survived": 0,
+    "error": 0,
+    "inconclusive": 0,
+    "skipped": 0
+  },
+  "verdict": "PASS",
+  "reason": "all 7 applicable mutants killed by TEST assertions",
+  "finished": "2026-09-12T09:46:50-0300",
+  "db_dropped": true,
+  "snapshot_retained": "/tmp/openbot-rq-sensor-rb5_sa4j",
+  "logs_retained": "/tmp/openbot-rq-sensor-rb5_sa4j/logs",
+  "provenance": {
+    "author": "RegressionSensor (independent task agent)",
+    "executor": "Main",
+    "instrumentation_repair": "Main added subprocess stdout/stderr capture; mutation operators and assertions unchanged by Main",
+    "script_sha256": "662b10a201f5ca904167d1f2bf2c88035af937121d636a166d0c8c2acb1942ab"
+  }
+}
