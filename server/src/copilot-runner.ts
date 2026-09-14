@@ -19,8 +19,6 @@ import { localThreadHistory } from "./db/schema/core";
  */
 const PRELOAD_THREADS = 500;
 
-type StoredHistory = { messages: Message[] };
-
 function storedMessages(value: unknown): Message[] {
   if (typeof value !== "object" || value === null || !("messages" in value)) {
     return [];

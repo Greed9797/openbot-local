@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { PLACEHOLDER_BOT_ID } from "@/lib/agents/queries";
 
 /**
  * Which Bot the surface in front of you is driving.
@@ -17,9 +18,6 @@ import {
  * Tool handlers read the ref because a handler outlives the render that registered it. Components
  * read state because grants and renderers must re-render when the active Bot changes.
  */
-
-const DEFAULT_BOT_ID = "default";
-
 type BotHolder = { current: string };
 
 const ActiveBotContext = createContext<BotHolder | null>(null);
@@ -29,8 +27,8 @@ const ActiveBotValueContext = createContext<{
 } | null>(null);
 
 export function ActiveBotProvider({ children }: { children: ReactNode }) {
-  const holder = useRef<BotHolder>({ current: DEFAULT_BOT_ID });
-  const [botId, setBotId] = useState(DEFAULT_BOT_ID);
+  const holder = useRef<BotHolder>({ current: PLACEHOLDER_BOT_ID });
+  const [botId, setBotId] = useState(PLACEHOLDER_BOT_ID);
   const value = useRef({ botId, announce: setBotId });
   value.current = { botId, announce: setBotId };
 
@@ -55,8 +53,8 @@ export function useActiveBot(botId: string | undefined): void {
   useEffect(() => {
     if (!holder) return;
     const previous = holder.current;
-    holder.current = botId ?? DEFAULT_BOT_ID;
-    value?.announce(botId ?? DEFAULT_BOT_ID);
+    holder.current = botId ?? PLACEHOLDER_BOT_ID;
+    value?.announce(botId ?? PLACEHOLDER_BOT_ID);
     return () => {
       holder.current = previous;
       value?.announce(previous);
@@ -66,10 +64,10 @@ export function useActiveBot(botId: string | undefined): void {
 
 /** The holder itself, to be read inside a handler at the moment it runs. */
 export function useActiveBotHolder(): BotHolder {
-  return useContext(ActiveBotContext) ?? { current: DEFAULT_BOT_ID };
+  return useContext(ActiveBotContext) ?? { current: PLACEHOLDER_BOT_ID };
 }
 
 /** The active Bot as a value, for anything that has to re-render when it changes. */
 export function useActiveBotId(): string {
-  return useContext(ActiveBotValueContext)?.botId ?? DEFAULT_BOT_ID;
+  return useContext(ActiveBotValueContext)?.botId ?? PLACEHOLDER_BOT_ID;
 }

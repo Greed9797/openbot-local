@@ -2,12 +2,13 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 // Bun runs test files in one process: a second unconditional register throws.
 if (typeof document === "undefined") {
- GlobalRegistrator.register();
+  GlobalRegistrator.register();
 }
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import * as ActualCopilot from "@copilotkit/react-core/v2";
-import * as ActualQuery from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { useState } from "react";
 import type { Message } from "@ag-ui/core";
 
@@ -81,17 +82,26 @@ mock.module("@copilotkit/react-core/v2", () => ({
   useHumanInTheLoop: () => {},
 }));
 
-mock.module("@tanstack/react-query", () => ({
-  ...ActualQuery,
-  useQuery: () => ({ data: undefined }),
-  useMutation: () => ({ mutate() {} }),
-}));
+/*
+ * No `mock.module` for react-query: Bun applies every file's module mocks before running any test,
+ * so a `useQuery` stub here would answer `undefined` to unrelated files and fail them for a reason
+ * nothing in them explains. A real client over the stubbed `fetch` below gives the same empty data
+ * without reaching outside this file.
+ */
+function Providers({ children }: { children: ReactNode }) {
+  // Held in state so a `rerender` keeps the same cache instead of remounting every query.
+  const [client] = useState(
+    () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  );
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
 
-// `useActiveBot` is a no-op without its provider and the real
-// `useSkillCommands` answers [] through the mocked `useQuery` below, so both
-// run unmocked.
+// `useActiveBot` is a no-op without its provider, and the real `useSkillCommands` answers [] because
+// the stubbed `fetch` 404s anything that is not a thread read, so both run unmocked.
 const { ChannelChat } = await import("../src/components/channels/channel-chat");
-const { mergeHistoryMessages } = await import("../src/lib/copilot/history-merge");
+const { mergeHistoryMessages } = await import(
+  "../src/lib/copilot/history-merge"
+);
 const { stashFirstMessage } = await import(
   "../src/components/channels/transcript-messages"
 );
@@ -134,16 +144,20 @@ describe("restoring channel history before any send", () => {
     const gate = Promise.withResolvers<Response>();
     fetchHandlers.set("threadA", () => gate.promise);
     stashFirstMessage("chanA", "hello seed");
-    render(<ChannelChat channel={channel("chanA", "threadA")} runtimeAgentId="bot-1" />);
+    render(
+      <ChannelChat
+        channel={channel("chanA", "threadA")}
+        runtimeAgentId="bot-1"
+      />,
+      { wrapper: Providers },
+    );
 
     expect(await screen.findByText("Carregando histórico…")).toBeDefined();
     // No run while the restore is in flight.
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(runCalls).toHaveLength(0);
 
-    gate.resolve(
-      jsonMessages([{ id: "h1", role: "user", content: "old hi" }]),
-    );
+    gate.resolve(jsonMessages([{ id: "h1", role: "user", content: "old hi" }]));
     await waitFor(() => expect(runCalls).toHaveLength(1));
     expect(runCalls[0]?.snapshot.map((m) => m.id)).toContain("h1");
     expect(
@@ -155,14 +169,17 @@ describe("restoring channel history before any send", () => {
   });
 
   test("a failed restore keeps the seed and retry delivers it", async () => {
-    fetchHandlers.set(
-      "threadB",
-      () => Promise.resolve(new Response("down", { status: 503 })),
+    fetchHandlers.set("threadB", () =>
+      Promise.resolve(new Response("down", { status: 503 })),
     );
     stashFirstMessage("chanB", "hello seed");
 
     const { unmount } = render(
-      <ChannelChat channel={channel("chanB", "threadB")} runtimeAgentId="bot-1" />,
+      <ChannelChat
+        channel={channel("chanB", "threadB")}
+        runtimeAgentId="bot-1"
+      />,
+      { wrapper: Providers },
     );
 
     expect(
@@ -197,10 +214,17 @@ describe("restoring channel history before any send", () => {
     );
 
     const view = render(
-      <ChannelChat channel={channel("chanA", "threadA")} runtimeAgentId="bot-1" />,
+      <ChannelChat
+        channel={channel("chanA", "threadA")}
+        runtimeAgentId="bot-1"
+      />,
+      { wrapper: Providers },
     );
     view.rerender(
-      <ChannelChat channel={channel("chanB", "threadB")} runtimeAgentId="bot-1" />,
+      <ChannelChat
+        channel={channel("chanB", "threadB")}
+        runtimeAgentId="bot-1"
+      />,
     );
 
     await waitFor(() => expect(runCalls).toHaveLength(0));

@@ -1,5 +1,6 @@
 import { queryOptions } from "@tanstack/react-query";
 import { client, tryClient } from "@/lib/client";
+import { PLACEHOLDER_BOT_ID } from "@/lib/agents/queries";
 
 /** A component as the Admin surface sees it: its state, its versions and who is held back from it. */
 export type ComponentRecord = {
@@ -53,7 +54,9 @@ export function componentListQueryOptions() {
 export function agentComponentsQueryOptions(agentId: string | undefined) {
   return queryOptions({
     queryKey: componentKeys.forAgent(agentId ?? ""),
-    enabled: Boolean(agentId),
+    // The placeholder is not a Bot: asking about it is a 404, and a polled query turns that into a
+    // retry that never settles. Guarded here so no call site has to remember.
+    enabled: Boolean(agentId) && agentId !== PLACEHOLDER_BOT_ID,
     refetchInterval: 5_000,
     // Refetched when the tab is looked at again, so a grant changed on another screen is not waiting
     // out an interval before it shows.

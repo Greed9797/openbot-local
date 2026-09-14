@@ -921,7 +921,6 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
  `codex notice (${input.threadId}): ${item.message}`,
  );
  notices.push(item.message);
- continue;
  }
               }
             }

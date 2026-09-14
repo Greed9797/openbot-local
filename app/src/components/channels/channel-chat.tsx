@@ -97,9 +97,11 @@ export function ChannelChat({
   }, [isReady]);
   // Join the gateway socket and restore durable history for this thread identity.
   // A late answer for a previous thread never touches the current one.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `historyNonce` intentionally restarts a failed restore.
   useEffect(() => {
     if (!isReady) return;
-    const generation = (historyGeneration.current += 1);
+    historyGeneration.current += 1;
+    const generation = historyGeneration.current;
     let current = true;
     setHistoryStatus("loading");
     historyGate.current = Promise.withResolvers<void>();

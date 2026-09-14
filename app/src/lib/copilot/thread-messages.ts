@@ -17,18 +17,6 @@ export class ThreadHistoryError extends Error {
   }
 }
 
-type FlattenedToolCall = {
-  id?: unknown;
-  name?: unknown;
-  args?: unknown;
-};
-
-type CanonicalToolCall = {
-  id?: unknown;
-  type?: unknown;
-  function?: { name?: unknown; arguments?: unknown };
-};
-
 function argsToString(args: unknown): string {
   if (typeof args === "string") return args;
   if (args === undefined || args === null) return "{}";
@@ -54,7 +42,9 @@ export function normalizeToolCall(value: unknown): ToolCall {
   }
   const id = "id" in value ? value.id : undefined;
   if (typeof id !== "string" || id.length === 0) {
-    throw new ThreadHistoryError("Thread history holds a tool call without id.");
+    throw new ThreadHistoryError(
+      "Thread history holds a tool call without id.",
+    );
   }
   const fn = "function" in value ? value.function : undefined;
   const fnName =
@@ -67,7 +57,9 @@ export function normalizeToolCall(value: unknown): ToolCall {
         ? flatName
         : null;
   if (name === null || name.length === 0) {
-    throw new ThreadHistoryError("Thread history holds a tool call without name.");
+    throw new ThreadHistoryError(
+      "Thread history holds a tool call without name.",
+    );
   }
   const fnArgs =
     typeof fn === "object" && fn !== null && "arguments" in fn
@@ -90,7 +82,8 @@ function mergeToolCall(kept: ToolCall, next: ToolCall): ToolCall {
       : kept.function.arguments;
   const name =
     next.function.name.length > 0 ? next.function.name : kept.function.name;
-  if (args === kept.function.arguments && name === kept.function.name) return kept;
+  if (args === kept.function.arguments && name === kept.function.name)
+    return kept;
   return { id: kept.id, type: "function", function: { name, arguments: args } };
 }
 
@@ -114,7 +107,9 @@ function contentToMessage(
     const rawCalls: unknown = raw.toolCalls;
     if (rawCalls !== undefined) {
       if (!Array.isArray(rawCalls)) {
-        throw new ThreadHistoryError("Thread history holds invalid tool calls.");
+        throw new ThreadHistoryError(
+          "Thread history holds invalid tool calls.",
+        );
       }
       const merged = new Map<string, ToolCall>();
       for (const entry of rawCalls) {
@@ -132,7 +127,9 @@ function contentToMessage(
   if (role === "tool") {
     const toolCallId: unknown = raw.toolCallId;
     if (typeof toolCallId !== "string" || toolCallId.length === 0) {
-      throw new ThreadHistoryError("Thread history holds a tool result without call id.");
+      throw new ThreadHistoryError(
+        "Thread history holds a tool result without call id.",
+      );
     }
     base.toolCallId = toolCallId;
     // An empty-string result is a terminal answer, not a missing one.
@@ -163,7 +160,6 @@ function contentToMessage(
   return other;
 }
 
-
 /**
  * Stored history in canonical AG-UI shape, in memory only.
  *
@@ -193,15 +189,21 @@ export function normalizeThreadMessages(value: unknown): Message[] {
       throw new ThreadHistoryError("Thread history holds an invalid message.");
     }
     if (!("id" in entry) || !("role" in entry)) {
-      throw new ThreadHistoryError("Thread history holds a message without id.");
+      throw new ThreadHistoryError(
+        "Thread history holds a message without id.",
+      );
     }
     const id: unknown = entry.id;
     const role: unknown = entry.role;
     if (typeof id !== "string" || id.length === 0) {
-      throw new ThreadHistoryError("Thread history holds a message without id.");
+      throw new ThreadHistoryError(
+        "Thread history holds a message without id.",
+      );
     }
     if (typeof role !== "string" || role.length === 0) {
-      throw new ThreadHistoryError("Thread history holds a message without role.");
+      throw new ThreadHistoryError(
+        "Thread history holds a message without role.",
+      );
     }
     const fields: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(entry)) fields[key] = val;
@@ -238,7 +240,10 @@ export function normalizeThreadMessages(value: unknown): Message[] {
         merged.set(call.id, prior ? mergeToolCall(prior, call) : call);
       }
       // Both sides already validated; the spread only unions their tool calls.
-      const mergedMessage: Message = { ...next, toolCalls: [...merged.values()] };
+      const mergedMessage: Message = {
+        ...next,
+        toolCalls: [...merged.values()],
+      };
       byId.set(id, mergedMessage);
     } else {
       byId.set(id, next);
@@ -246,7 +251,8 @@ export function normalizeThreadMessages(value: unknown): Message[] {
   }
   return order.map((id) => {
     const message = byId.get(id);
-    if (!message) throw new ThreadHistoryError("Thread history holds an invalid message.");
+    if (!message)
+      throw new ThreadHistoryError("Thread history holds an invalid message.");
     return message;
   });
 }
@@ -282,7 +288,10 @@ export async function readThreadMessages(
   try {
     payload = await response.json();
   } catch {
-    throw new ThreadHistoryError("Thread history payload is invalid.", response.status);
+    throw new ThreadHistoryError(
+      "Thread history payload is invalid.",
+      response.status,
+    );
   }
   return normalizeThreadMessages(payload);
 }

@@ -1,6 +1,15 @@
 import { queryOptions } from "@tanstack/react-query";
 import { client, tryClient } from "@/lib/client";
 
+/**
+ * What a surface driving no Bot answers when asked which Bot it drives.
+ *
+ * Not a Bot id: no roster ever contains it, and the server answers 404 for it. It exists so a tool
+ * handler always has a string to send, and it lives here — with the rest of what a Bot id is —
+ * because a lookup keyed by a Bot id has to be able to recognise it.
+ */
+export const PLACEHOLDER_BOT_ID = "default";
+
 export type AgentVisibility = "public" | "private";
 
 /**
