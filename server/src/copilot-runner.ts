@@ -118,8 +118,22 @@ export class DurableAgentRunner extends InMemoryAgentRunner {
 
     const live = super.getThreadMessages(threadId);
     if (live.length > 0) return structuredClone(live);
+    return structuredClone(await this.durableMessages(threadId));
+  }
+
+  /**
+   * What the cache or the table holds for a thread, without waiting on its
+   * pending writes.
+   *
+   * Separate from `hydrate` because a write already queued on this thread
+   * reads through here from inside that queue, where waiting for the pending
+   * write would be waiting for itself. Anything outside the queue wants
+   * `hydrate`. Misses are never cached, so a failed read cannot settle into a
+   * phantom empty thread.
+   */
+  private async durableMessages(threadId: string): Promise<Message[]> {
     const cached = this.cache.get(threadId);
-    if (cached) return structuredClone(cached);
+    if (cached) return cached;
     let rows: { messages: unknown }[];
     try {
       rows = await this.database
@@ -158,6 +172,16 @@ export class DurableAgentRunner extends InMemoryAgentRunner {
     // Recorded so an operator reading the table can tell which Bot a thread belongs to. Optional on
     // the agent, so a Bot that does not carry one is stored as the empty string rather than refused.
     const agentId = request.agent.agentId ?? "";
+    /*
+     * The messages the request arrived with, held for the run that dies before
+     * the agent emits anything: the parent has recorded nothing by then, so the
+     * snapshot is empty and the person's message would go down with the
+     * failure — present in the sidebar, absent from the conversation after a
+     * reload. Cloned because the caller's array keeps moving.
+     */
+    const rescue = structuredClone(
+      request.persistedInputMessages ?? request.input.messages,
+    );
 
     /*
      * ONE subscription to the run, owned by durability rather than by the
@@ -182,13 +206,13 @@ export class DurableAgentRunner extends InMemoryAgentRunner {
          * would make a failure look like the turn never happened.
          */
         error: (error: unknown) => {
-          this.schedulePersist(threadId, agentId);
+          this.schedulePersist(threadId, agentId, rescue);
           if (!open) return;
           open = false;
           subscriber.error(error);
         },
         complete: () => {
-          this.schedulePersist(threadId, agentId);
+          this.schedulePersist(threadId, agentId, rescue);
           if (!open) return;
           open = false;
           subscriber.complete();
@@ -229,19 +253,64 @@ export class DurableAgentRunner extends InMemoryAgentRunner {
    * The snapshot is cloned at finalize time: the live array keeps moving and
    * the write happens later, so holding the reference would store whatever it
    * happens to hold when the write runs rather than what the run produced.
+   *
+   * An empty snapshot means the parent recorded nothing, which is the run that
+   * broke before its first event. There is no turn to store, but somebody did
+   * type something: `rescue` carries the request's own messages, and those are
+   * merged into the stored history rather than dropped with the failure.
    */
-  private schedulePersist(threadId: string, agentId: string): void {
+  private schedulePersist(
+    threadId: string,
+    agentId: string,
+    rescue: Message[] = [],
+  ): void {
     const snapshot = structuredClone(super.getThreadMessages(threadId));
     if (snapshot.length === 0) {
+      if (rescue.length > 0) {
+        this.queueWrite(threadId, () =>
+          this.writeRescued(threadId, agentId, rescue),
+        );
+      }
       return;
     }
 
     this.cache.set(threadId, structuredClone(snapshot));
+    this.queueWrite(threadId, () => this.writeRow(threadId, agentId, snapshot));
+  }
 
+  /**
+   * Store what a failed request carried, on top of what is already there.
+   *
+   * Reads the durable history instead of writing the request by itself: the row
+   * holds the whole thread, and a failure must not shorten it. Only messages
+   * the history lacks are appended, so retrying the same broken turn does not
+   * stack copies and a request that adds nothing writes nothing.
+   */
+  private async writeRescued(
+    threadId: string,
+    agentId: string,
+    rescue: Message[],
+  ): Promise<void> {
+    const durable = await this.durableMessages(threadId);
+    const known = new Set(durable.map((message) => message.id));
+    const added = rescue.filter((message) => !known.has(message.id));
+    if (added.length === 0) return;
+
+    const merged = [...durable, ...added];
+    this.cache.set(threadId, structuredClone(merged));
+    await this.writeRow(threadId, agentId, merged);
+  }
+
+  /**
+   * Chain one write behind this thread's earlier ones.
+   *
+   * Per-thread ordering is the point: a turn that finalizes later must not land
+   * underneath an older snapshot. A rejected write breaks this thread's chain,
+   * which is what `flush` reports on the way out.
+   */
+  private queueWrite(threadId: string, write: () => Promise<void>): void {
     const previous = this.pendingWrites.get(threadId) ?? Promise.resolve();
-    const next = previous.then(() =>
-      this.writeRow(threadId, agentId, snapshot),
-    );
+    const next = previous.then(write);
     this.pendingWrites.set(threadId, next);
     // Observed by `flush`; kept from surfacing as an unhandled rejection first.
     next.catch(() => {});

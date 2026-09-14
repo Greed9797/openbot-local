@@ -90,6 +90,8 @@ type FakeAgent = {
   runAgentCalls: number;
   gate: PromiseWithResolvers<void> | null;
   failWith: string | null;
+  /** Dies before emitting anything, the way an unreachable agent does. */
+  failBeforeEvents: string | null;
   runAgent: (
     input: unknown,
     callbacks: { onEvent: (event: unknown) => void },
@@ -103,9 +105,15 @@ function makeAgent(): FakeAgent {
     runAgentCalls: 0,
     gate: null,
     failWith: null,
+    failBeforeEvents: null,
     async runAgent(_input, callbacks) {
       agent.runAgentCalls += 1;
       if (agent.gate) await agent.gate.promise;
+      /*
+       * Before any event: the process on the other end refused the connection,
+       * so the run produces no RUN_STARTED and the parent records nothing.
+       */
+      if (agent.failBeforeEvents) throw new Error(agent.failBeforeEvents);
       // Like every real agent: the run opens with an event, so an
       // interruption later still finalizes a run rather than nothing.
       callbacks.onEvent({ event: { type: "RUN_STARTED" } });
@@ -279,5 +287,90 @@ describe("persisting a run past its watcher", () => {
     } as unknown as Database;
     const runner = new DurableAgentRunner(db);
     await expect(runner.hydrate(threadId())).rejects.toThrow();
+  });
+
+  test("a run that dies before its first event keeps the person's message", async () => {
+    const store = new Map<string, Row>();
+    const db = makeFakeDb(store, emptyControl());
+    const id = threadId();
+    db.forThread(id);
+    const agent = makeAgent();
+    agent.failBeforeEvents = "connection refused";
+    agent.messages.push(userMessage("u1", "consegue ver isso?"));
+    const runner = new DurableAgentRunner(db);
+    const done = Promise.withResolvers<void>();
+    runner
+      .run(runRequest(id, agent, `run-${id}`))
+      .subscribe({
+        error: () => done.resolve(),
+        complete: () => done.resolve(),
+      });
+    await done.promise;
+    await runner.flush();
+    expect(JSON.stringify(store.get(id)?.messages)).toContain(
+      "consegue ver isso?",
+    );
+  });
+
+  test("the rescued message is added to stored history, not written over it", async () => {
+    const store = new Map<string, Row>();
+    const id = threadId();
+    store.set(id, {
+      threadId: id,
+      agentId: "test-bot",
+      messages: {
+        messages: [
+          { id: "old-u", role: "user", content: "turno anterior" },
+          { id: "old-a", role: "assistant", content: "respondido" },
+        ],
+      },
+    });
+    const db = makeFakeDb(store, emptyControl());
+    db.forThread(id);
+    const agent = makeAgent();
+    agent.failBeforeEvents = "connection refused";
+    agent.messages.push(userMessage("new-u", "pergunta nova"));
+    const runner = new DurableAgentRunner(db);
+    const done = Promise.withResolvers<void>();
+    runner
+      .run(runRequest(id, agent, `run-${id}`))
+      .subscribe({
+        error: () => done.resolve(),
+        complete: () => done.resolve(),
+      });
+    await done.promise;
+    await runner.flush();
+    const stored = store.get(id)?.messages as { messages: Message[] };
+    expect(stored.messages.map((message) => message.id)).toEqual([
+      "old-u",
+      "old-a",
+      "new-u",
+    ]);
+  });
+
+  test("retrying the same failing turn stores one copy of the message", async () => {
+    const store = new Map<string, Row>();
+    const db = makeFakeDb(store, emptyControl());
+    const id = threadId();
+    db.forThread(id);
+    const agent = makeAgent();
+    agent.failBeforeEvents = "connection refused";
+    agent.messages.push(userMessage("u1", "tentativa"));
+    const runner = new DurableAgentRunner(db);
+    for (const attempt of [1, 2]) {
+      const done = Promise.withResolvers<void>();
+      runner
+        .run(runRequest(id, agent, `run-${attempt}-${id}`))
+        .subscribe({
+          error: () => done.resolve(),
+          complete: () => done.resolve(),
+        });
+      await done.promise;
+      await runner.flush();
+    }
+    const stored = store.get(id)?.messages as { messages: Message[] };
+    expect(
+      stored.messages.filter((message) => message.id === "u1"),
+    ).toHaveLength(1);
   });
 });
