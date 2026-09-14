@@ -516,18 +516,18 @@ export function codexArguments(
 }
 
 type CodexItem = {
- id?: string;
- type?: string;
- text?: string;
- message?: string;
- command?: string;
- aggregated_output?: string;
- /** `mcp_tool_call` names the tool; absent on older CLI output, where only arguments arrive. */
- tool?: string;
- /** The MCP server the call went to, when the CLI says. */
- server?: string;
- /** Presente em `mcp_tool_call`. É daqui que sai a página que o Bot realmente pediu para abrir. */
- arguments?: { url?: string } & Record<string, unknown>;
+  id?: string;
+  type?: string;
+  text?: string;
+  message?: string;
+  command?: string;
+  aggregated_output?: string;
+  /** `mcp_tool_call` names the tool; absent on older CLI output, where only arguments arrive. */
+  tool?: string;
+  /** The MCP server the call went to, when the CLI says. */
+  server?: string;
+  /** Presente em `mcp_tool_call`. É daqui que sai a página que o Bot realmente pediu para abrir. */
+  arguments?: { url?: string } & Record<string, unknown>;
 };
 /**
  * A Codex item as a tool call the transcript can draw, or null when it is not one.
@@ -538,26 +538,26 @@ type CodexItem = {
  * command inline turned the transcript into a terminal log and buried the answer.
  */
 export function toolCallOf(item: CodexItem): {
- name: string;
- args: unknown;
- result?: string;
+  name: string;
+  args: unknown;
+  result?: string;
 } | null {
- if (item.type === "command_execution" && item.command) {
- return {
- name: "Ferramenta chamada",
- args: { command: item.command },
- ...(item.aggregated_output
- ? { result: item.aggregated_output.slice(0, 4000) }
- : {}),
- };
- }
- if (item.type === "mcp_tool_call") {
- return {
- name: "Ferramenta chamada",
- args: item.arguments ?? {},
- };
- }
- return null;
+  if (item.type === "command_execution" && item.command) {
+    return {
+      name: "Ferramenta chamada",
+      args: { command: item.command },
+      ...(item.aggregated_output
+        ? { result: item.aggregated_output.slice(0, 4000) }
+        : {}),
+    };
+  }
+  if (item.type === "mcp_tool_call") {
+    return {
+      name: "Ferramenta chamada",
+      args: item.arguments ?? {},
+    };
+  }
+  return null;
 }
 
 type CodexEvent = {
@@ -637,34 +637,42 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
           delta: text,
         } as BaseEvent);
       };
- /**
- * One Codex item as AG-UI tool events, so the transcript draws a tool line instead of prose.
- *
- * Numbered per run because the CLI does not promise an id on every item, and a reused id would
- * pair a result with the wrong call. The result message id derives from the call id for the same
- * reason: two identifiers invented in two places drift apart.
- */
- let toolCalls = 0;
- const emitToolCall = (call: { name: string; args: unknown; result?: string }) => {
- toolCalls += 1;
- const toolCallId = `tc_${input.runId}_${toolCalls}`;
- send({
- type: "TOOL_CALL_START",
- toolCallId,
- toolCallName: call.name,
- parentMessageId: messageId,
- } as BaseEvent);
- send({ type: "TOOL_CALL_ARGS", toolCallId, delta: JSON.stringify(call.args) } as BaseEvent);
- send({ type: "TOOL_CALL_END", toolCallId } as BaseEvent);
- if (call.result !== undefined) {
- send({
- type: "TOOL_CALL_RESULT",
- messageId: `${toolCallId}-result`,
- toolCallId,
- content: call.result,
- } as BaseEvent);
- }
- };
+      /**
+       * One Codex item as AG-UI tool events, so the transcript draws a tool line instead of prose.
+       *
+       * Numbered per run because the CLI does not promise an id on every item, and a reused id would
+       * pair a result with the wrong call. The result message id derives from the call id for the same
+       * reason: two identifiers invented in two places drift apart.
+       */
+      let toolCalls = 0;
+      const emitToolCall = (call: {
+        name: string;
+        args: unknown;
+        result?: string;
+      }) => {
+        toolCalls += 1;
+        const toolCallId = `tc_${input.runId}_${toolCalls}`;
+        send({
+          type: "TOOL_CALL_START",
+          toolCallId,
+          toolCallName: call.name,
+          parentMessageId: messageId,
+        } as BaseEvent);
+        send({
+          type: "TOOL_CALL_ARGS",
+          toolCallId,
+          delta: JSON.stringify(call.args),
+        } as BaseEvent);
+        send({ type: "TOOL_CALL_END", toolCallId } as BaseEvent);
+        if (call.result !== undefined) {
+          send({
+            type: "TOOL_CALL_RESULT",
+            messageId: `${toolCallId}-result`,
+            toolCallId,
+            content: call.result,
+          } as BaseEvent);
+        }
+      };
 
       let failure: string | null = null;
 
@@ -881,47 +889,49 @@ async function runAgent(input: RunAgentInput): Promise<Response> {
                  * este processo tem de saber se a resposta que vem a seguir foi lida de uma página ou
                  * lembrada — as duas chegam como o mesmo `agent_message`.
                  */
- if (item.type === "mcp_tool_call") {
- usouFerramenta = true;
- const alvo =
- typeof item.arguments?.url === "string" ? item.arguments.url : undefined;
- if (alvo) abertos.push(...hostsEm(alvo));
- }
+                if (item.type === "mcp_tool_call") {
+                  usouFerramenta = true;
+                  const alvo =
+                    typeof item.arguments?.url === "string"
+                      ? item.arguments.url
+                      : undefined;
+                  if (alvo) abertos.push(...hostsEm(alvo));
+                }
 
- /*
- * Drawn as a tool line, not prose: the `$ command` text this replaced read as something the
- * Bot SAID, and a transcript full of it buried the answer. `toolCallOf` decides what counts;
- * anything it does not recognise falls through and stays invisible, as before.
- */
- const call = toolCallOf(item);
- if (call) {
- emitToolCall(call);
- continue;
- }
+                /*
+                 * Drawn as a tool line, not prose: the `$ command` text this replaced read as something the
+                 * Bot SAID, and a transcript full of it buried the answer. `toolCallOf` decides what counts;
+                 * anything it does not recognise falls through and stays invisible, as before.
+                 */
+                const call = toolCallOf(item);
+                if (call) {
+                  emitToolCall(call);
+                  continue;
+                }
 
- if (item.type === "agent_message" && item.text) {
- answered = true;
- say(item.text);
- continue;
- }
+                if (item.type === "agent_message" && item.text) {
+                  answered = true;
+                  say(item.text);
+                  continue;
+                }
 
- if (item.type === "error" && item.message) {
- /*
- * Held, not raised, and not written straight into the transcript.
- *
- * Codex emits recoverable problems as items and carries on — the routine one being a
- * notice that its own bundled skill descriptions were truncated, which arrives on
- * every first turn and is not addressed to the person in the chat. Ending the run here
- * would hide the answer that follows; printing it would put vendor housekeeping in
- * front of somebody asking a question. So it goes to the process log always, and into
- * the transcript only if the turn ends with nothing else to show — which is the case
- * where it is the only explanation the person has.
- */
- console.warn(
- `codex notice (${input.threadId}): ${item.message}`,
- );
- notices.push(item.message);
- }
+                if (item.type === "error" && item.message) {
+                  /*
+                   * Held, not raised, and not written straight into the transcript.
+                   *
+                   * Codex emits recoverable problems as items and carries on — the routine one being a
+                   * notice that its own bundled skill descriptions were truncated, which arrives on
+                   * every first turn and is not addressed to the person in the chat. Ending the run here
+                   * would hide the answer that follows; printing it would put vendor housekeeping in
+                   * front of somebody asking a question. So it goes to the process log always, and into
+                   * the transcript only if the turn ends with nothing else to show — which is the case
+                   * where it is the only explanation the person has.
+                   */
+                  console.warn(
+                    `codex notice (${input.threadId}): ${item.message}`,
+                  );
+                  notices.push(item.message);
+                }
               }
             }
 

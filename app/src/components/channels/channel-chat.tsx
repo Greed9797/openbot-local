@@ -350,7 +350,6 @@ export function ChannelChat({
     // Keep `seed` in state; transcriptMessages hides it as soon as agent messages exist.
   }, [historyStatus]);
 
-
   return (
     <ConversationProvider ask={askFromComponent}>
       <ConversationView
