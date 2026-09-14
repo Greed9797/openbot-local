@@ -860,6 +860,11 @@ async function listarModelos(): Promise<{
 
 if (import.meta.main) {
   /*
+   * O CLI é validado antes de servir: `adapterFor` recusa um `AGENT_CLI` desconhecido aqui, no
+   * boot, e não no primeiro turno — com um `.env` antigo o container nem sobe healthy.
+   */
+  adapterFor(CLI);
+  /*
    * Antes de servir: o primeiro turno pode chegar a qualquer instante, e um turno que chega antes da
    * credencial existe falha com "not logged in" — que parece problema de conta e é problema de
    * ordem.

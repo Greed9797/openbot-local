@@ -80,6 +80,7 @@ ou seja, a análise pode usar um modelo diferente do da tarefa. Sem nenhum com v
 1. `agentModels(env)` (`config.ts`) constrói a lista na ordem: `openai-responses`
    (se `AGENT_OPENAI_API_KEY` ou `OPENAI_API_KEY`), `anthropic` (idem), `gemini`
    (`AGENT_GEMINI_API_KEY`, `GEMINI_API_KEY` ou `GOOGLE_API_KEY`), `local` (se
+   `AGENT_LOCAL_BASE_URL`), e os delegados — `codex` (se `AGENT_CODEX_URL` ou
    `MANAGED_AGENT_AG_UI_URL`), `opencode` (`AGENT_OPENCODE_URL`).
 2. `AGENT_DEFAULT_PROVIDER` ou `providers[0]?.id` ou `"codex"`; `AGENT_DEFAULT_MODEL`
    ou o modelo desse provedor. `AGENT_DEFAULT_PROVIDER` apontando para id não configurado
@@ -134,10 +135,8 @@ verificação manual — nenhum caminho automático o faz.
   regex, sem teste de canvas.
 - Codex delegado: exige o serviço AG-UI de pé (`AGENT_CODEX_URL`); comportamento do
   `codex exec` real só se comprova no ambiente alvo.
-- MiMo Code: o adaptador é provado no fio (argv, config, eventos), sem o CLI instalado aqui.
-  O OpenCode, que é o mesmo tronco, foi medido de ponta a ponta — CLI local dirigindo o
-  navegador da VPS pelo gateway, com a linha `computer.action_allowed` nomeando o Bot e a
-  pessoa da declaração assinada.
+- OpenCode: medido de ponta a ponta — CLI local dirigindo o navegador da VPS pelo gateway, com
+  a linha `computer.action_allowed` nomeando o Bot e a pessoa da declaração assinada.
 - Modelo por turno no serviço do Codex: o `forwardedProps.model` vai, e o serviço do Codex
   não lê esse campo — quem honra é o `agent-cli`. Escolher modelo para um Bot que roda pelo
   Codex não muda nada lá dentro (o catálogo dele lista um modelo só, então a tela não oferece

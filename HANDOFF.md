@@ -64,16 +64,15 @@ tocar no laço, porque o modelo é dado de configuração e o navegador é o mes
 
 | Onde | O quê |
 |---|---|
-| `agent-cli/` | um serviço que entrega a tarefa inteira a um CLI (OpenCode, MiMo Code); o CLI recebe o navegador pelo `shared/mcp-computer.ts`, então política e auditoria continuam valendo |
+| `agent-cli/` | um serviço que entrega a tarefa inteira ao OpenCode; o CLI recebe o navegador pelo `shared/mcp-computer.ts`, então política e auditoria continuam valendo |
 | `server/src/agent-runtime/providers/gemini.ts` | Gemini pela API nativa (imagem como `inlineData`) |
-| `transport: "delegated"` | o transporte que era `codex` e passou a servir três ids: `codex`, `opencode`, `mimo` |
+| `transport: "delegated"` | o transporte que era `codex` e passou a servir dois ids: `codex`, `opencode` |
 | `tools/skills.sh` | leva catálogos de skills para os dois motores (Codex e OpenCode), fora do repositório de propósito |
 | `GET /api/models` | o que o runtime realmente alcança: id, modelo, transporte, `capabilities` e o padrão — a conferência do deploy |
 
 O que ficou medido: o OpenCode dirigiu o navegador da VPS pelo gateway (linha
 `computer.action_allowed` nomeando o Bot e a pessoa da declaração assinada), e o catálogo de skills
-chegou aos dois motores. O que **não** foi: MiMo Code real (só o fio, sem o CLI instalado), Gemini
-pago e o teste de canvas.
+chegou aos dois motores. O que **não** foi: Gemini pago e o teste de canvas.
 
 Uma armadilha corrigida aqui e vale a pena saber: o adaptador delegado presumia `vision: true` por
 conta própria, então `AGENT_*_VISION=off` era uma linha de `.env` sem efeito — e a análise de tela
