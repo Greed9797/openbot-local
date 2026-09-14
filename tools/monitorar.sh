@@ -13,8 +13,8 @@ set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 MODO="${1:-smoke}"
-REGISTRO="/opt/openbot-local/logs"
-mkdir -p "$REGISTRO"
+REGISTRO="${REGISTRO:-/opt/openbot-local/logs}"
+mkdir -p "$REGISTRO" || { echo "nao consegui criar $REGISTRO" >&2; exit 1; }
 
 quando=$(date "+%Y-%m-%d %H:%M")
 arquivo="$REGISTRO/$MODO.log"
@@ -26,18 +26,25 @@ case "$MODO" in
       # Limites que antecedem o corte da Hostinger: load 6 = 1.5x os 4 vCPU; disco 80% foi o
       # patamar medido antes do apagão (82%). Falhar aqui é aviso, não defeito — o cron registra
       # SOBRECARGA no log e alguém olha antes do throttle.
-      carga1=$(awk '{print $1}' /proc/loadavg)
-      uso_disco=$(df -P / | awk 'NR==2 {gsub(/%/, ""); print $5}')
-      saida="load1=$carga1 disco=${uso_disco}%"
-      estado=0
-      # awk para decimal: load pode ser 6.5, e [ ... -gt ] não compara ponto flutuante.
-      if awk "BEGIN {exit !($carga1 > 6.0)}"; then
-        saida="$saida SOBRECARGA-DE-CPU (limite 6.0)"
+      carga1=$(awk '{print $1}' /proc/loadavg 2>/dev/null || true)
+      uso_disco=$(df -P / 2>/dev/null | awk 'NR==2 {gsub(/%/, ""); print $5}' || true)
+      # Fail-closed: medição ilegível é falha, não ok. Um monitor que retorna ok cego anula
+      # o alerta pré-throttle — melhor acordar alguém à toa que dormir no apagão.
+      if ! [[ "$carga1" =~ ^[0-9]+(\.[0-9]+)?$ ]] || ! [[ "$uso_disco" =~ ^[0-9]+$ ]]; then
+        saida="MEDICAO-ILEGIVEL load1='$carga1' disco='$uso_disco'"
         estado=1
-      fi
-      if [ "$uso_disco" -gt 80 ]; then
-        saida="$saida SOBRECARGA-DE-DISCO (limite 80%)"
-        estado=1
+      else
+        saida="load1=$carga1 disco=${uso_disco}%"
+        estado=0
+        # awk para decimal: load pode ser 6.5, e [ ... -gt ] não compara ponto flutuante.
+        if awk "BEGIN {exit !($carga1 > 6.0)}"; then
+          saida="$saida SOBRECARGA-DE-CPU (limite 6.0)"
+          estado=1
+        fi
+        if [ "$uso_disco" -gt 80 ]; then
+          saida="$saida SOBRECARGA-DE-DISCO (limite 80%)"
+          estado=1
+        fi
       fi
       ;;
     *)       echo "modo desconhecido: $MODO" >&2; exit 2 ;;
