@@ -21,9 +21,9 @@ import {
 } from "@/components/ui/message-scroller";
 import { markdownComponents } from "@/lib/markdown";
 import { EASE_OUT, ENTRANCE_SECONDS } from "@/lib/motion";
-import { readToolName } from "@/lib/plugins/tool-name";
+import { toVisibleChatItems, type VisibleChatItem } from "./chat-messages";
 import { asText, forDisplay, REFUSAL_MARKER } from "@/lib/plugins/tool-result";
-import { toVisibleChatItems } from "./chat-messages";
+import { readToolName } from "@/lib/plugins/tool-name";
 import type { QueuedMessage } from "./composer";
 import { ToolRenderBoundary } from "./tool-boundary";
 import { ToolLine } from "./tool-line";
@@ -429,12 +429,14 @@ const TranscriptMessage = memo(function TranscriptMessage({
  * parent cannot guarantee is the classic way to make a memo boundary useless.
  */
 const TranscriptToolCall = memo(function TranscriptToolCall({
+  active,
   delay,
   toolCallId,
   name,
   args,
   result,
 }: {
+  active: boolean;
   delay: number;
   toolCallId: string;
   name: string;
@@ -477,7 +479,7 @@ const TranscriptToolCall = memo(function TranscriptToolCall({
          * What was called, shimmering until its result arrives, and then the server's own words
          * drawn the way a Bot's prose is drawn.
          */}
-        {drawn ?? <ServerToolLine name={name} result={result} />}
+        {drawn ?? <ServerToolLine active={active} name={name} result={result} />}
       </ToolRenderBoundary>
     </Arriving>
   );
@@ -489,7 +491,15 @@ const TranscriptToolCall = memo(function TranscriptToolCall({
  * Named from the reader's side: what was done, against which server, with the server's own words
  * behind a disclosure. The identifier the model was offered never reaches the screen.
  */
-function ServerToolLine({ name, result }: { name: string; result?: string }) {
+function ServerToolLine({
+  active,
+  name,
+  result,
+}: {
+  active: boolean;
+  name: string;
+  result?: string;
+}) {
   const { label, detail } = readToolName(name);
   /*
    * A refusal is not a result, and must not read like one.
@@ -512,7 +522,7 @@ function ServerToolLine({ name, result }: { name: string; result?: string }) {
       {...(detail ? { detail } : {})}
       label={label}
       refused={refused}
-      running={result === undefined}
+      running={result === undefined && active}
     >
       {body ? (
         <Streamdown components={markdownComponents}>
@@ -521,6 +531,64 @@ function ServerToolLine({ name, result }: { name: string; result?: string }) {
       ) : null}
     </ToolLine>
   );
+}
+type ActivityTool = Extract<VisibleChatItem, { kind: "tool" }>;
+
+/**
+ * A run of consecutive tool calls as one collapsible block.
+ *
+ * One Bot turn can call a dozen tools, and a line per call buries the answer between them. The
+ * block keeps a single-line rhythm in the transcript; the lines themselves still draw through
+ * `TranscriptToolCall`, so nothing about one call changes. Open while any call is in flight,
+ * collapsed once the run settles — `open` only while active, so afterwards the reader owns it.
+ */
+function ActivityGroup({
+ delayFor,
+ index,
+ tools,
+ total,
+}: {
+ delayFor: (id: string, index: number, total: number) => number;
+ index: number;
+ tools: ActivityTool[];
+ total: number;
+}) {
+ const active = tools.some((tool) => tool.active);
+ return (
+ <details
+ className="my-1.5 min-w-0"
+ open={active ? true : undefined}
+ >
+ <summary className="flex cursor-pointer list-none items-baseline gap-1.5">
+ <span
+ aria-hidden
+ className="tool-line-chevron shrink-0 text-xs text-muted-foreground transition-transform"
+ >
+ ▸
+ </span>
+ <span
+ className={`text-sm text-muted-foreground ${active ? "tool-line-running" : ""}`}
+ >
+ {tools.length === 1
+ ? "1 ferramenta chamada"
+ : `${tools.length} ferramentas chamadas`}
+ </span>
+ </summary>
+ <div className="border-l pl-3">
+ {tools.map((tool) => (
+ <TranscriptToolCall
+ active={tool.active}
+ args={tool.args}
+ delay={delayFor(tool.id, index, total)}
+ key={tool.id}
+ name={tool.name}
+ result={tool.result}
+ toolCallId={tool.toolCallId}
+ />
+ ))}
+ </div>
+ </details>
+ );
 }
 
 export function ChatTranscript({
@@ -541,7 +609,7 @@ export function ChatTranscript({
    * cost was markdown parsing and chart SVGs, and those are skipped by the memoised children below,
    * which is where the 25x came from. This runs per render and is not worth guarding.
    */
-  const items = toVisibleChatItems(messages);
+  const items = toVisibleChatItems(messages, busy);
 
   /*
    * ONLY WHILE THERE IS NOTHING ELSE TO LOOK AT. Once a reply starts streaming, or a tool line
@@ -578,47 +646,86 @@ export function ChatTranscript({
       delays.settle();
     }
   }, [hasItems, delays]);
+ /*
+ * Consecutive tool calls fold into one collapsible block; anything else stands alone. A lone
+ * tool call keeps its own line — wrapping one call in a disclosure would add a click to hide
+ * nothing. Built per render like `items` itself, for the same mutated-array reason.
+ */
+ type TranscriptBlock =
+ | { kind: "single"; index: number; item: VisibleChatItem }
+ | { kind: "activity"; index: number; tools: ActivityTool[] };
+ const blocks: TranscriptBlock[] = [];
+ for (const [index, item] of items.entries()) {
+ const last = blocks.at(-1);
+ if (item.kind === "tool" && last?.kind === "activity") {
+ last.tools.push(item);
+ } else if (
+ item.kind === "tool" &&
+ last?.kind === "single" &&
+ last.item.kind === "tool"
+ ) {
+ blocks[blocks.length - 1] = {
+ kind: "activity",
+ index: last.index,
+ tools: [last.item, item],
+ };
+ } else {
+ blocks.push({ kind: "single", index, item });
+ }
+ }
 
-  return (
-    <MessageScrollerProvider autoScroll scrollPreviousItemPeek={48}>
-      <MessageScroller>
-        <MessageScrollerViewport>
-          <MessageScrollerContent
-            aria-busy={busy}
-            className="mx-auto w-full max-w-2xl px-4 py-6"
-          >
-            {/*
-             * The memo boundary is INSIDE the scroller item, not around it. `MessageScrollerItem`
-             * reads the scroller's context, so it re-renders whenever the scroll state moves and
-             * memoising it would achieve nothing. Its child is what costs — markdown parsing and
-             * chart SVGs — and that is what is skipped.
-             */}
-            {items.map((item, index) =>
-              item.kind === "tool" ? (
-                <MessageScrollerItem key={item.id} messageId={item.id}>
-                  <TranscriptToolCall
-                    args={item.toolCall.function.arguments}
-                    delay={delays.delayFor(item.id, index, items.length)}
-                    name={item.toolCall.function.name}
-                    result={item.result}
-                    toolCallId={item.toolCall.id}
-                  />
-                </MessageScrollerItem>
-              ) : (
-                <MessageScrollerItem
-                  key={item.id}
-                  messageId={item.id}
-                  scrollAnchor={item.role === "user"}
-                >
-                  <TranscriptMessage
-                    commandNames={commandNames}
-                    delay={delays.delayFor(item.id, index, items.length)}
-                    role={item.role}
-                    text={item.text}
-                  />
-                </MessageScrollerItem>
-              ),
-            )}
+ return (
+ <MessageScrollerProvider autoScroll scrollPreviousItemPeek={48}>
+ <MessageScroller>
+ <MessageScrollerViewport>
+ <MessageScrollerContent
+ aria-busy={busy}
+ className="mx-auto w-full max-w-2xl px-4 py-6"
+ >
+ {/*
+ * The memo boundary is INSIDE the scroller item, not around it. `MessageScrollerItem`
+ * reads the scroller's context, so it re-renders whenever the scroll state moves and
+ * memoising it would achieve nothing. Its child is what costs — markdown parsing and
+ * chart SVGs — and that is what is skipped.
+ */}
+ {blocks.map((block) =>
+ block.kind === "activity" ? (
+ <MessageScrollerItem
+ key={block.tools[0]?.id ?? `activity-${block.index}`}
+ messageId={block.tools[0]?.id ?? `activity-${block.index}`}
+ >
+ <ActivityGroup
+ delayFor={(id, index) => delays.delayFor(id, index, items.length)}
+ index={block.index}
+ tools={block.tools}
+ total={items.length}
+ />
+ </MessageScrollerItem>
+ ) : (
+ <MessageScrollerItem
+ key={block.item.id}
+ messageId={block.item.id}
+ scrollAnchor={block.item.kind === "text" && block.item.role === "user"}
+ >
+ {block.item.kind === "tool" ? (
+ <TranscriptToolCall
+ active={block.item.active}
+ args={block.item.args}
+ delay={delays.delayFor(block.item.id, block.index, items.length)}
+ name={block.item.name}
+ result={block.item.result}
+ toolCallId={block.item.toolCallId}
+ />
+ ) : (
+ <TranscriptMessage
+ commandNames={commandNames}
+ delay={delays.delayFor(block.item.id, block.index, items.length)}
+ role={block.item.role}
+ text={block.item.text}
+ />
+ )}
+ </MessageScrollerItem>
+ ))}
             {/*
              * Outside the item list, so neither of these is a message. Each has no id, is never
              * anchored, and is gone by the next turn — giving one a `MessageScrollerItem` would ask

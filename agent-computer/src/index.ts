@@ -1,7 +1,9 @@
+import { access, constants } from "node:fs/promises";
 import { serve } from "bun";
 import type { Page } from "playwright";
 import { parseAriaSnapshot, type SnapshotElement } from "./aria-snapshot";
-import { isOpenPath, matchesToken, offeredToken } from "./authorisation";
+import { describeActiveElement, runPageAudit } from "./audit";
+import { isOpenPath, matchesToken, mayServeBot, offeredToken, ownerBotId } from "./authorisation";
 import {
   type Control,
   ControlError,
@@ -24,6 +26,7 @@ import {
   startScreencast,
 } from "./screencast";
 import { createShell } from "./shell";
+import { createTelemetry, type Telemetry } from "./telemetry";
 import {
   createWorkspace,
   WorkspaceFileError,
@@ -133,9 +136,16 @@ export type BotSession = {
   control: Control;
   /** This Bot's snapshot generation. See the note above on staleness. */
   snapshotId: number;
+  /**
+   * Quem é o dono da tela agora: a identidade do socket que está assistindo, e não um booleano.
+   *
+   * Um socket novo assume esta identidade; o antigo a confere antes de parar o cast, de re-anexar ou
+   * de reagir à própria falha de envio. Sem ela, o `close` de uma conexão antiga chega depois do open
+   * da nova e derruba o stream recém-aberto — a tela ficava preta justamente em quem reconectava.
+   */
+  viewerOwner?: unknown;
   /** The one live screen viewer for this Bot, if a person is watching. */
   viewer?: {
-    socket: unknown;
     cast: Screencast;
     /** Stops the loop that keeps the cast pointed at whatever page the Bot is actually on. */
     follow?: ReturnType<typeof setInterval>;
@@ -186,8 +196,13 @@ const workspace = createWorkspace(process.env.WORKSPACE_DIR ?? "/workspace");
  *
  * `chromium.launch()` gives a fresh anonymous profile every time. Persistent profiles live on a
  * mounted volume so sign-in state survives the container.
+ *
+ * O caminho fica numa constante porque não é só de `createProfiles`: o `/health` precisa conferir o
+ * mesmo diretório, e dois `?? "/profiles"` espalhados divergem no dia em que um dos dois for
+ * configurado e o outro não.
  */
-const profiles = createProfiles(process.env.PROFILES_DIR ?? "/profiles");
+const PROFILES_DIR = process.env.PROFILES_DIR ?? "/profiles";
+const profiles = createProfiles(PROFILES_DIR);
 // Rooted in the same workspace the file tools use, so a command and a written file see one
 // directory rather than two.
 const shell = createShell(process.env.WORKSPACE_DIR ?? "/workspace");
@@ -199,8 +214,21 @@ const shell = createShell(process.env.WORKSPACE_DIR ?? "/workspace");
  */
 const DEFAULT_BOT_ID = process.env.COMPUTER_BOT_ID ?? "shared";
 
+/** One telemetry collector per Bot, attached to whatever page is current. */
+const telemetryByBot = new Map<string, Telemetry>();
+
 async function currentPage(botId: string): Promise<Page> {
-  return profiles.page(botId);
+  const page = await profiles.page(botId);
+  let telemetry = telemetryByBot.get(botId);
+  if (!telemetry) {
+    telemetry = createTelemetry();
+    telemetryByBot.set(botId, telemetry);
+  }
+  // The blackout flag is read per event, so a secret requested after attach still silences capture.
+  telemetry.attach(page, () =>
+    Boolean(sessionFor(botId).control.get().secretWanted),
+  );
+  return page;
 }
 
 /**
@@ -282,15 +310,41 @@ function json(body: unknown, status = 200): Response {
 }
 
 /**
+ * Whether this process can actually use the profile root.
+ *
+ * Sem isto o `/health` responde ok com o volume de perfis pertencendo a outro dono, que é exatamente
+ * o estado em que `launchPersistentContext` falha com EACCES: o processo está de pé, respondendo, e
+ * sem navegador nenhum. Um orquestrador que só pergunta "está vivo?" mantém esse container no ar
+ * para sempre.
+ *
+ * O acesso é conferido pelo próprio processo, sem abrir Chromium e sem criar perfil: um probe que
+ * inicia o navegador a cada dez segundos transformaria o monitor na carga que ele vigia.
+ */
+async function profileStorageReady(): Promise<boolean> {
+  return access(PROFILES_DIR, constants.W_OK | constants.X_OK).then(
+    () => true,
+    () => false,
+  );
+}
+
+/**
  * One live viewer at a time per Bot, so a reconnect replaces rather than stacks, and two people
  * watching two different Bots do not fight over one cast.
  *
  * A second cast on the same page would have Chrome encoding every frame twice and both sockets acking
  * independently, which stalls both. One person drives; one cast.
  */
-async function stopViewer(session: BotSession): Promise<void> {
+async function stopViewer(session: BotSession, owner?: unknown): Promise<void> {
+  /*
+   * `owner` é quem pediu a parada. Omitido, é a troca de dono: o socket que chegou acabou de assumir
+   * a identidade, e a tela anterior sai como parte da conexão nova. Informado, só o dono da vez
+   * consegue parar — um socket já substituído passa por aqui no próprio `close` e não pode levar
+   * junto a tela que subiu no lugar dele.
+   */
+  if (owner !== undefined && session.viewerOwner !== owner) return;
   const current = session.viewer;
   session.viewer = undefined;
+  session.viewerOwner = undefined;
   if (current?.follow) clearInterval(current.follow);
   await current?.cast.stop();
 }
@@ -314,15 +368,24 @@ serve<StreamData>({
   websocket: {
     async open(ws) {
       const session = sessionFor(ws.data.botId);
+      /*
+       * A identidade é assumida antes do primeiro await. Deste ponto em diante o socket anterior já
+       * não é o dono, então o `close` dele — que costuma chegar depois deste open — não para esta tela.
+       */
+      session.viewerOwner = ws;
       try {
+        // A tela que estava aqui sai como parte desta conexão; a identidade volta para este socket
+        // logo em seguida, porque quem parou foi o dono novo.
         await stopViewer(session);
+        session.viewerOwner = ws;
 
         const send = (frame: unknown) => {
           // A closed socket starts a fresh cast on the next connection.
           try {
             ws.send(JSON.stringify(frame));
           } catch {
-            void stopViewer(session);
+            // Só o dono para a tela: um envio que falha no socket antigo não derruba o novo.
+            void stopViewer(session, ws);
           }
         };
 
@@ -331,23 +394,63 @@ serve<StreamData>({
          * underneath us without a listener per page.
          */
         let casting: Page | undefined;
+        let generation = 0;
+        let attaching = false;
         const attach = async () => {
+          if (attaching) return;
           const target = await currentPage(ws.data.botId);
+          // Depois do await: se outro socket assumiu, esta conexão não monta mais nada.
+          if (session.viewerOwner !== ws) return;
           if (target === casting) return;
+          if (attaching) return;
+          attaching = true;
           const previous = session.viewer;
-          const cast = await startScreencast(target, send);
-          casting = target;
-          session.viewer = { socket: ws, cast, follow: previous?.follow };
-          // The old cast stops after the replacement is running, so the screen does not go blank.
-          await previous?.cast.stop().catch(() => undefined);
+          try {
+            // A geração sobe antes do substituto: frames atrasados do cast antigo morrem aqui.
+            const mine = ++generation;
+            const emit = (message: unknown) => {
+              if (session.viewerOwner !== ws || mine !== generation) return;
+              send(message);
+            };
+            // O marcador pertencia à página antiga; apaga antes da nova pintar.
+            emit({ type: "pointer", event: "reset" });
+            const cast = await startScreencast(target, emit, {
+              isAgentDriving: () => !session.control.humanMayDrive(),
+            });
+            /*
+             * E de novo depois deste await, porque montar um cast custa: se o dono mudou nesse
+             * meio-tempo, o cast nasceu órfão e é fechado aqui, sem chegar a ser registrado.
+             */
+            if (session.viewerOwner !== ws || mine !== generation) {
+              await cast.stop().catch(() => undefined);
+              return;
+            }
+            casting = target;
+            session.viewer = { cast, follow: previous?.follow };
+            // The old cast stops after the replacement is running, so the screen does not go blank.
+            await previous?.cast.stop().catch(() => undefined);
+          } finally {
+            attaching = false;
+          }
         };
 
         await attach();
         const follow = setInterval(() => {
+          // Um socket substituído para o próprio timer, em vez de re-anexar cast num socket fechado.
+          if (session.viewerOwner !== ws) {
+            clearInterval(follow);
+            return;
+          }
           void attach().catch(() => undefined);
         }, FOLLOW_INTERVAL_MS);
-        if (session.viewer) session.viewer.follow = follow;
+        if (session.viewerOwner === ws && session.viewer) {
+          session.viewer.follow = follow;
+        } else {
+          clearInterval(follow);
+        }
       } catch (error) {
+        // Esta conexão não subiu: libera a tela se ainda for dela e devolve o erro ao socket.
+        await stopViewer(session, ws).catch(() => undefined);
         ws.send(
           JSON.stringify({
             type: "error",
@@ -398,7 +501,8 @@ serve<StreamData>({
     },
 
     async close(ws) {
-      await stopViewer(sessionFor(ws.data.botId));
+      // Se este socket já foi substituído, a tela no ar é do dono novo — e continua de pé.
+      await stopViewer(sessionFor(ws.data.botId), ws);
     },
   },
   async fetch(request, server) {
@@ -426,7 +530,22 @@ serve<StreamData>({
 
     // Resolved once per request. Everything below that touches a browser, a takeover or a snapshot
     // goes through this Bot's session, so there is no path where one Bot's call reaches another's.
-    const botId = botIdOf(request);
+    //
+    // And on a computer that belongs to somebody, the name has to be theirs. The sessions are keyed
+    // by Bot, but keying routes and does not refuse: without this check a call misrouted by the
+    // server would drive this Bot's logged-in browser under another Bot's name, and the audit row
+    // would bless it.
+    const owner = ownerBotId();
+    const claimed =
+      request.headers.get("x-openbot-bot-id")?.trim() ||
+      (url.pathname === "/stream"
+        ? (url.searchParams.get("bot")?.trim() ?? "")
+        : "") ||
+      null;
+    if (!mayServeBot(owner, claimed)) {
+      return json({ error: "This computer belongs to another Bot." }, 403);
+    }
+    const botId = claimed ?? owner;
     const session = sessionFor(botId);
 
     if (url.pathname === "/stream") {
@@ -434,19 +553,17 @@ serve<StreamData>({
        * The socket carries the Bot in the query because it cannot do it in a header. Every other call here names
        * its Bot in `x-openbot-bot-id`, but a websocket client sends no custom headers on the upgrade,
        * so the stream, and only the stream, also accepts the Bot as a query parameter. The header
-       * still wins where there is one.
+       * still wins where there is one. Either way it already passed the owner check above, so the
+       * upgrade can only ever show this computer's own Bot.
        */
-      const streamBotId = botIdOf(request, url.searchParams.get("bot"));
-      if (server.upgrade(request, { data: { botId: streamBotId } }))
+      if (server.upgrade(request, { data: { botId } }))
         return undefined as unknown as Response;
       return json({ error: "Expected a WebSocket upgrade." }, 400);
     }
-
     /*
      * `/live` stays absent. A page served by this process can only be opened by putting the secret in
      * a URL, where it lands in history and logs. The React app is the guarded way to watch a Bot.
      */
-
     // Who has the wheel. Polled by the surface alongside the screen, so the person sees the Bot ask
     // for help without having to reload anything.
     if (url.pathname === "/control" && request.method === "GET") {
@@ -471,7 +588,10 @@ serve<StreamData>({
         snapshotId?: unknown;
       } | null;
       try {
-        return json(session.control.requestSecret(body ?? {}));
+        const answer = session.control.requestSecret(body ?? {});
+        // The window opens here: anything buffered so far must not straddle the handoff.
+        telemetryByBot.get(botId)?.clear();
+        return json(answer);
       } catch (error) {
         if (error instanceof ControlRequestError) {
           return json({ error: error.message }, 400);
@@ -583,16 +703,22 @@ serve<StreamData>({
 
     if (url.pathname === "/health") {
       const [profile] = profiles.summary([botId]);
-      return json({
-        status: "ok",
-        // `browser` kept as it was: it is in the published contract and start.sh reads it.
-        browser: profile?.running ?? false,
-        profile,
-        // Which Bot this computer can prove it is, when the deployment runs SPIRE. Null is a
-        // deployment without it, not a failure, and it is reported rather than omitted so the
-        // difference between "no identity here" and "identity broken" is visible.
-        identity: await identity(),
-      });
+      const storageReady = await profileStorageReady();
+      return json(
+        {
+          status: storageReady ? "ok" : "error",
+          // `browser` kept as it was: it is in the published contract and start.sh reads it.
+          browser: profile?.running ?? false,
+          profile,
+          // Nome, nunca o caminho: quem pergunta isto é um healthcheck sem segredo.
+          profileStorageReady: storageReady,
+          // Which Bot this computer can prove it is, when the deployment runs SPIRE. Null is a
+          // deployment without it, not a failure, and it is reported rather than omitted so the
+          // difference between "no identity here" and "identity broken" is visible.
+          identity: await identity(),
+        },
+        storageReady ? 200 : 503,
+      );
     }
 
     /**
@@ -671,6 +797,138 @@ serve<StreamData>({
           {
             error:
               error instanceof Error ? error.message : "Navigation failed.",
+          },
+          502,
+        );
+      }
+    }
+
+    if (url.pathname === "/viewport" && request.method === "GET") {
+      return json({ viewport: await profiles.currentViewport(botId) });
+    }
+
+    if (url.pathname === "/viewport" && request.method === "POST") {
+      const body = (await request.json().catch(() => null)) as {
+        preset?: unknown;
+        width?: unknown;
+        height?: unknown;
+      } | null;
+      try {
+        session.control.assertBotMayAct();
+        const result = await profiles.setViewport(botId, body ?? {});
+        if (result.restarted) session.snapshotId += 1;
+        return json({ viewport: result.spec, restarted: result.restarted });
+      } catch (error) {
+        if (error instanceof ControlError) {
+          return json({ error: error.message, humanHasControl: true }, 409);
+        }
+        // Named, so the server maps it to a ViewportError rather than an outage-sounding refusal.
+        return json(
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : "Viewport change failed.",
+            viewportError: true,
+          },
+          400,
+        );
+      }
+    }
+
+    if (url.pathname === "/telemetry" && request.method === "GET") {
+      // Same blackout as the screenshot: while a secret is being entered, the page's chatter is
+      // the secret's neighbourhood, and a gap here is the design rather than missing data.
+      if (session.control.get().secretWanted) {
+        return json(
+          {
+            error:
+              "A person is entering a value the assistant must not see. No telemetry is reported while that is happening.",
+            secretPending: true,
+          },
+          409,
+        );
+      }
+      try {
+        const target = await currentPage(botId);
+        // Numbers only: navigation entries carry full URLs, and full URLs carry query strings.
+        const timing = (await target
+          .evaluate(() => {
+            const navigation = performance.getEntriesByType("navigation")[0] as
+              | PerformanceNavigationTiming
+              | undefined;
+            const paints = performance.getEntriesByType("paint");
+            const paint = (name: string) =>
+              paints.find((entry) => entry.name === name)?.startTime ?? null;
+            return {
+              domContentLoadedMs: navigation?.domContentLoadedEventEnd ?? null,
+              loadCompleteMs: navigation?.loadEventEnd ?? null,
+              firstPaintMs: paint("first-paint"),
+              firstContentfulPaintMs: paint("first-contentful-paint"),
+            };
+          })
+          .catch(() => null)) as {
+          domContentLoadedMs: number | null;
+          loadCompleteMs: number | null;
+          firstPaintMs: number | null;
+          firstContentfulPaintMs: number | null;
+        } | null;
+        const telemetry = telemetryByBot.get(botId);
+        return json({ ...telemetry?.snapshot(), timing });
+      } catch (error) {
+        return json(
+          {
+            error: error instanceof Error ? error.message : "Telemetry failed.",
+          },
+          502,
+        );
+      }
+    }
+
+    if (url.pathname === "/audit" && request.method === "POST") {
+      // Pure read: labels the site wrote and contrast it renders. No values, no URLs beyond a
+      // hostname, nothing a visitor typed — so unlike the screenshot this needs no secret blackout.
+      try {
+        const target = await currentPage(botId);
+        return json(await target.evaluate(runPageAudit));
+      } catch (error) {
+        return json(
+          { error: error instanceof Error ? error.message : "Audit failed." },
+          502,
+        );
+      }
+    }
+
+    if (url.pathname === "/audit/focus" && request.method === "POST") {
+      const body = (await request.json().catch(() => null)) as {
+        steps?: unknown;
+      } | null;
+      const steps =
+        typeof body?.steps === "number" && Number.isInteger(body.steps)
+          ? body.steps
+          : 30;
+      if (steps < 1 || steps > 60) {
+        return json({ error: "Focus walk needs 1-60 steps." }, 400);
+      }
+      try {
+        session.control.assertBotMayAct();
+        // Tab only, never Enter: moving focus cannot submit anything, which is what makes a
+        // scripted walk safe to run unattended on a live form.
+        const target = await currentPage(botId);
+        const order: unknown[] = [];
+        for (let index = 0; index < steps; index += 1) {
+          await target.keyboard.press("Tab");
+          order.push(await target.evaluate(describeActiveElement));
+        }
+        return json({ steps, order });
+      } catch (error) {
+        if (error instanceof ControlError) {
+          return json({ error: error.message, humanHasControl: true }, 409);
+        }
+        return json(
+          {
+            error:
+              error instanceof Error ? error.message : "Focus walk failed.",
           },
           502,
         );
@@ -999,10 +1257,12 @@ async function performHumanInput(
       throw new Error("A click needs an x and a y inside the page.");
     }
     // Clamped rather than rejected. A click a pixel outside the viewport is a rounding artefact of
-    // scaling the screenshot, not a mistake worth refusing.
+    // scaling the screenshot, not a mistake worth refusing. Measured live: the surface may have
+    // resized the browser since boot, and clamping to a stale constant would drag edge clicks inward.
+    const live = target.viewportSize() ?? VIEWPORT;
     return {
-      x: Math.min(Math.max(x, 0), VIEWPORT.width - 1),
-      y: Math.min(Math.max(y, 0), VIEWPORT.height - 1),
+      x: Math.min(Math.max(x, 0), live.width - 1),
+      y: Math.min(Math.max(y, 0), live.height - 1),
     };
   };
 

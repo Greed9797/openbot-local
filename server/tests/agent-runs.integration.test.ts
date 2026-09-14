@@ -303,6 +303,28 @@ describe("steps and events", () => {
   });
 });
 
+describe("a fair queue", () => {
+  test("a bot that floods the queue takes every Nth slot, not the head", async () => {
+    const flood: string[] = [];
+    for (let index = 0; index < 3; index += 1) {
+      flood.push((await newRun({ botId: "bot-flood" })).id);
+    }
+    const lone = await newRun({ botId: "bot-lone" });
+    const order = (await repository.queued(4)).map((row) => row.id);
+    // Round-robin by per-Bot position: flood#1, lone#1, flood#2, flood#3.
+    expect(order).toEqual([flood[0], lone.id, flood[1], flood[2]]);
+  });
+
+  test("a lone bot's runs still come out oldest-first", async () => {
+    const first = await newRun({ botId: "bot-solo" });
+    const second = await newRun({ botId: "bot-solo" });
+    const order = (await repository.queued(50))
+      .filter((row) => row.botId === "bot-solo")
+      .map((row) => row.id);
+    expect(order.slice(0, 2)).toEqual([first.id, second.id]);
+  });
+});
+
 describe("the worker", () => {
   /**
    * The worker takes any queued run in the table, which is what it is for. A test that leaves one

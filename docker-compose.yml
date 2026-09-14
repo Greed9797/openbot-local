@@ -55,7 +55,9 @@ services:
     # Gives Chromium time to flush its profile after SIGTERM before Docker sends SIGKILL.
     stop_grace_period: 30s
     healthcheck:
-      test: ["CMD-SHELL", "bun -e \"await fetch('http://localhost:4100/health')\""]
+      # `r.ok`, não só o fetch: o `/health` responde 503 quando o volume de perfis não é gravável, e
+      # um fetch que resolve sem erro trataria isso como saudável.
+      test: ["CMD-SHELL", "bun -e \"const r = await fetch('http://localhost:4100/health'); process.exit(r.ok ? 0 : 1)\""]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -148,6 +150,15 @@ services:
       # Set to runsc to run every computer under gVisor, when the host has it. Left unset each
       # computer is an ordinary container and shares the host kernel.
       COMPUTER_RUNTIME: ${COMPUTER_RUNTIME:-}
+      # How many computers may be live at once. Six residents, one per sector, and no seventh
+      # browser on the host; size this against the VPS, not optimism.
+      COMPUTER_MAX_COMPUTERS: ${COMPUTER_MAX_COMPUTERS:-6}
+      # Sector ids this supervisor admits, when the deployment places computers into sectors. Unset,
+      # requests are admitted on capacity alone, which is the laptop shape.
+      COMPUTER_SECTORS: ${COMPUTER_SECTORS:-}
+      # Memory cap per computer in bytes. Unset, a runaway Bot is a resource problem for itself
+      # only up to the host's mercy; set, Docker OOM-kills that computer instead.
+      COMPUTER_MEMORY_BYTES: ${COMPUTER_MEMORY_BYTES:-}
       # Identity, when SPIRE is part of this deployment. The supervisor registers an entry per Bot
       # and mounts the agent's socket into that Bot's computer so it can fetch its own SVID.
       SPIRE_SOCKET: /tmp/spire-server/private/api.sock
@@ -265,7 +276,10 @@ services:
       lightpanda:
         condition: service_started
     healthcheck:
-      test: ["CMD-SHELL", "bun -e \"const r = await fetch('http://localhost:3001/health'); process.exit(r.ok ? 0 : 1)\""]
+      # Os dois lados: a API e o computador que vive dentro deste container. Um volume de perfis com
+      # o dono errado deixa a API de pé e o navegador inutilizável, e o healthcheck que só olhasse a
+      # API manteria o serviço "healthy" nesse estado.
+      test: ["CMD-SHELL", "bun -e \"const check = async (u) => (await fetch(u)).ok; process.exit((await check('http://localhost:3001/health')) && (await check('http://localhost:4100/health')) ? 0 : 1)\""]
       interval: 15s
       timeout: 10s
       retries: 10

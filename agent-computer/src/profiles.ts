@@ -32,13 +32,82 @@
  * operations this process applies to its own browser, so the same design works under Compose,
  * Kubernetes or ECS, where the orchestrator's own restart policy brings a process back.
  */
-import { readdir, rm } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type BrowserContext, chromium, type Page } from "playwright";
 import { egressFor, egressLabel } from "./egress";
+import {
+  applyStealth,
+  loadFingerprint,
+  stealthEnabled,
+  stealthUserAgent,
+} from "./stealth";
 
-/** The viewport, which is what a person's click coordinates are relative to. */
+/** The default viewport, which is what a person's click coordinates are relative to. */
 export const VIEWPORT = { width: 1280, height: 800 };
+
+/** Device flags that only take effect on a fresh browser context, never on a live page. */
+export type ViewportDevice = { isMobile: boolean; hasTouch: boolean };
+
+export type ViewportSpec = { width: number; height: number } & ViewportDevice;
+
+const DESKTOP_DEVICE: ViewportDevice = { isMobile: false, hasTouch: false };
+
+/**
+ * Named viewports a QA run or a person can ask for.
+ *
+ * Sizes apply to a live page immediately. Device flags need a fresh context (see `setViewport`),
+ * which is why mobile lives here as data rather than as a second code path.
+ */
+export const VIEWPORT_PRESETS: Record<string, ViewportSpec> = {
+  laptop: { width: 1280, height: 800, ...DESKTOP_DEVICE },
+  desktop: { width: 1440, height: 900, ...DESKTOP_DEVICE },
+  tablet: { width: 768, height: 1024, isMobile: true, hasTouch: true },
+  mobile: { width: 390, height: 844, isMobile: true, hasTouch: true },
+};
+
+const VIEWPORT_FILE = "viewport.json";
+const MIN_SIDE = 320;
+const MAX_WIDTH = 2560;
+const MAX_HEIGHT = 1600;
+
+/**
+ * Turn `{ preset }` or `{ width, height }` into a spec, or throw a message fit for the caller.
+ *
+ * Bounds keep a typo from opening a 1px or 8K browser nobody can read. Custom sizes stay desktop
+ * unless the caller names a device preset: a phone is not just a small window, and pretending it
+ * is would pass a responsive check the page would fail on touch.
+ */
+export function resolveViewport(input: {
+  preset?: unknown;
+  width?: unknown;
+  height?: unknown;
+}): ViewportSpec {
+  if (typeof input.preset === "string" && input.preset) {
+    const preset = VIEWPORT_PRESETS[input.preset];
+    if (!preset) {
+      throw new Error(
+        `Unknown viewport preset "${input.preset}". Known presets: ${Object.keys(VIEWPORT_PRESETS).join(", ")}.`,
+      );
+    }
+    return { ...preset };
+  }
+  const width = typeof input.width === "number" ? input.width : Number.NaN;
+  const height = typeof input.height === "number" ? input.height : Number.NaN;
+  if (
+    !Number.isInteger(width) ||
+    !Number.isInteger(height) ||
+    width < MIN_SIDE ||
+    width > MAX_WIDTH ||
+    height < MIN_SIDE ||
+    height > MAX_HEIGHT
+  ) {
+    throw new Error(
+      `A custom viewport needs integer width ${MIN_SIDE}-${MAX_WIDTH} and height ${MIN_SIDE}-${MAX_HEIGHT}.`,
+    );
+  }
+  return { width, height, ...DESKTOP_DEVICE };
+}
 
 /**
  * Files Chromium uses to refuse a second instance on one profile.
@@ -145,12 +214,53 @@ export function createProfiles(root: string) {
   /** One running browser per Bot. */
   const live = new Map<
     string,
-    { context: BrowserContext; page: Page; startedAt: string }
+    {
+      context: BrowserContext;
+      page: Page;
+      startedAt: string;
+      device: ViewportDevice;
+    }
   >();
   /** Launches in flight, so a cold computer is started once however many callers ask at once. */
   const starting = new Map<string, Promise<Page>>();
 
   const directoryFor = (botId: string): string => join(root, botId);
+
+  /**
+   * The viewport this Bot asked for, or null when it never did.
+   *
+   * A sibling file next to the profile, not inside it: Chromium owns everything else in that
+   * directory, and our one JSON file is easier to find beside it than among its databases.
+   * Missing or unreadable means "never asked", never an error worth refusing a launch over.
+   */
+  const readStoredViewport = async (
+    botId: string,
+  ): Promise<ViewportSpec | null> => {
+    try {
+      const raw = await readFile(
+        join(directoryFor(botId), VIEWPORT_FILE),
+        "utf8",
+      );
+      const parsed = JSON.parse(raw) as Partial<ViewportSpec>;
+      if (
+        typeof parsed.width !== "number" ||
+        typeof parsed.height !== "number" ||
+        typeof parsed.isMobile !== "boolean" ||
+        typeof parsed.hasTouch !== "boolean"
+      ) {
+        return null;
+      }
+      const { width, height, isMobile, hasTouch } = parsed;
+      try {
+        const sized = resolveViewport({ width, height });
+        return { ...sized, isMobile, hasTouch };
+      } catch {
+        return null;
+      }
+    } catch {
+      return null;
+    }
+  };
 
   const sweepLocks = async (dir: string): Promise<void> => {
     await Promise.all(
@@ -194,23 +304,46 @@ export function createProfiles(root: string) {
         const dir = directoryFor(botId);
         await sweepLocks(dir);
         const proxy = egressFor(botId, process.env);
+        const stealth = stealthEnabled
+          ? await loadFingerprint(root, botId)
+          : null;
+        const stealthUA = stealth ? stealthUserAgent(stealth) : undefined;
+        const stored = await readStoredViewport(botId);
+        const spec: ViewportSpec = stored ?? {
+          ...VIEWPORT,
+          isMobile: false,
+          hasTouch: false,
+        };
         const context = await chromium.launchPersistentContext(dir, {
           args: LAUNCH_ARGS,
           // Playwright adds `--no-sandbox` on its own unless told otherwise, so leaving this out
           // means the flag above decides nothing and a deployment that asked for the sandbox does
           // not get one. Verified by reading the launched process arguments, not by trusting either.
           chromiumSandbox: SANDBOX_ENABLED,
-          viewport: VIEWPORT,
+          viewport: { width: spec.width, height: spec.height },
+          isMobile: spec.isMobile,
+          hasTouch: spec.hasTouch,
           // This process owns shutdown. Playwright's signal handlers kill Chromium immediately on
           // SIGTERM, before pending cookie writes have time to flush.
           handleSIGTERM: false,
           handleSIGINT: false,
           handleSIGHUP: false,
+          // `--enable-automation` anuncia automação no handshake do Chromium; sem ele o
+          // navegador se apresenta como o Chrome que o fingerprint diz que ele é.
+          ...(stealth ? { ignoreDefaultArgs: ["--enable-automation"] } : {}),
+          ...(stealthUA ? { userAgent: stealthUA } : {}),
           ...(proxy ? { proxy } : {}),
         });
+        // Injeção antes da primeira página: toda navegação do Bot já nasce com o fingerprint ativo.
+        if (stealth) await applyStealth(context, stealth);
         // Persistent contexts open with a page already; reuse it rather than leaving an extra blank tab.
         const page = context.pages()[0] ?? (await context.newPage());
-        live.set(botId, { context, page, startedAt: new Date().toISOString() });
+        live.set(botId, {
+          context,
+          page,
+          startedAt: new Date().toISOString(),
+          device: { isMobile: spec.isMobile, hasTouch: spec.hasTouch },
+        });
         return page;
       })();
 
@@ -236,6 +369,72 @@ export function createProfiles(root: string) {
       live.delete(botId);
       await closeAndWait(existing.context);
       return true;
+    },
+
+    /**
+     * Change this Bot's viewport, returning whether the browser had to restart.
+     *
+     * Sizes apply to the live page at once. Device flags (`isMobile`, `hasTouch`) only exist at
+     * context creation, so when they differ the browser is stopped — profile directory kept, logins
+     * kept — and the next request relaunches with the stored spec. A phone UA can still invalidate
+     * a desktop session server-side; a run that must not disturb desktop logins uses a separate
+     * Bot id (e.g. `<bot>:mobile`) instead of flipping one browser back and forth.
+     */
+    async setViewport(
+      botId: string,
+      input: { preset?: unknown; width?: unknown; height?: unknown },
+    ): Promise<{ spec: ViewportSpec; restarted: boolean }> {
+      const spec = resolveViewport(input);
+      await mkdir(directoryFor(botId), { recursive: true });
+      await writeFile(
+        join(directoryFor(botId), VIEWPORT_FILE),
+        JSON.stringify(spec),
+      );
+      const existing = live.get(botId);
+      const running =
+        existing?.context.browser()?.isConnected() && !existing.page.isClosed()
+          ? existing
+          : undefined;
+      if (!running) return { spec, restarted: false };
+      if (
+        running.device.isMobile !== spec.isMobile ||
+        running.device.hasTouch !== spec.hasTouch
+      ) {
+        await this.stop(botId);
+        return { spec, restarted: true };
+      }
+      await running.page.setViewportSize({
+        width: spec.width,
+        height: spec.height,
+      });
+      return { spec, restarted: false };
+    },
+
+    /**
+     * What this Bot's viewport is right now: live size when running, stored wish when not,
+     * default when it never asked. What `/snapshot` reports stays the authority per request.
+     */
+    async currentViewport(botId: string): Promise<ViewportSpec> {
+      const running = live.get(botId);
+      const size =
+        running && !running.page.isClosed()
+          ? running.page.viewportSize()
+          : null;
+      if (size && running) {
+        return {
+          width: size.width,
+          height: size.height,
+          isMobile: running.device.isMobile,
+          hasTouch: running.device.hasTouch,
+        };
+      }
+      return (
+        (await readStoredViewport(botId)) ?? {
+          ...VIEWPORT,
+          isMobile: false,
+          hasTouch: false,
+        }
+      );
     },
 
     /**

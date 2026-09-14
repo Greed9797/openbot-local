@@ -1,6 +1,7 @@
 import { IconLock, IconShieldCheck, IconUser } from "@tabler/icons-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import {
   PageEmpty,
   PageRows,
@@ -9,6 +10,14 @@ import {
 } from "@/components/layout/page-shell";
 import { StaggerItem } from "@/components/layout/stagger";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   Item,
   ItemActions,
@@ -25,8 +34,9 @@ import {
   setPersonRoleMutationOptions,
 } from "@/lib/people/mutations";
 import { type Person, peopleListQueryOptions } from "@/lib/people/queries";
+import { inviteSectorOwnerMutationOptions } from "@/lib/sectors/mutations";
+import { sectorListQueryOptions } from "@/lib/sectors/queries";
 import { queryClient } from "@/query-client";
-
 export const Route = createFileRoute("/_authed/admin/people")({
   component: PeoplePage,
 });
@@ -61,13 +71,16 @@ function describe(person: Person): string {
 
 function PeoplePage() {
   const people = useQuery(peopleListQueryOptions());
+  const sectors = useQuery(sectorListQueryOptions());
   const currentUser = useQuery(currentUserQueryOptions());
   const setRole = useMutation(setPersonRoleMutationOptions(queryClient));
   const setAccess = useMutation(setPersonAccessMutationOptions(queryClient));
+  const invite = useMutation(inviteSectorOwnerMutationOptions(queryClient));
+  const [dialogSector, setDialogSector] = useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteName, setInviteName] = useState("");
 
-  // The server refuses these too. Disabling them here is so the screen does not offer something it
-  // knows will be refused, not so the rule is enforced in the browser.
-  const failure = setRole.error ?? setAccess.error;
+  const failure = setRole.error ?? setAccess.error ?? invite.error;
 
   return (
     <PageShell
@@ -155,6 +168,66 @@ function PeoplePage() {
           </PageRows>
         )}
       </PageSection>
+      <PageSection description="Cada setor tem um responsável com login próprio. O convite vale 72h; o acesso nasce na verificação do email, nunca antes." title="Setores">
+        {sectors.isPending ? null : sectors.error ? (
+          <p className="mt-4 text-destructive text-sm" role="alert">Não foi possível carregar os setores.</p>
+        ) : (
+          <PageRows>
+            {(sectors.data ?? []).map((sector, index) => (
+              <StaggerItem index={index} key={sector.id}>
+                <Item size="sm">
+                  <ItemContent>
+                    <ItemTitle>{sector.name}</ItemTitle>
+                    <ItemDescription>
+                      {sector.ownerUserId ? "Responsável cadastrado" : "Aguardando cadastro/verificação"}
+                    </ItemDescription>
+                  </ItemContent>
+                  <ItemActions>
+                    <Button
+                      disabled={sector.ownerUserId !== null}
+                      onClick={() => {
+                        setDialogSector(sector.id);
+                        setInviteEmail("");
+                        setInviteName("");
+                      }}
+                      size="sm"
+                      variant="outline"
+                    >
+                      Convidar responsável
+                    </Button>
+                  </ItemActions>
+                </Item>
+                {index !== (sectors.data?.length ?? 0) - 1 && <Separator />}
+              </StaggerItem>
+            ))}
+          </PageRows>
+        )}
+      </PageSection>
+      <Dialog onOpenChange={(open) => { if (!open) setDialogSector(null); }} open={dialogSector !== null}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Convidar responsável</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <Input onChange={(event) => setInviteName(event.target.value)} placeholder="Nome" type="text" value={inviteName} />
+            <Input autoComplete="email" onChange={(event) => setInviteEmail(event.target.value)} placeholder="email@empresa.com" type="email" value={inviteEmail} />
+          </div>
+          <DialogFooter>
+            <Button
+              disabled={invite.isPending || !inviteEmail.trim() || !inviteName.trim() || !dialogSector}
+              onClick={() => {
+                if (!dialogSector) return;
+                invite.mutate(
+                  { sectorId: dialogSector, email: inviteEmail.trim(), name: inviteName.trim() },
+                  { onSuccess: () => setDialogSector(null) },
+                );
+              }}
+            >
+              Enviar convite
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageShell>
   );
 }

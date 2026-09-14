@@ -49,11 +49,7 @@ function statusOf(error: unknown): {
   };
 }
 
-export function createAgentRunRoutes(
-  service: RunRoutesService,
-  requireUser: MiddlewareHandler<{ Variables: AppVariables }>,
-  vision?: RunVision,
-) {
+export function createAgentRunRoutes(service: RunRoutesService, requireUser: MiddlewareHandler<{ Variables: AppVariables }>, canUseBot: (actor: { id: string; role: "admin" | "user" }, botId: string) => Promise<boolean>, vision?: RunVision) {
   const routes = new Hono<{ Variables: AppVariables }>();
 
   /**
@@ -71,18 +67,14 @@ export function createAgentRunRoutes(
     return row.userId !== null && row.userId === actorId;
   }
 
-  async function loadVisible(
-    id: string,
-    context: Context<{ Variables: AppVariables }>,
-  ): Promise<AgentRunRow> {
+  async function loadVisible(id: string, context: Context<{ Variables: AppVariables }>): Promise<AgentRunRow> {
     const row = await service.getRun(id);
     if (!row) throw new AgentRunError("NOT_FOUND", `No run ${id}.`);
-    if (
-      !maySee(row, context.var.actor.id, context.var.actor.role === "admin")
-    ) {
-      // Same answer as absent, so a run id cannot be used to learn that somebody else has one.
+    if (!maySee(row, context.var.actor.id, context.var.actor.role === "admin")) {
       throw new AgentRunError("NOT_FOUND", `No run ${id}.`);
     }
+    const allowed = await canUseBot({ id: context.var.actor.id, role: context.var.actor.role }, row.botId);
+    if (!allowed) throw new AgentRunError("NOT_FOUND", `No run ${id}.`);
     return row;
   }
 
@@ -99,49 +91,40 @@ export function createAgentRunRoutes(
         400,
       );
     }
-    const botId =
-      typeof body?.botId === "string" && body.botId.trim()
-        ? body.botId.trim()
-        : "default";
+    const rawBotId = typeof body?.botId === "string" ? body.botId.trim() : "";
+    if (!rawBotId) {
+      return context.json({ error: "A task needs a Bot.", code: "INVALID_ACTION" }, 400);
+    }
+    const botId = rawBotId;
     const headerKey = context.req.header("idempotency-key")?.trim();
     const input: CreateRunInput = {
       botId,
       userId: context.var.actor.id,
-      origin:
-        body?.origin === "telegram" || body?.origin === "api"
-          ? body.origin
-          : "web",
+      origin: body?.origin === "telegram" || body?.origin === "api" ? body.origin : "web",
       objective,
-      ...(typeof body?.threadId === "string"
-        ? { threadId: body.threadId }
-        : {}),
-      ...(typeof body?.provider === "string"
-        ? { provider: body.provider }
-        : {}),
+      ...(typeof body?.threadId === "string" ? { threadId: body.threadId } : {}),
+      ...(typeof body?.provider === "string" ? { provider: body.provider } : {}),
       ...(typeof body?.model === "string" ? { model: body.model } : {}),
       // Condição host-side opcional; o serviço valida a forma e responde 400 quando malformada.
       ...("completion" in (body ?? {})
-        ? {
-            completion: (body as Record<string, unknown>)
-              .completion as CreateRunInput["completion"],
-          }
+        ? { completion: (body as Record<string, unknown>).completion as CreateRunInput["completion"] }
         : {}),
       ...(typeof body?.metadata === "object" && body?.metadata !== null
         ? { metadata: body.metadata as Record<string, unknown> }
         : {}),
       idempotencyKey:
-        headerKey ??
-        (typeof body?.idempotencyKey === "string" ? body.idempotencyKey : null),
-      ...(typeof body?.sourceMessageId === "string"
-        ? { sourceMessageId: body.sourceMessageId }
-        : {}),
+        headerKey ?? (typeof body?.idempotencyKey === "string" ? body.idempotencyKey : null),
+      ...(typeof body?.sourceMessageId === "string" ? { sourceMessageId: body.sourceMessageId } : {}),
     };
     try {
-      const { run, created } = await service.createRun(
-        { id: context.var.actor.id },
-        input,
-        context.var.actor.id,
-      );
+      const allowed = await canUseBot({ id: context.var.actor.id, role: context.var.actor.role }, botId);
+      if (!allowed) return context.json({ error: `No run ${botId}.`, code: "NOT_FOUND" }, 404);
+      const { run, created } = await service.createRun({ id: context.var.actor.id }, input, context.var.actor.id);
+      if (!created) {
+        const ownerOk = run.userId !== null && (context.var.actor.role === "admin" || run.userId === context.var.actor.id);
+        const botOk = await canUseBot({ id: context.var.actor.id, role: context.var.actor.role }, run.botId);
+        if (!ownerOk || !botOk) return context.json({ error: "No run.", code: "NOT_FOUND" }, 404);
+      }
       return context.json({ run: runView(run), created }, created ? 201 : 200);
     } catch (error) {
       const { status, body: failure } = statusOf(error);
@@ -151,29 +134,26 @@ export function createAgentRunRoutes(
 
   routes.get("/", requireUser, async (context) => {
     const url = new URL(context.req.url);
-    const statuses = (url.searchParams.get("status") ?? "")
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean) as RunStatus[];
-    const requested = Number.parseInt(
-      url.searchParams.get("limit") ?? "50",
-      10,
-    );
+    const filterBotId = (url.searchParams.get("botId") ?? "").trim() || undefined;
+    if (filterBotId) {
+      const allowed = await canUseBot({ id: context.var.actor.id, role: context.var.actor.role }, filterBotId);
+      if (!allowed) return context.json({ error: "Not found.", code: "NOT_FOUND" }, 404);
+    }
+    const statuses = (url.searchParams.get("status") ?? "").split(",").map((value) => value.trim()).filter(Boolean) as RunStatus[];
+    const requested = Number.parseInt(url.searchParams.get("limit") ?? "50", 10);
     const isAdmin = context.var.actor.role === "admin";
     const rows = await service.listRuns({
-      ...(url.searchParams.get("botId")
-        ? { botId: url.searchParams.get("botId") ?? undefined }
-        : {}),
-      // An administrator may ask for anybody's runs; everybody else only ever sees their own.
-      ...(isAdmin
-        ? url.searchParams.get("userId")
-          ? { userId: url.searchParams.get("userId") ?? undefined }
-          : {}
-        : { userId: context.var.actor.id }),
+      ...(filterBotId ? { botId: filterBotId } : {}),
+      ...(isAdmin ? (url.searchParams.get("userId") ? { userId: url.searchParams.get("userId") ?? undefined } : {}) : { userId: context.var.actor.id }),
       ...(statuses.length ? { status: statuses } : {}),
       limit: Number.isFinite(requested) ? requested : 50,
     });
-    return context.json({ runs: rows.map(runView) });
+    const visible: typeof rows = [];
+    for (const row of rows) {
+      if (!(await canUseBot({ id: context.var.actor.id, role: context.var.actor.role }, row.botId))) continue;
+      visible.push(row);
+    }
+    return context.json({ runs: visible.map(runView) });
   });
 
   routes.get("/:id", requireUser, async (context) => {

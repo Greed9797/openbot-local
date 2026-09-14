@@ -78,6 +78,34 @@
       "when": 1789248484682,
       "tag": "0010_w3_skills",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789310839042,
+      "tag": "0011_six_sectors",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789316027546,
+      "tag": "0012_auth_rate_limits",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789331209391,
+      "tag": "0013_luxuriant_the_fury",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789331242326,
+      "tag": "0014_lame_toad_men",
+      "breakpoints": true
     }
   ]
 }

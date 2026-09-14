@@ -182,6 +182,70 @@ export type SnapshotResult = {
   page?: ReadResult;
 };
 
+/** A viewport size with the device flags that only take effect on a fresh browser context. */
+export type ComputerViewport = {
+  width: number;
+  height: number;
+  isMobile: boolean;
+  hasTouch: boolean;
+};
+
+export type SetViewportResult = {
+  viewport: ComputerViewport;
+  /** True when the browser had to restart for device flags, and refs went stale with it. */
+  restarted: boolean;
+};
+
+/**
+ * What the page said while nobody was looking: console entries, page errors and failed requests.
+ *
+ * Redacted at the source (no bodies, no query strings, truncated text) and silent while a secret
+ * is being entered — a gap during a handoff is the design, reported as SECRET_PENDING.
+ */
+export type TelemetryResult = {
+  console: { at: string; type: string; text: string }[];
+  pageErrors: { at: string; message: string }[];
+  failedRequests: {
+    at: string;
+    method: string;
+    url: string;
+    status: number | null;
+    failure: string | null;
+  }[];
+  timing: {
+    domContentLoadedMs: number | null;
+    loadCompleteMs: number | null;
+    firstPaintMs: number | null;
+    firstContentfulPaintMs: number | null;
+  } | null;
+};
+
+/**
+ * What the audit probes found: authored labels and rendered contrast, never visitor input.
+ *
+ * Counts first, capped samples second, so a large page still answers small. No field values, no
+ * full URLs — the probes do not collect anything a secret could hide in.
+ */
+export type PageAuditResult = {
+  unnamedControls: {
+    count: number;
+    sample: { tag: string; role: string; text: string }[];
+  };
+  imagesMissingAlt: {
+    count: number;
+    sample: { index: number; host: string }[];
+  };
+  contrastFailures: {
+    count: number;
+    sample: { descriptor: string; ratio: number }[];
+  };
+};
+
+export type FocusWalkResult = {
+  steps: number;
+  order: ({ tag: string; role: string; text: string } | null)[];
+};
+
 /** Common to every acting call: which element, and which snapshot the ref came from. */
 export type ActionTarget = { ref: string; snapshotId: number };
 

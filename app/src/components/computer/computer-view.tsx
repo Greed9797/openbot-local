@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   type ControlState,
@@ -50,6 +50,14 @@ type Props = {
   computerId: string;
   /** Off by default so idle Bot screens do not poll indefinitely. */
   active?: boolean;
+  /**
+   * Assiste pelo socket de screencast, sem polling de screenshot.
+   *
+   * É o painel lateral: a tela chega quando muda, em vez de uma foto por segundo, e assistir não é
+   * assumir o controle — o input fica no overlay depois que a pessoa toma o volante. O card do
+   * transcript continua no polling barato, que para uma prévia basta.
+   */
+  live?: boolean;
   intervalMs?: number;
   /** Width divided by height. Overridable for a Bot whose computer is not the default shape. */
   aspectRatio?: number;
@@ -60,6 +68,7 @@ type Props = {
 export function ComputerView({
   computerId,
   active = true,
+  live = false,
   intervalMs = 1000,
   aspectRatio = DEFAULT_ASPECT_RATIO,
   minWidth = DEFAULT_MIN_WIDTH,
@@ -78,6 +87,37 @@ export function ComputerView({
   const drivingRef = useRef(false);
   drivingRef.current = driving;
 
+  /**
+   * Assistir pelo socket, e o estado de quem assiste.
+   *
+   * `liveViewer` é do viewer inteiro — desliga o polling mesmo quando o painel está em Activity, para
+   * não existirem duas fontes de pixel competindo. `liveFrame` é "a conexão já desenhou", e é o que
+   * separa "ao vivo" de "última imagem": sem ele, um socket aberto que nunca manda frame passava por
+   * tela funcionando.
+   */
+  const liveViewer = live;
+  const [liveFrame, setLiveFrame] = useState(false);
+  const [liveProblem, setLiveProblem] = useState<string | null>(null);
+  /** Remonta o stream. Reconectar é isto, explícito — não há laço automático de retentativa. */
+  const [liveKey, setLiveKey] = useState(0);
+
+  const onLiveFrame = useCallback(() => {
+    setLiveFrame(true);
+    setLiveProblem(null);
+  }, []);
+
+  const onLiveProblem = useCallback((next: string | null) => {
+    setLiveProblem(next);
+    // Um problema quer dizer que o que está no canvas é o passado, não a tela de agora.
+    setLiveFrame(false);
+  }, []);
+
+  const reconnect = useCallback(() => {
+    setLiveProblem(null);
+    setLiveFrame(false);
+    setLiveKey((key) => key + 1);
+  }, []);
+
   /** Release control; the Bot's waiting tool call resumes from this state change. */
   const handBack = async () => {
     const state = await releaseControl(computerId);
@@ -94,6 +134,12 @@ export function ComputerView({
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `secretPending` intentionally restarts settled polling.
   useEffect(() => {
+    /*
+     * No viewer ao vivo quem entrega pixel é o socket. Um poll de screenshot aqui seria uma segunda
+     * fonte para o mesmo quadro — e a foto velha venceria a discussão, porque chega depois.
+     */
+    if (liveViewer) return;
+
     const mine = ++generation.current;
     let timer: ReturnType<typeof setTimeout>;
     // Consecutive identical frames observed during post-action settling.
@@ -141,7 +187,7 @@ export function ComputerView({
       generation.current++;
       clearTimeout(timer);
     };
-  }, [computerId, active, intervalMs, secretPending]);
+  }, [computerId, active, intervalMs, secretPending, liveViewer]);
 
   /** Poll control state independently from screenshot polling so help/secret prompts surface. */
   useEffect(() => {
@@ -174,6 +220,24 @@ export function ComputerView({
   // Sized from the ratio, never from the payload, so the frame is identical in all three states.
   const frameStyle = { aspectRatio, minWidth, minHeight };
 
+  /**
+   * Cada superfície é uma conexão: o inline e o overlay não dividem socket.
+   *
+   * Expandir, fechar, trocar de aba e trocar de Bot desmontam uma e montam a outra. Zerar no instante
+   * em que a superfície muda evita que a tela nova apareça como "ao vivo" carregando o frame que a
+   * anterior desenhou — inclusive o frame do Bot anterior, que é justamente o que um viewer que só
+   * olha o socket aberto mostraria.
+   */
+  const liveSurface = `${computerId}:${expanded}:${active}`;
+  const liveSurfaceRef = useRef(liveSurface);
+  useEffect(() => {
+    if (!liveViewer) return;
+    if (liveSurfaceRef.current === liveSurface) return;
+    liveSurfaceRef.current = liveSurface;
+    setLiveFrame(false);
+    setLiveProblem(null);
+  }, [liveViewer, liveSurface]);
+
   // Always render the card frame; help/secret controls live below the conditional picture.
   const blankBrowser = shot ? isBlankBrowser(shot) : false;
   /** Blank browser placeholders should not be opened as readable screens. */
@@ -188,52 +252,100 @@ export function ComputerView({
     />
   ) : null;
 
-  return (
-    <>
-      <figure className="overflow-hidden rounded-2xl border">
-        {/* Inline preview remains in transcript; click opens a readable full-size view. */}
+  /**
+   * A tela do painel: socket, e um botão próprio para expandir.
+   *
+   * Fora do `<button>` de propósito. O canvas recebe evento de ponteiro, e um controle dentro de outro
+   * é uma armadilha de teclado — o botão de expandir fica ao lado, focável e com rótulo.
+   */
+  const liveScreen =
+    liveViewer && active && !expanded ? (
+      <div className="relative block w-full bg-muted" style={frameStyle}>
+        <LiveScreen
+          key={liveKey}
+          computerId={computerId}
+          // Assistir não é dirigir: input é do overlay, e só com o controle tomado.
+          driving={false}
+          onFrame={onLiveFrame}
+          onProblem={onLiveProblem}
+        />
+        {liveFrame ? null : (
+          <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-muted p-4 text-center text-sm text-muted-foreground">
+            <span>{liveProblem ?? "Conectando à tela…"}</span>
+            {liveProblem ? (
+              <button
+                type="button"
+                onClick={reconnect}
+                className="rounded-md border bg-background px-2 py-1 text-xs font-medium"
+              >
+                Reconectar
+              </button>
+            ) : null}
+          </span>
+        )}
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          // Disabled while blank/waiting but still reserves the frame.
-          disabled={!showScreen}
-          className="relative block w-full bg-muted enabled:cursor-zoom-in"
-          style={frameStyle}
+          // Expandir só depois do primeiro frame: sem ele não há tela maior para abrir.
+          disabled={!liveFrame}
           aria-label="Abrir a tela do assistente em tamanho cheio"
+          className="absolute right-2 bottom-2 rounded-md border bg-background/90 px-2 py-1 text-xs font-medium disabled:opacity-50"
         >
-          {polledScreen}
-
-          {blankBrowser ? (
-            <ComputerPlaceholder className="absolute inset-0 h-full w-full" />
-          ) : null}
-
-          {showScreen ? null : (
-            <span
-              className={`absolute inset-0 flex flex-col items-center justify-center gap-1 p-4 text-center text-sm ${
-                blankBrowser
-                  ? "bg-black/25 text-white"
-                  : "text-muted-foreground"
-              }`}
-            >
-              {problem ? (
-                <>
-                  <span className="font-medium">
-                    Você não consegue ver a tela agora
-                  </span>
-                  <span>{problem}</span>
-                  <span className={blankBrowser ? "text-white/80" : undefined}>
-                    O assistente pode ainda estar trabalhando. Um administrador
-                    consegue checar se o computador dele está de pé.
-                  </span>
-                </>
-              ) : blankBrowser ? (
-                <span>O assistente ainda não abriu nenhuma página.</span>
-              ) : (
-                <span>Esperando a tela do assistente…</span>
-              )}
-            </span>
-          )}
+          Expandir
         </button>
+      </div>
+    ) : null;
+
+  return (
+    <>
+      <figure className="overflow-hidden rounded-2xl border">
+        {liveScreen ?? (
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            // Disabled while blank/waiting but still reserves the frame.
+            disabled={!showScreen}
+            className="relative block w-full bg-muted enabled:cursor-zoom-in"
+            style={frameStyle}
+            aria-label="Abrir a tela do assistente em tamanho cheio"
+          >
+            {polledScreen}
+
+            {blankBrowser ? (
+              <ComputerPlaceholder className="absolute inset-0 h-full w-full" />
+            ) : null}
+
+            {showScreen ? null : (
+              <span
+                className={`absolute inset-0 flex flex-col items-center justify-center gap-1 p-4 text-center text-sm ${
+                  blankBrowser
+                    ? "bg-black/25 text-white"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {problem ? (
+                  <>
+                    <span className="font-medium">
+                      Você não consegue ver a tela agora
+                    </span>
+                    <span>{problem}</span>
+                    <span
+                      className={blankBrowser ? "text-white/80" : undefined}
+                    >
+                      O assistente pode ainda estar trabalhando. Um
+                      administrador consegue checar se o computador dele está de
+                      pé.
+                    </span>
+                  </>
+                ) : blankBrowser ? (
+                  <span>O assistente ainda não abriu nenhuma página.</span>
+                ) : (
+                  <span>Esperando a tela do assistente…</span>
+                )}
+              </span>
+            )}
+          </button>
+        )}
 
         {/*
           Secret values go directly to the page path and are never included in the conversation.
@@ -400,13 +512,42 @@ export function ComputerView({
                   </span>
                 </span>
               </div>
-              {/* Overlay uses the live socket; the inline card keeps low-cost polling. */}
+              {/*
+                Overlay uses the live socket; the inline card keeps low-cost polling. No modo ao vivo
+                o inline já foi desmontado antes deste montar, então existe um socket só.
+              */}
               <div className="relative min-h-0 flex-1 overflow-auto rounded-lg bg-black">
-                <LiveScreen
-                  computerId={computerId}
-                  driving={driving}
-                  onProblem={setProblem}
-                />
+                {liveViewer ? (
+                  <>
+                    <LiveScreen
+                      key={`overlay-${liveKey}`}
+                      computerId={computerId}
+                      driving={driving}
+                      onFrame={onLiveFrame}
+                      onProblem={onLiveProblem}
+                    />
+                    {liveFrame ? null : (
+                      <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 text-center text-sm text-white/80">
+                        <span>{liveProblem ?? "Conectando à tela…"}</span>
+                        {liveProblem ? (
+                          <button
+                            type="button"
+                            onClick={reconnect}
+                            className="rounded-md bg-white px-3 py-1 text-xs font-medium text-black"
+                          >
+                            Reconectar
+                          </button>
+                        ) : null}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <LiveScreen
+                    computerId={computerId}
+                    driving={driving}
+                    onProblem={setProblem}
+                  />
+                )}
               </div>
             </div>,
             document.body,

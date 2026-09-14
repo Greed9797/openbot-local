@@ -42,6 +42,9 @@ describe("runtime capabilities", () => {
       // A boolean, not a list: naming the registered providers would tell anybody who loads the
       // sign-in page which companies use this deployment.
       ssoConfigured: false,
+      // Whether the closed email/password gate is configured. The sign-in screen reads this to know
+      // whether to draw the email form at all.
+      emailPassword: false,
     });
   });
 
@@ -61,6 +64,7 @@ describe("runtime capabilities", () => {
       "mode",
       "durableHistory",
       "authProviders",
+      "emailPassword",
       "ssoConfigured",
     ]);
     // The provider list is names, never the clients and secrets behind them.

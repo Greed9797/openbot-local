@@ -47,6 +47,19 @@ export class WorkspaceRequestError extends Error {
   }
 }
 
+/**
+ * The viewport request names a preset or size that cannot be used.
+ *
+ * Its own class rather than a workspace error so the model reads "that size is not allowed" and
+ * not "the computer is unavailable": a refusal that names the value is answerable, one that sounds
+ * like an outage gets retried forever.
+ */
+export class ViewportError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = "ViewportError";
+  }
+}
 /** The page changed after the caller received its element references. */
 export class StaleSnapshotError extends Error {
   constructor(reason: string) {
@@ -91,6 +104,16 @@ export class SecretPendingError extends Error {
  */
 export type ComputerTransportOptions = {
   token?: string;
+  /**
+   * The credential for one Bot's computer, decided per call.
+   *
+   * A static `token` proves the caller is an internal service; it does not say which Bot may be
+   * touched, so every computer that shares it answers for every Bot that names it. In a deployment
+   * where each computer holds only its own derived token, the credential has to name the Bot too,
+   * and this function derives it. It wins over `token` where both are set; where neither is set the
+   * call goes out unauthenticated, exactly as before.
+   */
+  tokenForBot?: (botId: string) => string | Promise<string>;
   /**
    * Se o Bot pode NAVEGAR para dentro da rede deste deployment.
    *
@@ -179,6 +202,12 @@ export function createComputerTransport(
     const timeoutMs = timeoutMsOverride ?? defaultTimeoutMs;
 
     const target = baseUrl.replace(/\/$/, "");
+    // The credential names the Bot where the deployment derives one per computer, and stays the
+    // shared static token where it does not. Either way it travels beside the Bot header, never
+    // instead of it: the computer checks both, and a derived token for another Bot fails here.
+    const credential = options.tokenForBot
+      ? await options.tokenForBot(botId)
+      : (options.token ?? "");
     let response: Response;
     try {
       response = await doFetch(`${target}${path}`, {
@@ -186,9 +215,7 @@ export function createComputerTransport(
         headers: {
           ...(init?.headers as Record<string, string> | undefined),
           "x-openbot-bot-id": botId,
-          ...(options.token
-            ? { "x-openbot-computer-token": options.token }
-            : {}),
+          ...(credential ? { "x-openbot-computer-token": credential } : {}),
         },
         signal: caller
           ? AbortSignal.any([caller, AbortSignal.timeout(timeoutMs)])
@@ -304,6 +331,9 @@ function throwMappedError(
   }
   if (body?.secretPending === true) {
     throw new SecretPendingError(detail);
+  }
+  if (body?.viewportError === true) {
+    throw new ViewportError(detail);
   }
   if (status === 409) {
     throw new StaleSnapshotError(detail);

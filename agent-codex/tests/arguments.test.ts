@@ -1,16 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import {
-  avisoDeNaoLeitura,
-  avisoDeOutraPagina,
-  codexArguments,
-  hostsEm,
-  INSTRUÇÕES_DO_WORKSPACE,
-  perguntaDoTurno,
-  promptDeReforço,
-  REPROVAÇÃO_DE_MEMÓRIA,
-  recapDe,
-  turnoMereceReforço,
-  turnPrompt,
+ avisoDeNaoLeitura,
+ avisoDeOutraPagina,
+ codexArguments,
+ hostsEm,
+ INSTRUÇÕES_DO_WORKSPACE,
+ perguntaDoTurno,
+ promptDeReforço,
+ REPROVAÇÃO_DE_MEMÓRIA,
+ recapDe,
+ toolCallOf,
+ turnoMereceReforço,
+ turnPrompt,
 } from "../src/index";
 
 /**
@@ -479,4 +480,61 @@ describe("a conversa recontada para um modelo que não a guardou", () => {
       recapDe([{ id: "u1", role: "user", content: "Olá, tudo bem?" }]),
     ).toBe("");
   });
+});
+
+/**
+ * O que o turno fez vira evento de ferramenta, não prosa.
+ *
+ * Um `say("$ cmd")` lia como algo que o Bot DISSE, e enterrava a resposta no meio de linhas de
+ * progresso. Como evento, a mesma linha desenha um ToolLine — e some do `recapDe`, que só lê
+ * texto de pessoa e de assistente. O nome é genérico de propósito: o comando vai nos argumentos,
+ * atrás do disclosure, nunca na linha.
+ */
+describe("o item do Codex como chamada de ferramenta", () => {
+ test("comando vira linha genérica com o comando nos argumentos", () => {
+ expect(
+ toolCallOf({ type: "command_execution", command: "npm test" }),
+ ).toEqual({
+ name: "Ferramenta chamada",
+ args: { command: "npm test" },
+ });
+ });
+
+ test("saída do comando vai junto quando ela vem no próprio item", () => {
+ const call = toolCallOf({
+ type: "command_execution",
+ command: "ls",
+ aggregated_output: "a\nb\n",
+ });
+ expect(call?.result).toBe("a\nb\n");
+ });
+
+ test("saída gigante é cortada, para não estourar o histórico do fio", () => {
+ const call = toolCallOf({
+ type: "command_execution",
+ command: "cat enorme.log",
+ aggregated_output: `x`.repeat(5000),
+ });
+ expect(call?.result?.length).toBe(4000);
+ });
+
+ test("chamada MCP vira a mesma linha genérica, com os argumentos reais", () => {
+ expect(
+ toolCallOf({
+ type: "mcp_tool_call",
+ tool: "open_page",
+ server: "computer",
+ arguments: { url: "https://example.test/pagina" },
+ }),
+ ).toEqual({
+ name: "Ferramenta chamada",
+ args: { url: "https://example.test/pagina" },
+ });
+ });
+
+ test("resposta e erro não são ferramenta", () => {
+ expect(toolCallOf({ type: "agent_message", text: "olá" })).toBeNull();
+ expect(toolCallOf({ type: "error", message: "truncado" })).toBeNull();
+ expect(toolCallOf({ type: "reasoning" })).toBeNull();
+ });
 });

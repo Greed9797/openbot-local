@@ -32,7 +32,7 @@ export const RUN_STATUSES = [
 
 export type RunStatus = (typeof RUN_STATUSES)[number];
 
-export type RunOrigin = "web" | "telegram" | "api";
+export type RunOrigin = "web" | "telegram" | "api" | "schedule";
 
 export type StepKind = (typeof STEP_KINDS)[number];
 export const STEP_KINDS = [

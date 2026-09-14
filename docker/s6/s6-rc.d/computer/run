@@ -3,6 +3,15 @@
 #
 # `with-contenv` is not decoration. Without it s6 starts a service with none of the container's
 # environment, and the failure is a config error naming a variable that is plainly set.
+#
+# `set -eu` is not decoration either: o volume de perfis pode ter vindo de outra vida, de root, e sem
+# o dono certo o primeiro `launchPersistentContext` falha com EACCES e o Bot fica sem navegador
+# enquanto o container ainda se diz saudável. O script abaixo corrige isso, e se ele não conseguir, o
+# `-e` derruba este run — o container reinicia em vez de servir um computador que não computa.
+set -eu
+
+sh /etc/s6-overlay/scripts/profiles-init.sh
+
 cd /app/agent-computer
 export PORT=4100
 export WORKSPACE_DIR=/workspace

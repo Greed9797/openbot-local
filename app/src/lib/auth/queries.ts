@@ -21,31 +21,26 @@ export type AuthProviderId = "google" | "microsoft" | "okta";
 /** What the sign-in screen may offer, answered by the process that knows. */
 export type SignInOptions = {
   providers: AuthProviderId[];
-  /**
-   * Whether any enterprise identity provider is registered.
-   *
-   * A boolean, not a list: naming them would tell anybody who loads the sign-in page which companies
-   * use this deployment, before they have signed in.
-   */
   sso: boolean;
+  emailPassword: boolean;
 };
 
 async function signInOptions(): Promise<SignInOptions> {
-  // The whole body, so both fields arrive together. Reading a field off the Response `client`
+  // The whole body, so all fields arrive together. Reading a field off the Response `client`
   // returns without a key quietly yields undefined: the screen would say no provider is configured
   // while the server was saying it has one.
   const body = (await (
     await client("/api/capabilities", {
       fallback: "Não foi possível carregar a entrada",
     })
-  ).json()) as { authProviders?: AuthProviderId[]; ssoConfigured?: boolean };
+  ).json()) as { authProviders?: AuthProviderId[]; ssoConfigured?: boolean; emailPassword?: boolean };
 
   return {
     providers: body.authProviders ?? [],
     sso: body.ssoConfigured === true,
+    emailPassword: body.emailPassword === true,
   };
 }
-
 /**
  * Which providers the sign-in screen may offer.
  *

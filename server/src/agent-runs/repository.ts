@@ -27,7 +27,12 @@ import {
   runApprovals,
   runArtifacts,
 } from "../db/schema";
-import type { RunError, RunStatus, RunUsage } from "./types";
+import type {
+  RunError,
+  RunOrigin,
+  RunStatus,
+  RunUsage,
+} from "./types";
 
 export type AgentRunRow = typeof agentRuns.$inferSelect;
 export type AgentRunStepRow = typeof agentRunSteps.$inferSelect;
@@ -41,7 +46,7 @@ export type NewRunRow = {
   botId: string;
   userId: string | null;
   threadId: string | null;
-  origin: "web" | "telegram" | "api";
+  origin: RunOrigin;
   sourceMessageId: string | null;
   idempotencyKey: string | null;
   provider: string;
@@ -431,12 +436,36 @@ export function createAgentRunRepository(
   }
 
   async function queued(limit: number): Promise<AgentRunRow[]> {
-    return database
+    /*
+     * Fair across Bots: round-robin by per-Bot queue position, oldest first within each Bot. A Bot
+     * that floods the queue takes every Nth slot instead of the whole head of it, and a lone Bot's
+     * runs still come out oldest-first. The claim underneath stays conditional, so fairness changes
+     * the order only — two workers still cannot win the same run.
+     */
+    const ordered = await database.execute<{ id: string }>(sql`
+      select ranked.id as id from (
+        select ${agentRuns.id} as id,
+          row_number() over (
+            partition by ${agentRuns.botId}
+            order by ${agentRuns.createdAt} asc
+          ) as rn,
+          ${agentRuns.createdAt} as created_at
+        from ${agentRuns}
+        where ${agentRuns.status} = 'queued'
+      ) as ranked
+      order by ranked.rn asc, ranked.created_at asc
+      limit ${limit}
+    `);
+    const ids = [...ordered].map((row) => row.id);
+    if (ids.length === 0) return [];
+    const rows = await database
       .select()
       .from(agentRuns)
-      .where(eq(agentRuns.status, "queued"))
-      .orderBy(asc(agentRuns.createdAt))
-      .limit(limit);
+      .where(inArray(agentRuns.id, ids));
+    const position = new Map(ids.map((id, index) => [id, index] as const));
+    return rows.sort(
+      (a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0),
+    );
   }
 
   /**

@@ -17,8 +17,9 @@ RUN bun install
 COPY agent-computer/src ./src
 
 # Durable working directory. Bot-produced files that must survive replacement live here.
-RUN mkdir -p /workspace
+RUN mkdir -p /workspace /profiles
 ENV WORKSPACE_DIR=/workspace
+ENV PROFILES_DIR=/profiles
 
 ENV PORT=4100
 EXPOSE 4100

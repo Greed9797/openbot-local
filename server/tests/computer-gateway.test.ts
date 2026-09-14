@@ -630,6 +630,30 @@ describe("the computer gateway", () => {
     });
   });
 
+  test("computers carries residents against max when the provider bounds the fleet", async () => {
+    const { gateway, provider } = await gatewayWith(PERMISSIVE, {
+      locations: [
+        { botId: "bot-a", status: "running" },
+        { botId: "bot-b", status: "stopped" },
+      ],
+    });
+    provider.capacity = async () => ({ maxComputers: 6 });
+
+    const result = await gateway.computers();
+
+    expect(result.capacity).toEqual({ residents: 1, maxComputers: 6 });
+  });
+
+  test("computers omits capacity when the fleet is unbounded", async () => {
+    const { gateway } = await gatewayWith(PERMISSIVE, {
+      locations: [{ botId: "bot-a", status: "running" }],
+    });
+
+    const result = await gateway.computers();
+
+    expect("capacity" in result).toBe(false);
+  });
+
   test("takes a screenshot through the located computer with its identity and token", async () => {
     const { gateway, requests } = await gatewayWith(PERMISSIVE, {
       token: "computer-secret",

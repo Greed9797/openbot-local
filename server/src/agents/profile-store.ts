@@ -29,62 +29,20 @@ export type ProfileReadExecutor = DatabaseExecutor;
 export type AgentProfileStore = {
   list(actor: AgentActor, hidden?: boolean): Promise<AgentProfile[]>;
   get(actor: AgentActor, id: string): Promise<AgentProfile | null>;
-  /**
-   * `get`, but on the caller's own transaction and holding the profile against deletion until that
-   * transaction ends.
-   *
-   * A caller that writes rows referencing an agent has to validate it here rather than through
-   * `get`. `get` borrows a second pooled connection, which deadlocks the caller's transaction once
-   * every connection is held by one, and reads an unlocked snapshot, so a deletion committing
-   * between the check and the insert leaves rows pointing at an agent that no longer runs.
-   */
-  getWithin(
-    executor: ProfileReadExecutor,
-    actor: AgentActor,
-    id: string,
-  ): Promise<AgentProfile | null>;
-  /**
-   * O que a execução de uma tarefa precisa saber deste Bot, sem passar por um ator.
-   *
-   * `get` é escopado por quem pergunta, e aqui quem pergunta é o runtime: quem cria a tarefa já
-   * decidiu que aquela pessoa pode usar aquele Bot, e o gateway do computador decide política e
-   * auditoria pelo id do Bot. Pedir um ator de mentira emprestado faria esta leitura parecer um
-   * acesso de pessoa, que é o defeito que a auditoria inteira existe para não ter.
-   *
-   * Bot que não existe devolve `null` — e quem chama decide o que fazer com isso.
-   */
-  runtimeSettings(botId: string): Promise<{
-    provider: string | null;
-    model: string | null;
-    allowPrivateNavigation: boolean;
-  } | null>;
+  getWithin(executor: ProfileReadExecutor, actor: AgentActor, id: string): Promise<AgentProfile | null>;
+  runtimeSettings(botId: string): Promise<{ provider: string | null; model: string | null; allowPrivateNavigation: boolean } | null>;
+  createWithin(executor: ProfileWriteExecutor, actor: AgentActor, input: CreateAgentInput): Promise<AgentProfile>;
   create(actor: AgentActor, input: CreateAgentInput): Promise<AgentProfile>;
-  update(
-    actor: AgentActor,
-    id: string,
-    input: CreateAgentInput,
-  ): Promise<AgentProfile>;
+  update(actor: AgentActor, id: string, input: CreateAgentInput): Promise<AgentProfile>;
   duplicate(actor: AgentActor, id: string): Promise<AgentProfile>;
   setHidden(actor: AgentActor, id: string, hidden: boolean): Promise<void>;
   softDelete(actor: AgentActor, id: string): Promise<void>;
-  /**
-   * Issue this agent a credential for calling tools back, and return it once.
-   *
-   * Returned rather than stored: only the hash is kept, so this is the one moment the token exists in
-   * a readable form. Calling it again replaces the old one, which is how rotation works and how a
-   * leaked token is retired.
-   */
   issueCallbackToken(actor: AgentActor, id: string): Promise<string>;
-  /** Take the credential away. The agent may talk, and may no longer call anything back. */
   revokeCallbackToken(actor: AgentActor, id: string): Promise<void>;
-  /**
-   * Which agent holds this token, if any.
-   *
-   * By hash, because that is all this side keeps. Not scoped to an actor: the caller is a machine
-   * presenting a credential, and the credential is the whole of its claim.
-   */
   agentForCallbackToken(hash: string): Promise<{ id: string } | null>;
 };
+
+export type ProfileWriteExecutor = ProfileReadExecutor & { insert: Database["insert"] };
 
 export class AgentNotFoundError extends Error {
   constructor(id: string) {
@@ -318,7 +276,43 @@ export function createAgentProfileStore(
   const managedConfiguration = {
     endpoint: managedAgentAgUiUrl.toString(),
   };
-
+  type WriteExecutor = ProfileReadExecutor & { insert: Database["insert"] };
+  async function insertProfileRow(executor: WriteExecutor, actor: AgentActor, input: CreateAgentInput): Promise<AgentProfile> {
+    const id = newAgentId();
+    await executor.insert(agents).values({
+      id,
+      name: input.name,
+      type: "remote_ag_ui",
+      configuration: {
+        ...(input.endpoint ? { endpoint: input.endpoint } : managedConfiguration),
+        ...(input.provider ? { provider: input.provider } : {}),
+        ...(input.model ? { model: input.model } : {}),
+        ...(input.allowPrivateNavigation ? { allowPrivateNavigation: true } : {}),
+        ...(input.auth && vault
+          ? {
+              auth: await storeAgentAuth({
+                store: vault.store,
+                encryptionKey: vault.encryptionKey,
+                agentId: id,
+                header: input.auth.header,
+                value: input.auth.value,
+              }),
+            }
+          : {}),
+      },
+    });
+    await executor.insert(agentProfiles).values({
+      agentId: id,
+      ownerUserId: actor.id,
+      title: input.title,
+      roleDescription: input.roleDescription,
+      avatarSeed: id,
+      visibility: input.visibility,
+    });
+    const profile = await findAccessibleProfile(executor, actor, id);
+    if (!profile) throw new AgentNotFoundError(id);
+    return profile;
+  }
   return {
     async list(actor, hidden = false) {
       const rows = await joinedProfiles(database, actor).where(
@@ -365,58 +359,13 @@ export function createAgentProfileStore(
       };
     },
 
+    async createWithin(executor, actor, input) {
+      return insertProfileRow(executor, actor, input);
+    },
+
     create(actor, input) {
       return database.transaction(async (transaction) => {
-        const id = newAgentId();
-        await transaction.insert(agents).values({
-          id,
-          name: input.name,
-          type: "remote_ag_ui",
-          // Their endpoint if they gave one, ours if they did not. Validated before it reaches here;
-          // see endpoint.ts for why a stored URL is a security decision and not a text field.
-          //
-          // The key, if there is one, goes to the vault and only its reference is stored here. See
-          // auth-header.ts for why a bearer token must not sit next to the endpoint.
-          configuration: {
-            ...(input.endpoint
-              ? { endpoint: input.endpoint }
-              : managedConfiguration),
-            /*
-             * A escolha de modelo e a permissão de rede nascem com o Bot, quando alguém as deu.
-             * Ausentes somem do jsonb: um Bot sem provedor escolhido é o caso comum, e uma chave
-             * `provider: null` gravada nele faria toda leitura futura carregar uma decisão que
-             * ninguém tomou.
-             */
-            ...(input.provider ? { provider: input.provider } : {}),
-            ...(input.model ? { model: input.model } : {}),
-            ...(input.allowPrivateNavigation
-              ? { allowPrivateNavigation: true }
-              : {}),
-            ...(input.auth && vault
-              ? {
-                  auth: await storeAgentAuth({
-                    store: vault.store,
-                    encryptionKey: vault.encryptionKey,
-                    agentId: id,
-                    header: input.auth.header,
-                    value: input.auth.value,
-                  }),
-                }
-              : {}),
-          },
-        });
-        await transaction.insert(agentProfiles).values({
-          agentId: id,
-          ownerUserId: actor.id,
-          title: input.title,
-          roleDescription: input.roleDescription,
-          avatarSeed: id,
-          visibility: input.visibility,
-        });
-
-        const profile = await findAccessibleProfile(transaction, actor, id);
-        if (!profile) throw new AgentNotFoundError(id);
-        return profile;
+        return insertProfileRow(transaction as unknown as WriteExecutor, actor, input);
       });
     },
 

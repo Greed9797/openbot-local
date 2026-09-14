@@ -14,6 +14,7 @@ import {
   WorkspaceRefusedError,
   WorkspaceRequestError,
 } from "./gateway";
+import { SupervisorError } from "./supervisor";
 import { type PolicyStore, parseActionPolicy } from "./policy-store";
 import { createBrowserTools } from "../agent-runtime/browser-tools";
 
@@ -132,7 +133,10 @@ export function createComputerRoutes(
     try {
       return context.json(await gateway.computers());
     } catch (error) {
-      return context.json({ error: describe(error) }, statusFor(error));
+      return context.json(
+        { error: describe(error), ...refusalOf(error) },
+        statusFor(error),
+      );
     }
   });
 
@@ -210,7 +214,10 @@ export function createComputerRoutes(
     try {
       return context.json(await gateway.screenshot(botOf(context)));
     } catch (error) {
-      return context.json({ error: describe(error) }, statusFor(error));
+      return context.json(
+        { error: describe(error), ...refusalOf(error) },
+        statusFor(error),
+      );
     }
   });
 
@@ -218,7 +225,10 @@ export function createComputerRoutes(
     try {
       return context.json(await gateway.read(botOf(context)));
     } catch (error) {
-      return context.json({ error: describe(error) }, statusFor(error));
+      return context.json(
+        { error: describe(error), ...refusalOf(error) },
+        statusFor(error),
+      );
     }
   });
 
@@ -257,7 +267,10 @@ export function createComputerRoutes(
       if (error instanceof NavigationRefusedError) {
         return context.json({ error: error.message }, 403);
       }
-      return context.json({ error: describe(error) }, statusFor(error));
+      return context.json(
+        { error: describe(error), ...refusalOf(error) },
+        statusFor(error),
+      );
     }
   });
 
@@ -298,7 +311,10 @@ export function createComputerRoutes(
       if (error instanceof NavigationRefusedError) {
         return context.json({ error: error.message }, 403);
       }
-      return context.json({ error: describe(error) }, statusFor(error));
+      return context.json(
+        { error: describe(error), ...refusalOf(error) },
+        statusFor(error),
+      );
     }
   });
 
@@ -306,7 +322,10 @@ export function createComputerRoutes(
     try {
       return context.json(await gateway.snapshot(botOf(context)));
     } catch (error) {
-      return context.json({ error: describe(error) }, statusFor(error));
+      return context.json(
+        { error: describe(error), ...refusalOf(error) },
+        statusFor(error),
+      );
     }
   });
 
@@ -413,7 +432,10 @@ export function createComputerRoutes(
     try {
       return context.json(await gateway.control(botOf(context)));
     } catch (error) {
-      return context.json({ error: describe(error) }, statusFor(error));
+      return context.json(
+        { error: describe(error), ...refusalOf(error) },
+        statusFor(error),
+      );
     }
   });
 
@@ -523,7 +545,10 @@ export function createComputerRoutes(
         } as Parameters<typeof gateway.humanInput>[1]),
       );
     } catch (error) {
-      return context.json({ error: describe(error) }, statusFor(error));
+      return context.json(
+        { error: describe(error), ...refusalOf(error) },
+        statusFor(error),
+      );
     }
   });
 
@@ -686,7 +711,10 @@ async function act(
     if (error instanceof WorkspaceRequestError) {
       return context.json({ error: error.message }, 400);
     }
-    return context.json({ error: describe(error) }, statusFor(error));
+    return context.json(
+        { error: describe(error), ...refusalOf(error) },
+        statusFor(error),
+      );
   }
 }
 
@@ -738,7 +766,29 @@ function describe(error: unknown): string {
  * not running (an operator fixes it), the refs are stale (the model fixes it by snapshotting again),
  * and everything else. Navigation established this; the acting routes follow it.
  */
-function statusFor(error: unknown): 409 | 500 | 503 {
+/**
+ * What a refused start carries beyond the message, so a UI can offer "try again" with the
+ * supervisor's own wait instead of a dead end. Anything else carries nothing extra.
+ */
+export function refusalOf(error: unknown): {
+  code?: string;
+  retryAfterMs?: number;
+} {
+  if (
+    error instanceof SupervisorError &&
+    error.code === "COMPUTER_BUSY_SLOT"
+  ) {
+    return {
+      code: error.code,
+      ...(error.retryAfterMs !== undefined
+        ? { retryAfterMs: error.retryAfterMs }
+        : {}),
+    };
+  }
+  return {};
+}
+
+function statusFor(error: unknown): 409 | 429 | 500 | 503 {
   if (error instanceof StaleSnapshotError) return 409;
   // The same answer as a stale snapshot, because it is the same instruction: the refs are wrong, take
   // another snapshot. Not 503, which says the computer is unavailable and sends an operator hunting a
@@ -753,5 +803,13 @@ function statusFor(error: unknown): 409 | 500 | 503 {
     return 409;
   }
   if (error instanceof ComputerUnavailableError) return 503;
+  // A refused start is not an outage: the supervisor answered and named its wait, so the status
+  // says "try again later" rather than sending an operator hunting a container that is fine.
+  if (
+    error instanceof SupervisorError &&
+    error.code === "COMPUTER_BUSY_SLOT"
+  ) {
+    return 429;
+  }
   return 500;
 }

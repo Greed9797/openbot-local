@@ -79,6 +79,10 @@ export const auditEventTypes = [
   // when is exactly the sort of thing an investigator needs and nothing else records.
   "computer.stopped",
   "computer.reset",
+  // The browser's viewport changed under the run: a responsive pass resized it, or device flags
+  // restarted the browser. Recorded because steps before and after were taken at different sizes,
+  // and a trail that cannot see that misreads every coordinate comparison across the change.
+  "computer.viewport_changed",
   /**
    * The boundary this deployment booted with.
    *

@@ -175,21 +175,19 @@ function isAgentInputObject(input: unknown): input is AgentInputObject {
  */
 const DEV_ACTOR_EMAIL = "dev@openbot.local";
 
-export function createAgentRoutes(
-  store: AgentProfileStore,
-  requireUser: MiddlewareHandler<{ Variables: AppVariables }>,
-  /** Whether this deployment may talk to its own network. True on a laptop, false when hosted. */
-  allowPrivateHosts = false,
-  /** Where a Bot's own refusal is recorded. Absent in tests that do not care about the trail. */
-  auditStore?: AuditStore,
-) {
+export type AgentSectorHooks = {
+  isSectorBot: (botId: string) => Promise<boolean>;
+  sectorIdForOwner: (ownerId: string) => Promise<string | null>;
+  registerSectorBot: (botId: string, sectorId: string) => Promise<void>;
+  sectorIdForBot: (botId: string) => Promise<string | null>;
+};
+export function createAgentRoutes(store: AgentProfileStore, requireUser: MiddlewareHandler<{ Variables: AppVariables }>, allowPrivateHosts = false, auditStore?: AuditStore, sectors?: AgentSectorHooks) {
   const routes = new Hono<{ Variables: AppVariables }>();
 
   /**
    * The Bot declined something, and says so.
    *
-   * The audit trail records what a Bot did, decided by the gateway on the way to an action. A model
-   * that refuses before calling any tool takes no action, so this records the attempted request.
+   * The audit trail records what a Bot did, decided by the gateway on the way to an action. A model that refuses before calling any tool takes no action, so this records the attempted request.
    *
    * Self-reported, and said so in the row. The Bot calls this because its tool description tells it
    * to, so a model that declines without a tool call still writes nothing. This is evidence, not enforcement:
@@ -287,15 +285,15 @@ export function createAgentRoutes(
   });
 
   routes.post("/", requireUser, async (context) => {
-    // Malformed JSON is a recoverable client-input error and is validated by the same parser.
-    const parsed = parseAgentInput(
-      await context.req.json().catch(() => null),
-      allowPrivateHosts,
-    );
+    const parsed = parseAgentInput(await context.req.json().catch(() => null), allowPrivateHosts);
     if (!parsed.ok) return context.json({ error: parsed.error }, 400);
-
     try {
-      const agent = await store.create(context.var.actor, parsed.value);
+      const ownerSector = sectors && context.var.actor.role !== "admin" ? await sectors.sectorIdForOwner(context.var.actor.id) : null;
+      const input = ownerSector ? { ...parsed.value, visibility: "private" as const } : parsed.value;
+      const agent = await store.create(context.var.actor, input);
+      if (ownerSector && sectors) {
+        await sectors.registerSectorBot(agent.id, ownerSector).catch(() => undefined);
+      }
       return context.json({ agent: agentDto(context.var.actor, agent) }, 201);
     } catch (error) {
       return mapStoreError(context, error);
@@ -303,19 +301,13 @@ export function createAgentRoutes(
   });
 
   routes.patch("/:agentId", requireUser, async (context) => {
-    // Malformed JSON is a recoverable client-input error and is validated by the same parser.
-    const parsed = parseAgentInput(
-      await context.req.json().catch(() => null),
-      allowPrivateHosts,
-    );
+    const parsed = parseAgentInput(await context.req.json().catch(() => null), allowPrivateHosts);
     if (!parsed.ok) return context.json({ error: parsed.error }, 400);
-
+    if (parsed.value.visibility === "public" && sectors && (await sectors.isSectorBot(context.req.param("agentId")))) {
+      return context.json({ error: "Sector bots stay private to their sector." }, 409);
+    }
     try {
-      const agent = await store.update(
-        context.var.actor,
-        context.req.param("agentId"),
-        parsed.value,
-      );
+      const agent = await store.update(context.var.actor, context.req.param("agentId"), parsed.value);
       return context.json({ agent: agentDto(context.var.actor, agent) });
     } catch (error) {
       return mapStoreError(context, error);
@@ -324,10 +316,15 @@ export function createAgentRoutes(
 
   routes.post("/:agentId/duplicate", requireUser, async (context) => {
     try {
-      const agent = await store.duplicate(
-        context.var.actor,
-        context.req.param("agentId"),
-      );
+      const sourceId = context.req.param("agentId");
+      const sourceSector = sectors ? await sectors.sectorIdForBot(sourceId) : null;
+      const agent = await store.duplicate(context.var.actor, sourceId);
+      if (sectors && sourceSector) {
+        const ownerSector = context.var.actor.role !== "admin" ? await sectors.sectorIdForOwner(context.var.actor.id) : sourceSector;
+        if (ownerSector === sourceSector) {
+          await sectors.registerSectorBot(agent.id, sourceSector).catch(() => undefined);
+        }
+      }
       return context.json({ agent: agentDto(context.var.actor, agent) }, 201);
     } catch (error) {
       return mapStoreError(context, error);

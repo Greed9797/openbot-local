@@ -16,6 +16,9 @@ RUN bun install
 COPY --from=spire /opt/spire/bin/spire-server /usr/local/bin/spire-server
 
 COPY supervisor/src ./src
+# Single source for the per-Bot credential: the same file every other package imports, placed where
+# the same relative import (`../../shared/computer-token`) resolves inside this image.
+COPY shared/computer-token.ts /shared/computer-token.ts
 
 EXPOSE 4300
 CMD ["bun", "src/index.ts"]

@@ -277,14 +277,17 @@ describe("preenchimento e leitura pelo MCP", () => {
 
   test("ler_url_rapido recusado volta como recusa legível, não como erro de protocolo", async () => {
     const original = globalThis.fetch;
-    globalThis.fetch = (async () =>
-      new Response(
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      return new Response(
         JSON.stringify({
           error: "Ler este endereço exige aprovação.",
           rule: "deny[5]",
         }),
         { status: 403, headers: { "content-type": "application/json" } },
-      )) as unknown as typeof fetch;
+      );
+    }) as unknown as typeof fetch;
 
     try {
       const [reply] = (await ask({
@@ -295,7 +298,12 @@ describe("preenchimento e leitura pelo MCP", () => {
           name: "ler_url_rapido",
           arguments: { url: "https://loja.test/interno" },
         },
-      })) as { result: { content: { type: string; text?: string }[] } }[];
+      })) as {
+        result: {
+          isError?: boolean;
+          content: { type: string; text?: string }[];
+        };
+      }[];
 
       const payload = JSON.parse(String(reply.result.content[0]?.text));
       expect(payload).toEqual({
@@ -303,8 +311,94 @@ describe("preenchimento e leitura pelo MCP", () => {
         motivo: "Ler este endereço exige aprovação.",
         regra: "deny[5]",
       });
+      // Recusa é resposta, não erro: `isError` faria o modelo tratar política como pane.
+      expect(reply.result.isError).toBeUndefined();
+      // E uma recusa não se repete sozinha: uma chamada ao servidor, uma resposta.
+      expect(calls).toBe(1);
     } finally {
       globalThis.fetch = original;
     }
   });
+});
+
+/**
+ * Falha operacional não é recusa de política.
+ *
+ * O bridge transformava todo HTTP não-2xx em `{recusado:true}`. Um 502 do Chromium sem permissão no
+ * volume de perfis chegava ao modelo como "a política barrou", e a resposta natural a uma recusa é
+ * procurar outro caminho — foi assim que um navegador que não abria virou uma consulta que nunca
+ * aconteceu. O contrato agora é: 403 é política, volta como resultado; o resto é `isError`, com a
+ * razão do servidor no texto.
+ */
+describe("falha operacional não vira recusa de política", () => {
+  const casos = [
+    {
+      nome: "EACCES no diretório de perfis, que é filesystem",
+      status: 502,
+      body: {
+        error:
+          "launchPersistentContext: EACCES: permission denied, mkdir '/profiles/agent_6436f77c'",
+      },
+      contem: "EACCES",
+    },
+    {
+      nome: "RobotsBlocked no leitor rápido, que é do motor sem pixels",
+      status: 502,
+      body: { error: "RobotsBlocked: /status/1 is disallowed by robots.txt" },
+      contem: "RobotsBlocked",
+    },
+    {
+      nome: "429 da página, que é limite externo",
+      status: 429,
+      body: { error: "Too Many Requests" },
+      contem: "Too Many Requests",
+    },
+    {
+      nome: "pessoa no controle, que é 409 e não é defeito",
+      status: 409,
+      body: { error: "A person is using the computer right now." },
+      contem: "A person is using the computer right now.",
+    },
+  ];
+
+  for (const caso of casos) {
+    test(`${caso.status}: ${caso.nome}`, async () => {
+      const original = globalThis.fetch;
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls++;
+        return new Response(JSON.stringify(caso.body), {
+          status: caso.status,
+          headers: { "content-type": "application/json" },
+        });
+      }) as unknown as typeof fetch;
+
+      try {
+        const [reply] = (await ask({
+          jsonrpc: "2.0",
+          id: 20,
+          method: "tools/call",
+          params: {
+            name: "abrir_pagina",
+            arguments: { url: "https://x.com/search?q=skills" },
+          },
+        })) as {
+          result: {
+            isError?: boolean;
+            content: { type: string; text?: string }[];
+          };
+        }[];
+
+        expect(reply.result.isError).toBeTrue();
+        const texto = String(reply.result.content[0]?.text);
+        expect(texto).toContain(caso.contem);
+        // O que não pode acontecer: chegar como recusa, que o modelo lê como política.
+        expect(texto).not.toContain("recusado");
+        // Uma tentativa, sem retry escondido no bridge.
+        expect(calls).toBe(1);
+      } finally {
+        globalThis.fetch = original;
+      }
+    });
+  }
 });

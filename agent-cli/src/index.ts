@@ -377,6 +377,13 @@ export function instructions(skills: SkillConcedida[] = []): string {
     "delas é recusado pela configuração deste projeto, de propósito: só o caminho pelo MCP passa",
     "pela política e pela auditoria do deployment.",
     "",
+    "Pedido explícito de browser/navegador, tela em tempo real ou sessão autenticada usa abrir_pagina",
+    "e as ferramentas da página aberta; não substitua por ler_url_rapido.",
+    "",
+    "Erro operacional não é autorização para contornar o gateway: se o navegador falhar, relate a",
+    "falha real e não descreva uma consulta que não aconteceu. Login, CAPTCHA e 2FA são pedidos a uma",
+    "pessoa pela tela — senha nunca no chat, nunca adivinhada.",
+    "",
     "Para baixar ou gerar arquivos, escreva no diretório de trabalho — é o que a pessoa recebe.",
   ];
 

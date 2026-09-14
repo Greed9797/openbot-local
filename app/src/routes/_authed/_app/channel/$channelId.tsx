@@ -91,7 +91,11 @@ function ComputerViewPanel({
           that rides on it.
         */}
         <div className={showing === "screen" ? undefined : "hidden"}>
-          <ComputerView active computerId={agentId} />
+          <ComputerView
+            active={showing === "screen"}
+            live
+            computerId={agentId}
+          />
           <span className="mt-4 flex w-full items-center justify-center text-center text-muted-foreground text-sm">
             {name || "Agent"}'s screen
           </span>

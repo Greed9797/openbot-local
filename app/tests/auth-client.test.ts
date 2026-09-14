@@ -1,15 +1,32 @@
 import { describe, expect, test } from "bun:test";
-import { providerName, signInWith } from "@/lib/auth/client";
 
 /*
  * A browser origin, which the sign-in call needs for its callback URL and this environment has no
  * window to supply. Stubbed rather than designed around: where the browser sends somebody back to
  * is the browser's own business, and threading it through as an argument would only move the same
  * value to the caller.
+ *
+ * Set BEFORE the client loads, not just before the calls run: creating the client reads
+ * `window.location` at module top, and a DOM registered by another test file in this process
+ * hands it `about:blank`, which fails the import. A static import would hoist above this.
+ *
+ * Never a wholesale replacement when a DOM is already here: the stub this used to assign took
+ * `history` down with it, and the router tests after this file died reading `pushState`.
  */
-(globalThis as { window?: unknown }).window = {
-  location: { origin: "http://localhost:3010" },
-};
+const existingWindow = (
+ globalThis as {
+ window?: { happyDOM?: { setURL?: (url: string) => void } };
+ }
+).window;
+if (existingWindow?.happyDOM?.setURL) {
+ existingWindow.happyDOM.setURL("http://localhost:3010");
+} else if (typeof existingWindow === "undefined") {
+ (globalThis as { window?: unknown }).window = {
+ location: { origin: "http://localhost:3010" },
+ };
+}
+
+const { providerName, signInWith } = await import("@/lib/auth/client");
 
 /**
  * Starting sign-in, for each provider a deployment can configure.

@@ -86,6 +86,52 @@ describe("locating a Bot's computer", () => {
     expect(client.locate("sales")).rejects.toThrow(/could not be reached/);
   });
 
+  test("carries the sector the server resolved, never a caller claim", async () => {
+    let seenBody: unknown = null;
+    const client = createDockerSupervisorProvider({
+      baseUrl: "http://supervisor:4300",
+      sectorForBot: (botId: string) =>
+        botId === "sales" ? "livelab" : null,
+      fetchImpl: (async (url: string | URL | Request, init?: RequestInit) => {
+        seenBody = init?.body === undefined ? null : JSON.parse(String(init.body));
+        return Response.json({ url: "http://c:4100" });
+      }) as unknown as typeof fetch,
+    });
+    await client.locate("sales");
+    expect(seenBody).toEqual({ sectorId: "livelab" });
+  });
+
+  test("a bot with no sector is admitted on capacity alone", async () => {
+    let seenBody: unknown = "unset";
+    const client = createDockerSupervisorProvider({
+      baseUrl: "http://supervisor:4300",
+      sectorForBot: () => null,
+      fetchImpl: (async (_url: string | URL | Request, init?: RequestInit) => {
+        seenBody = init?.body === undefined ? null : JSON.parse(String(init.body));
+        return Response.json({ url: "http://c:4100" });
+      }) as unknown as typeof fetch,
+    });
+    await client.locate("drifter");
+    expect(seenBody).toEqual({ sectorId: null });
+  });
+
+  test("a busy fleet refusal keeps its code and wait", async () => {
+    const client = clientWith(() =>
+      Response.json(
+        {
+          error: "No room for another computer.",
+          code: "COMPUTER_BUSY_SLOT",
+          retryAfterMs: 30_000,
+        },
+        { status: 429 },
+      ),
+    );
+    const failure = await client.locate("sales").catch((error) => error);
+    expect(failure).toBeInstanceOf(SupervisorError);
+    expect((failure as SupervisorError).code).toBe("COMPUTER_BUSY_SLOT");
+    expect((failure as SupervisorError).retryAfterMs).toBe(30_000);
+  });
+
   test("the bot id is escaped into the path", async () => {
     let seen = "";
     const client = createDockerSupervisorProvider({
@@ -142,6 +188,24 @@ describe("Docker supervisor provider", () => {
       expect(result).toMatchObject(expected);
     },
   );
+
+  test("capacity reports the limit the supervisor enforces", async () => {
+    const provider = createDockerSupervisorProvider({
+      baseUrl: "http://supervisor:4300",
+      fetchImpl: (async () =>
+        Response.json({ computers: [], maxComputers: 6 })) as unknown as typeof fetch,
+    });
+    expect(await provider.capacity?.()).toEqual({ maxComputers: 6 });
+  });
+
+  test("capacity is null when the supervisor names no limit", async () => {
+    const provider = createDockerSupervisorProvider({
+      baseUrl: "http://supervisor:4300",
+      fetchImpl: (async () =>
+        Response.json({ computers: [] })) as unknown as typeof fetch,
+    });
+    expect(await provider.capacity?.()).toBeNull();
+  });
 
   test("reports missing bot as absent", async () => {
     const provider = createDockerSupervisorProvider({

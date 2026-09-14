@@ -1,11 +1,15 @@
 import { serve } from "bun";
 import { Hono } from "hono";
+import { deriveComputerToken } from "../../shared/computer-token";
 import {
+  BrowserCapacityError,
+  DEFAULT_MAX_COMPUTERS,
   DockerUnavailableError,
   ensure,
   listOwned,
   reachable,
   reset,
+  SectorConflictError,
   stop,
 } from "./docker";
 import { registerEntry } from "./identity";
@@ -49,6 +53,48 @@ const memoryBytes = process.env.COMPUTER_MEMORY_BYTES
   ? Number.parseInt(process.env.COMPUTER_MEMORY_BYTES, 10)
   : undefined;
 const spireSocketVolume = process.env.SPIRE_AGENT_SOCKET_VOLUME;
+/*
+ * The master behind every computer's credential. Each computer receives only its own derived
+ * token, so this process refuses to start without the master: a supervisor that could only hand
+ * out dead computers would be worse than one that says so at boot.
+ */
+const computerTokenMaster = process.env.COMPUTER_TOKEN?.trim();
+if (!computerTokenMaster) {
+  console.error(
+    "COMPUTER_TOKEN is not set. The supervisor derives each computer's credential from it, and will not start computers it cannot credential.",
+  );
+  process.exit(1);
+}
+/*
+ * How many computers may be live at once. Six residents, one per sector, and no seventh browser
+ * on the host. Must be a positive integer; anything else refuses to boot rather than silently
+ * running unbounded.
+ */
+const maxComputers = (() => {
+  const raw = process.env.COMPUTER_MAX_COMPUTERS?.trim();
+  if (!raw) return DEFAULT_MAX_COMPUTERS;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    console.error(
+      "COMPUTER_MAX_COMPUTERS must be a positive integer.",
+    );
+    process.exit(1);
+  }
+  return parsed;
+})();
+/*
+ * Sector ids this supervisor admits, when the deployment places computers into sectors. Unset,
+ * any request is admitted on capacity alone, which is the laptop shape; set, only these ids are
+ * accepted and a request without one is refused.
+ */
+const sectorAllowlist = (() => {
+  const raw = process.env.COMPUTER_SECTORS?.trim();
+  if (!raw) return null;
+  return raw
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+})();
 
 /**
  * What a computer is told about itself.
@@ -67,7 +113,12 @@ function environmentFor(botId: string): string[] {
    * can drive a Bot's browser. Never caller-supplied: a request says which Bot, never what
    * to set.
    */
-  const computerToken = process.env.COMPUTER_TOKEN;
+  // One credential per computer, derived from the master above. The container never sees the
+  // master, so a credential taken from one Bot's computer authenticates nowhere else.
+  const computerToken = deriveComputerToken(
+    computerTokenMaster as string,
+    botId,
+  );
   return [
     // Which Bot this container is. Read by the computer as the Bot to assume when a request does not
     // name one. It is normally named per request, so this is the fallback, and for a container that
@@ -106,6 +157,15 @@ function resolve(raw: string) {
 app.post("/computers/:botId/ensure", async (context) => {
   const parsed = resolve(context.req.param("botId"));
   if (!parsed.ok) return context.json({ error: parsed.reason }, 400);
+  // The sector comes from the authorised server's own lookup, never from the requester beyond it:
+  // callers name a Bot, and the server says which sector that Bot belongs to, if any.
+  const body = (await context.req.json().catch(() => null)) as {
+    sectorId?: unknown;
+  } | null;
+  const sectorId =
+    typeof body?.sectorId === "string" && body.sectorId.trim().length > 0
+      ? body.sectorId.trim()
+      : null;
 
   try {
     // Registered before the computer is handed out, so it can prove which Bot it is from its first
@@ -119,6 +179,9 @@ app.post("/computers/:botId/ensure", async (context) => {
       ...(runtime ? { runtime } : {}),
       ...(memoryBytes ? { memoryBytes } : {}),
       ...(spireSocketVolume ? { spireSocketVolume } : {}),
+      ...(sectorId ? { sectorId } : {}),
+      ...(sectorAllowlist ? { sectorAllowlist } : {}),
+      maxComputers,
     });
     return context.json({
       ...state,
@@ -127,6 +190,21 @@ app.post("/computers/:botId/ensure", async (context) => {
         : { identity: identity.reason }),
     });
   } catch (error) {
+    if (error instanceof BrowserCapacityError) {
+      // The wire carries the busy-slot route's code, not the class's: the server and the UI match
+      // on this string, and it must not change with a refactor of the supervisor's internals.
+      return context.json(
+        {
+          error: error.message,
+          code: "COMPUTER_BUSY_SLOT",
+          retryAfterMs: error.retryAfterMs,
+        },
+        429,
+      );
+    }
+    if (error instanceof SectorConflictError) {
+      return context.json({ error: error.message, code: error.code }, 409);
+    }
     if (error instanceof DockerUnavailableError) {
       return context.json({ error: error.message }, 503);
     }
@@ -164,7 +242,10 @@ app.post("/computers/:botId/reset", async (context) => {
 
 app.get("/computers", async (context) => {
   try {
-    return context.json({ computers: await listOwned() });
+    return context.json({
+      computers: await listOwned(),
+      maxComputers,
+    });
   } catch (error) {
     if (error instanceof DockerUnavailableError) {
       return context.json({ error: error.message }, 503);

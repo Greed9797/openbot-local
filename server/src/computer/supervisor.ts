@@ -33,12 +33,27 @@ export type SupervisorOptions = {
   hostForPort?: (port: number) => string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  /**
+   * Which sector slot a Bot belongs to, resolved from this deployment's own store.
+   *
+   * Set, every ensure carries the sector and the supervisor admits the computer into it; unset,
+   * the supervisor admits on capacity alone. The value never comes from a caller: locate resolves
+   * it here, from the authorised server side.
+   */
+  sectorForBot?: (botId: string) => string | null | Promise<string | null>;
 };
 
 export class SupervisorError extends Error {
-  constructor(message: string) {
+  /** A machine-readable refusal that survives to the UI, when the supervisor sent one. */
+  readonly code?: string;
+  /** How long a refused caller waits before asking again, when the supervisor said. */
+  readonly retryAfterMs?: number;
+  constructor(message: string, options?: { code?: string; retryAfterMs?: number }) {
     super(message);
     this.name = "SupervisorError";
+    if (options?.code !== undefined) this.code = options.code;
+    if (options?.retryAfterMs !== undefined)
+      this.retryAfterMs = options.retryAfterMs;
   }
 }
 
@@ -51,14 +66,24 @@ export function createDockerSupervisorProvider(
   const hostForPort =
     options.hostForPort ?? ((port) => `http://localhost:${port}`);
 
-  async function call(path: string, method = "POST"): Promise<unknown> {
+  async function call(
+    path: string,
+    method = "POST",
+    body?: unknown,
+  ): Promise<unknown> {
     let response: Response;
     try {
       response = await doFetch(`${base}${path}`, {
         method,
-        headers: options.token
-          ? { authorization: `Bearer ${options.token}` }
-          : {},
+        headers: {
+          ...(options.token
+            ? { authorization: `Bearer ${options.token}` }
+            : {}),
+          ...(body === undefined
+            ? {}
+            : { "content-type": "application/json" }),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (error) {
@@ -67,29 +92,50 @@ export function createDockerSupervisorProvider(
       );
     }
 
-    const body = (await response.json().catch(() => null)) as {
+    const payload = (await response.json().catch(() => null)) as {
       error?: string;
+      code?: string;
+      retryAfterMs?: number;
       stopped?: boolean;
       reset?: boolean;
       computers?: SupervisorComputerLocation[];
     } | null;
     if (!response.ok) {
       throw new SupervisorError(
-        body?.error ?? `The supervisor answered ${response.status}.`,
+        payload?.error ?? `The supervisor answered ${response.status}.`,
+        {
+          ...(typeof payload?.code === "string" ? { code: payload.code } : {}),
+          ...(typeof payload?.retryAfterMs === "number"
+            ? { retryAfterMs: payload.retryAfterMs }
+            : {}),
+        },
       );
     }
-    return body;
+    return payload;
   }
 
-  async function listRaw(): Promise<SupervisorComputerLocation[]> {
+  async function listRaw(): Promise<{
+    computers: SupervisorComputerLocation[];
+    maxComputers: number | null;
+  }> {
     const body = (await call("/computers", "GET")) as {
       computers?: SupervisorComputerLocation[];
+      maxComputers?: number;
     } | null;
-    return body?.computers ?? [];
+    return {
+      computers: body?.computers ?? [],
+      maxComputers:
+        typeof body?.maxComputers === "number" ? body.maxComputers : null,
+    };
+  }
+
+  async function capacity(): Promise<{ maxComputers: number } | null> {
+    const { maxComputers } = await listRaw();
+    return maxComputers === null ? null : { maxComputers };
   }
 
   async function list(): Promise<ComputerLocation[]> {
-    const computers = await listRaw();
+    const { computers } = await listRaw();
     return computers.map((computer) => ({
       botId: computer.botId,
       status:
@@ -147,8 +193,13 @@ export function createDockerSupervisorProvider(
      * else's computer.
      */
     async locate(botId: string): Promise<string> {
+      const sectorId = options.sectorForBot
+        ? await options.sectorForBot(botId)
+        : undefined;
       const state = (await call(
         `/computers/${encodeURIComponent(botId)}/ensure`,
+        "POST",
+        sectorId === undefined ? undefined : { sectorId },
       )) as SupervisorComputerLocation;
       // The supervisor says where it is, because only it knows whether these computers sit on a
       // shared network or answer on a published port.
@@ -161,7 +212,7 @@ export function createDockerSupervisorProvider(
 
     async status(botId: string): Promise<ComputerStatus> {
       try {
-        const computers = await listRaw();
+        const { computers } = await listRaw();
         return statusFromLocation(
           botId,
           computers.find((computer) => computer.botId === botId),
@@ -193,5 +244,6 @@ export function createDockerSupervisorProvider(
     },
 
     list,
+    capacity,
   };
 }

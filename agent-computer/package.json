@@ -9,6 +9,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "fingerprint-generator": "^2.1.88",
+    "fingerprint-injector": "^2.1.88",
     "playwright": "1.62.1",
     "spiffe": "^0.5.1",
     "yaml": "^2.9.0"

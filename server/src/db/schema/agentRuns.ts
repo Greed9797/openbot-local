@@ -56,6 +56,9 @@ export const agentRunOrigin = pgEnum("agent_run_origin", [
   "web",
   "telegram",
   "api",
+  // A run the deployment enqueued for itself, from a sector routine. Its own origin so the trail
+  // can tell scheduled work from something a person or an integration asked for.
+  "schedule",
 ]);
 
 export const agentRunStepKind = pgEnum("agent_run_step_kind", [

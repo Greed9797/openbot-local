@@ -82,3 +82,34 @@ export async function signInWithEmailDomain(
     );
   }
 }
+
+type EmailResult = { error?: { message?: string } | null };
+
+export async function signInWithPassword(
+  email: string,
+  password: string,
+  start: (input: { email: string; password: string }) => Promise<EmailResult> = (input) =>
+    authClient.signIn.email(input) as Promise<EmailResult>,
+) {
+  const result = await start({ email, password });
+  if (result.error) throw new Error(result.error.message || "Could not sign in.");
+}
+
+export async function signUpWithPassword(
+  email: string,
+  password: string,
+  name: string,
+  start: (input: { email: string; password: string; name: string }) => Promise<EmailResult> = (input) =>
+    authClient.signUp.email(input) as Promise<EmailResult>,
+) {
+  const result = await start({ email, password, name });
+  if (result.error) throw new Error(result.error.message || "Could not create access.");
+}
+
+export async function requestPasswordReset(
+  email: string,
+  start: (input: { email: string; redirectTo: string }) => Promise<EmailResult> = (input) =>
+    authClient.requestPasswordReset(input) as Promise<EmailResult>,
+) {
+  await start({ email, redirectTo: `${window.location.origin}/sign?reset=1` });
+}

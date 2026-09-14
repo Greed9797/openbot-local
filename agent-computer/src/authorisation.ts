@@ -47,3 +47,33 @@ export function offeredToken(headers: Headers, url: URL): string {
 export function isOpenPath(pathname: string): boolean {
   return pathname === "/health";
 }
+
+/**
+ * Which Bot this computer belongs to, if it is anybody's.
+ *
+ * `shared` is the laptop default: one demonstrable computer that answers for whichever Bot is
+ * named. A supervisor-created computer carries its Bot's id here instead, and then this process
+ * is that Bot's exclusive browser: a request naming anybody else is refused, so a misrouted call
+ * fails loudly rather than driving the wrong Bot's logged-in session.
+ */
+export function ownerBotId(
+  environment: NodeJS.ProcessEnv = process.env,
+): string {
+  return environment.COMPUTER_BOT_ID?.trim() || "shared";
+}
+
+/**
+ * Whether a request naming `claimed` may touch a computer owned by `owner`.
+ *
+ * Unclaimed requests take the owner, so health checks and the demo path keep working. A claim for
+ * anybody else is refused: the sessions inside are keyed by Bot, but keying is routing, and routing
+ * is not a refusal.
+ */
+export function mayServeBot(
+  owner: string,
+  claimed: string | null,
+): boolean {
+  if (owner === "shared") return true;
+  if (claimed === null) return true;
+  return claimed === owner;
+}

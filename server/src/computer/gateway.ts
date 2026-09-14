@@ -22,6 +22,7 @@ import {
   ComputerUnavailableError,
   createComputerTransport,
   NavigationRefusedError,
+  StaleSnapshotError,
 } from "./client";
 import { checkComputerAddress } from "./target";
 
@@ -32,6 +33,7 @@ export {
   NavigationRefusedError,
   SecretPendingError,
   StaleSnapshotError,
+  ViewportError,
   WorkspaceRefusedError,
   WorkspaceRequestError,
 } from "./client";
@@ -49,12 +51,14 @@ import type {
   ComputerStatus,
   ControlState,
   FetchResult,
+  FocusWalkResult,
   HumanInput,
   HumanInputResult,
   KeyInput,
   ListFilesInput,
   ListFilesResult,
   NavigateResult,
+  PageAuditResult,
   ReadFileInput,
   ReadFileResult,
   ReadResult,
@@ -65,8 +69,10 @@ import type {
   SecretRequest,
   SecretResult,
   SelectInput,
+  SetViewportResult,
   SnapshotElement,
   SnapshotResult,
+  TelemetryResult,
   TypeInput,
   WriteFileInput,
   WriteFileResult,
@@ -125,6 +131,14 @@ export type ComputerGatewayOptions = {
     | ((botId: string) => boolean | Promise<boolean>);
   /** The secret that agent-computer requires on each request. */
   token?: string;
+  /**
+   * The credential for one Bot's computer, decided per call.
+   *
+   * Passed straight to the transport, where it wins over `token`. A deployment whose computers each
+   * hold only their own derived token sets this to the derivation and leaves `token` unset, so no
+   * call can go out with a credential that opens every computer at once.
+   */
+  tokenForBot?: (botId: string) => string | Promise<string>;
   /** An injectable fetch implementation for focused gateway tests. */
   fetchImpl?: typeof fetch;
   /**
@@ -142,8 +156,16 @@ export interface ComputerGateway {
   locate(botId: string): Promise<string>;
   status(botId: string): Promise<ComputerStatus>;
   screenshot(botId: string): Promise<ScreenshotResult>;
+  telemetry(botId: string): Promise<TelemetryResult>;
+  audit(botId: string): Promise<PageAuditResult>;
+  auditFocus(botId: string, steps: number): Promise<FocusWalkResult>;
   snapshot(botId: string): Promise<SnapshotResult>;
   read(botId: string): Promise<ReadResult>;
+  setViewport(
+    botId: string,
+    actor: ActionActor,
+    input: { preset?: string; width?: number; height?: number },
+  ): Promise<SetViewportResult>;
   navigate(
     botId: string,
     actor: ActionActor,
@@ -228,6 +250,12 @@ export interface ComputerGateway {
       startedAt: string | null;
       egress?: string | null;
     }[];
+    /**
+     * Residents against max, when the provider bounds the fleet. A UI shows "3 of 6 slots" from
+     * this and never starts a computer to learn the fleet is full; absent, the fleet is unbounded
+     * and there is nothing to show.
+     */
+    capacity?: { residents: number; maxComputers: number };
   }>;
   stopComputer(
     botId: string,
@@ -245,6 +273,7 @@ export function createComputerGateway(
   const { provider, auditStore } = options;
   const transport = createComputerTransport({
     ...(options.token ? { token: options.token } : {}),
+    ...(options.tokenForBot ? { tokenForBot: options.tokenForBot } : {}),
     ...(options.allowPrivateNavigation !== undefined
       ? { allowPrivateNavigation: options.allowPrivateNavigation }
       : {}),
@@ -327,6 +356,33 @@ export function createComputerGateway(
   /** Read-only, so it passes straight through. Nothing has changed and there is nothing to decide. */
   async function screenshot(botId: string): Promise<ScreenshotResult> {
     return get<ScreenshotResult>(botId, "/screenshot");
+  }
+
+  /**
+   * Read-only, like the screenshot: the page's labels, alt gaps and contrast, collected without
+   * values or URLs. No secret blackout on this one, because there is no secret in what it returns.
+   */
+  async function audit(botId: string): Promise<PageAuditResult> {
+    return post<PageAuditResult>(botId, "/audit", {});
+  }
+
+  /**
+   * Read-only in effect: Tab moves focus and submits nothing. Governed as a read because the
+   * worst it does is leave focus somewhere unsurprising on a page the Bot already holds.
+   */
+  async function auditFocus(
+    botId: string,
+    steps: number,
+  ): Promise<FocusWalkResult> {
+    return post<FocusWalkResult>(botId, "/audit/focus", { steps });
+  }
+
+  /**
+   * Read-only, like the screenshot: the page's console, errors and failed requests, redacted at
+   * the source. Silent while a secret is being entered, which arrives here as SECRET_PENDING.
+   */
+  async function telemetry(botId: string): Promise<TelemetryResult> {
+    return get<TelemetryResult>(botId, "/telemetry");
   }
 
   /**
@@ -536,13 +592,95 @@ export function createComputerGateway(
       ? { ...result, element: { role: element.role, name: element.name } }
       : result;
   }
+  /**
+   * One action against an element, retried once across a re-render.
+   *
+   * A page that re-renders between the snapshot and the action moves every control: the ref dies
+   * either here (generation mismatch) or at the computer, and the caller gets STALE_SNAPSHOT. The
+   * model answers by snapshotting and picking the control again — a round trip that fails the same
+   * way on a page that never stops moving, which is exactly what a filterable collection does.
+   *
+   * So the gateway does that round trip itself, once: fresh snapshot, same role and accessible
+   * name, exactly one enabled match. Zero or several matches mean the page genuinely changed under
+   * the action, and the original stale error goes back out. The retry is a second governed call
+   * with its own policy decision and audit row, not a quiet second click: the trail shows what was
+   * tried, what went stale, and what finally ran.
+   *
+   * Never more than one retry, and never past the first failure of the retry itself: a second
+   * attempt that also fails is a page that is still moving, and acting a third time is guessing.
+   */
+  async function actOnRef<T>(
+    toolName: string,
+    botId: string,
+    actor: ActionActor,
+    subject: { ref: string; snapshotId: number; key?: string },
+    signal: AbortSignal | undefined,
+    path: string,
+    input: (ref: string, snapshotId: number) => unknown,
+  ): Promise<T> {
+    const run = (ref: string, snapshotId: number) =>
+      govern(
+        toolName,
+        botId,
+        actor,
+        { ...subject, ref, snapshotId, ...(signal ? { signal } : {}) },
+        () => post<T>(botId, path, input(ref, snapshotId), signal),
+      );
+    try {
+      return await run(subject.ref, subject.snapshotId);
+    } catch (error) {
+      if (!(error instanceof StaleSnapshotError)) throw error;
+      const stored = await snapshots.load(botId);
+      const known =
+        stored && stored.snapshotId === subject.snapshotId
+          ? stored.elements.get(subject.ref)
+          : undefined;
+      // Only a control this gateway described, still enabled, in the generation the caller used.
+      if (!known || known.disabled) throw error;
+      const fresh = await snapshot(botId);
+      const matches = fresh.elements.filter(
+        (element) =>
+          element.role === known.role &&
+          element.name === known.name &&
+          !element.disabled,
+      );
+      if (matches.length !== 1 || !matches[0]) throw error;
+      return run(matches[0].ref, fresh.snapshotId);
+    }
+  }
 
   return {
     provider,
     locate,
     screenshot,
+    telemetry,
+    audit,
+    auditFocus,
     snapshot,
     read,
+
+    /**
+     * Change the computer's viewport: a named preset or an explicit size.
+     *
+     * A control call like stopping the computer, not a page action: nothing on the page is acted
+     * on, so there is no element to govern — but the environment changed under the run, which is
+     * exactly what the trail exists to record. A restart for device flags clears the snapshot
+     * table with the browser, the same generations-must-die rule as a profile reset.
+     */
+    async setViewport(
+      botId: string,
+      actor: ActionActor,
+      input: { preset?: string; width?: number; height?: number },
+    ) {
+      const result = await post<SetViewportResult>(botId, "/viewport", input);
+      if (result.restarted) await snapshots.clear(botId);
+      await writeControlEvent(auditStore, "computer.viewport_changed", {
+        botId,
+        actor,
+        reason: `viewport set to ${result.viewport.width}x${result.viewport.height}${result.restarted ? " with a browser restart" : ""}`,
+      });
+      return result;
+    },
 
     status(botId: string): Promise<ComputerStatus> {
       return provider.status(botId);
@@ -597,14 +735,27 @@ export function createComputerGateway(
     /** Return every computer that the configured provider owns. */
     async computers() {
       const computers = await provider.list();
+      const listed = computers.map((computer) => ({
+        botId: computer.botId,
+        running: computer.status === "running",
+        startedAt: computer.startedAt ?? null,
+        egress: computer.egress,
+      }));
+      const limit = await provider.capacity?.().catch(() => null);
       return {
         isolation: provider.isolation,
-        computers: computers.map((computer) => ({
-          botId: computer.botId,
-          running: computer.status === "running",
-          startedAt: computer.startedAt ?? null,
-          egress: computer.egress,
-        })),
+        computers: listed,
+        // A capacity read that fails is not a fleet read that fails: the list is the fact, the
+        // limit a annotation, and a supervisor nobody can reach for /computers still answered it.
+        ...(limit
+          ? {
+              capacity: {
+                residents: listed.filter((computer) => computer.running)
+                  .length,
+                maxComputers: limit.maxComputers,
+              },
+            }
+          : {}),
       };
     },
 
@@ -735,16 +886,14 @@ export function createComputerGateway(
       input: ClickInput,
       signal?: AbortSignal,
     ) {
-      return govern(
+      return actOnRef<ActionResult>(
         "computer_click",
         botId,
         actor,
-        {
-          ref: input.ref,
-          snapshotId: input.snapshotId,
-          ...(signal ? { signal } : {}),
-        },
-        () => post<ActionResult>(botId, "/click", input, signal),
+        { ref: input.ref, snapshotId: input.snapshotId },
+        signal,
+        "/click",
+        (ref, snapshotId) => ({ ...input, ref, snapshotId }),
       );
     },
 
@@ -754,16 +903,14 @@ export function createComputerGateway(
       input: TypeInput,
       signal?: AbortSignal,
     ) {
-      return govern(
+      return actOnRef<ActionResult>(
         "computer_type",
         botId,
         actor,
-        {
-          ref: input.ref,
-          snapshotId: input.snapshotId,
-          ...(signal ? { signal } : {}),
-        },
-        () => post<ActionResult>(botId, "/type", input, signal),
+        { ref: input.ref, snapshotId: input.snapshotId },
+        signal,
+        "/type",
+        (ref, snapshotId) => ({ ...input, ref, snapshotId }),
       );
     },
 
@@ -773,19 +920,31 @@ export function createComputerGateway(
       input: KeyInput,
       signal?: AbortSignal,
     ) {
-      return govern(
+      // The key is part of the subject, so a rule can tell Enter from a letter. Form submission can
+      // happen through a keypress as well as a click, so the policy context carries the key.
+      if (!input.ref || input.snapshotId === undefined) {
+        // No element generation to go stale from: the original single governed call, unchanged.
+        return govern(
+          "computer_key",
+          botId,
+          actor,
+          {
+            ref: input.ref,
+            snapshotId: input.snapshotId,
+            key: input.key,
+            ...(signal ? { signal } : {}),
+          },
+          () => post<ActionResult>(botId, "/key", input, signal),
+        );
+      }
+      return actOnRef<ActionResult>(
         "computer_key",
         botId,
         actor,
-        // The key is part of the subject, so a rule can tell Enter from a letter. Form submission can
-        // happen through a keypress as well as a click, so the policy context carries the key.
-        {
-          ref: input.ref,
-          snapshotId: input.snapshotId,
-          key: input.key,
-          ...(signal ? { signal } : {}),
-        },
-        () => post<ActionResult>(botId, "/key", input, signal),
+        { ref: input.ref, snapshotId: input.snapshotId, key: input.key },
+        signal,
+        "/key",
+        (ref, snapshotId) => ({ ...input, ref, snapshotId }),
       );
     },
 
@@ -809,16 +968,14 @@ export function createComputerGateway(
       input: SelectInput,
       signal?: AbortSignal,
     ) {
-      return govern(
+      return actOnRef<ActionResult>(
         "computer_select",
         botId,
         actor,
-        {
-          ref: input.ref,
-          snapshotId: input.snapshotId,
-          ...(signal ? { signal } : {}),
-        },
-        () => post<ActionResult>(botId, "/select", input, signal),
+        { ref: input.ref, snapshotId: input.snapshotId },
+        signal,
+        "/select",
+        (ref, snapshotId) => ({ ...input, ref, snapshotId }),
       );
     },
 
@@ -1108,7 +1265,8 @@ async function writeControlEvent(
     | "computer.secret_requested"
     | "computer.secret_supplied"
     | "computer.stopped"
-    | "computer.reset",
+    | "computer.reset"
+    | "computer.viewport_changed",
   entry: {
     botId: string;
     actor: ActionActor;

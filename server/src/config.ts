@@ -162,6 +162,15 @@ export type AuthProviderId = "google" | "microsoft" | "okta";
 /** An OAuth client, as every provider here needs one. */
 export type OAuthClient = { clientId: string; clientSecret: string };
 
+export type SmtpConfig = {
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+  from: string;
+  secure: boolean;
+};
+
 export type AuthConfig = {
   baseUrl: string;
   secret: string;
@@ -176,6 +185,8 @@ export type AuthConfig = {
   microsoft?: OAuthClient & { tenantId: string };
   /** Okta is an OIDC provider rather than a named one, so it is identified by its issuer. */
   okta?: OAuthClient & { issuer: string };
+  /** Email/password sign-in, closed to invited addresses. Requires SMTP for verification mail. */
+  emailPassword?: { smtp: SmtpConfig };
 };
 
 /**
@@ -415,20 +426,18 @@ function commaSeparated(environment: Environment, name: string): string[] {
  * provider with no session secret to mint against, or a session secret configured with no provider
  * to use it.
  */
-function authConfig(
-  environment: Environment,
-  google: OAuthClient | undefined,
-): AuthConfig | undefined {
+function authConfig(environment: Environment, google: OAuthClient | undefined): AuthConfig | undefined {
   const microsoft = microsoftAuth(environment);
   const okta = oktaAuth(environment);
+  const emailPassword = emailPasswordAuth(environment);
 
   const secret = optional(environment, "BETTER_AUTH_SECRET");
   const baseUrl = url(environment, "BETTER_AUTH_URL");
 
-  if (!google && !microsoft && !okta) {
+  if (!google && !microsoft && !okta && !emailPassword) {
     if (secret || baseUrl) {
       throw new Error(
-        "BETTER_AUTH_SECRET or BETTER_AUTH_URL is set but no identity provider is. Configure GOOGLE_OAUTH_*, MICROSOFT_OAUTH_* or OKTA_OAUTH_*, or unset both",
+        "BETTER_AUTH_SECRET or BETTER_AUTH_URL is set but no identity provider is. Configure GOOGLE_OAUTH_*, MICROSOFT_OAUTH_*, OKTA_OAUTH_*, or AUTH_EMAIL_PASSWORD_ENABLED=true with SMTP_*, or unset both",
       );
     }
     return undefined;
@@ -471,9 +480,34 @@ function authConfig(
     ...(google ? { google } : {}),
     ...(microsoft ? { microsoft } : {}),
     ...(okta ? { okta } : {}),
+    ...(emailPassword ? { emailPassword } : {}),
   };
 }
 
+function emailPasswordAuth(environment: Environment): { smtp: SmtpConfig } | undefined {
+  if ((optional(environment, "AUTH_EMAIL_PASSWORD_ENABLED") ?? "").toLowerCase() !== "true") {
+    return undefined;
+  }
+  const host = required(environment, "SMTP_HOST");
+  const portRaw = required(environment, "SMTP_PORT");
+  const port = Number.parseInt(portRaw, 10);
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    throw new Error("SMTP_PORT must be a valid port number");
+  }
+  const from = required(environment, "SMTP_FROM");
+  return {
+    smtp: {
+      host,
+      port,
+      user: required(environment, "SMTP_USER"),
+      password: required(environment, "SMTP_PASSWORD"),
+      from,
+      secure:
+        (optional(environment, "SMTP_SECURE") ?? (port === 465 ? "true" : "false")).toLowerCase() ===
+        "true",
+    },
+  };
+}
 /**
  * Entra ID, and which directory it admits.
  *
@@ -1063,7 +1097,7 @@ export function loadConfig(
     auth,
     singleUser: singleUserEnabled(
       environment,
-      configuredAuthProviders(auth).length > 0,
+      configuredAuthProviders(auth).length > 0 || auth?.emailPassword !== undefined,
     ),
     accessibility: accessibilityEnabled(environment),
     ...(optional(environment, "APP_DIST_DIR")

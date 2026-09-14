@@ -12,6 +12,7 @@
  * headless. This implementation streams the page and forwards input through the Chrome DevTools
  * Protocol.
  */
+import { observePointer, type ObservedPointer } from "./pointer-observer";
 import type { CDPSession, Page } from "playwright";
 
 /** What the surface sends us. */
@@ -51,6 +52,18 @@ export type FrameMessage = {
   width: number;
   height: number;
 };
+/** Where the agent's pointer is, on the same socket and with the same owner as the frames. */
+export type PointerMessage =
+  | {
+      type: "pointer";
+      event: "move" | "click";
+      source: "agent";
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }
+  | { type: "pointer"; event: "reset" | "unavailable" };
 
 /**
  * Chrome's virtual key codes, for the keys that need one.
@@ -104,8 +117,14 @@ export type Screencast = {
  */
 export async function startScreencast(
   page: Page,
-  onFrame: (frame: FrameMessage) => void,
-  options: { maxWidth?: number; maxHeight?: number; quality?: number } = {},
+  onMessage: (message: FrameMessage | PointerMessage) => void,
+  options: {
+    maxWidth?: number;
+    maxHeight?: number;
+    quality?: number;
+    /** False while a person holds the wheel: agent positions are discarded, never relabeled. */
+    isAgentDriving?: () => boolean;
+  } = {},
 ): Promise<Screencast> {
   const client: CDPSession = await page.context().newCDPSession(page);
   let stopped = false;
@@ -125,7 +144,7 @@ export async function startScreencast(
       .send("Page.screencastFrameAck", { sessionId })
       .catch(() => undefined);
     if (stopped) return;
-    onFrame({
+    onMessage({
       type: "frame",
       data,
       width: metadata.deviceWidth,
@@ -141,11 +160,40 @@ export async function startScreencast(
     // One frame per change, not per interval. Chrome decides when something moved.
     everyNthFrame: 1,
   });
+  const agentDriving = options.isAgentDriving ?? (() => true);
+  let pointerNeedsClear = false;
+  let pointer: { stop(): Promise<void> } | undefined;
+  const emitPointer = (event: ObservedPointer) => {
+    if (stopped) return;
+    if (event.event === "move" || event.event === "click") {
+      if (!agentDriving()) {
+        // Human input is never labeled AI. Wipe a stale marker once instead of relabeling it.
+        if (pointerNeedsClear) {
+          pointerNeedsClear = false;
+          onMessage({ type: "pointer", event: "reset" });
+        }
+        return;
+      }
+      pointerNeedsClear = true;
+      onMessage({ type: "pointer", source: "agent", ...event });
+      return;
+    }
+    if (event.event === "reset") pointerNeedsClear = false;
+    onMessage({ type: "pointer", event: event.event });
+  };
+  try {
+    pointer = await observePointer(page, emitPointer);
+  } catch {
+    // Decorative failure: the JPEG and input below keep working, and the surface shows a notice.
+    pointer = undefined;
+    if (!stopped) onMessage({ type: "pointer", event: "unavailable" });
+  }
 
   return {
     async stop() {
       if (stopped) return;
       stopped = true;
+      await pointer?.stop().catch(() => undefined);
       await client.send("Page.stopScreencast").catch(() => undefined);
       await client.detach().catch(() => undefined);
     },

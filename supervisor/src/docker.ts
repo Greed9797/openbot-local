@@ -49,6 +49,8 @@ export type ComputerState = {
   botId: string;
   container: string;
   status: string;
+  /** The sector slot this computer was admitted into, when the server placed it in one. */
+  sectorId?: string;
   /** When this computer started, so a surface can say how long it has been up. */
   startedAt?: string;
   /** Its published port, when it has one. Absent on a shared network, where nothing is published. */
@@ -63,6 +65,112 @@ export class DockerUnavailableError extends Error {
       `The supervisor could not reach Docker (${cause}). A computer cannot be started without it.`,
     );
     this.name = "DockerUnavailableError";
+  }
+}
+
+/**
+ * The code a refused admission carries, all the way to the UI.
+ *
+ * A full deployment is not a broken computer: the worker leaves the run queued and the screen
+ * shows the wait, so the code has to survive the trip from here through the API rather than
+ * arriving as a generic 500.
+ */
+export const BROWSER_CAPACITY_WAIT = "BROWSER_CAPACITY_WAIT";
+export const COMPUTER_SECTOR_CONFLICT = "COMPUTER_SECTOR_CONFLICT";
+
+/** How long a refused caller waits before asking again. */
+export const ADMISSION_RETRY_AFTER_MS = 30_000;
+
+/** Six residents: one computer per sector, and no seventh browser on the host. */
+export const DEFAULT_MAX_COMPUTERS = 6;
+
+/** A start refused because every slot is taken, or the Bot's sector already has a live computer. */
+export class BrowserCapacityError extends Error {
+  readonly code = BROWSER_CAPACITY_WAIT;
+  readonly retryAfterMs = ADMISSION_RETRY_AFTER_MS;
+  constructor(message: string) {
+    super(message);
+    this.name = "BrowserCapacityError";
+  }
+}
+
+/** An existing computer whose sector label disagrees with the sector the server now claims. */
+export class SectorConflictError extends Error {
+  readonly code = COMPUTER_SECTOR_CONFLICT;
+  constructor(message: string) {
+    super(message);
+    this.name = "SectorConflictError";
+  }
+}
+
+/** The label pinning a container to the sector slot it was admitted into. */
+export const SECTOR_LABEL = "openbot.sector-id";
+
+/**
+ * Whether a computer that is not running yet fits.
+ *
+ * Pure so the boundary is pinnable without Docker: a computer that is already running is never
+ * refused, an inactive computer blocks nobody, and only a live computer in the same sector or a
+ * full fleet refuses. Creation and starting a stopped computer both ask this; anything else does
+ * not reach it.
+ */
+export function admissionVerdict(
+  request: { botId: string; sectorId: string | null },
+  owned: { botId: string; sectorId: string | null; active: boolean }[],
+  maxComputers: number,
+): { admit: true } | { admit: false; scope: "global" | "sector"; message: string } {
+  if (request.sectorId !== null) {
+    const occupant = owned.find(
+      (computer) =>
+        computer.active &&
+        computer.sectorId === request.sectorId &&
+        computer.botId !== request.botId,
+    );
+    if (occupant) {
+      return {
+        admit: false,
+        scope: "sector",
+        message:
+          `Sector ${request.sectorId} already has a live computer for another Bot. ` +
+          `The computer for ${request.botId} was not started.`,
+      };
+    }
+  }
+  const active = owned.filter((computer) => computer.active).length;
+  if (active >= maxComputers) {
+    return {
+      admit: false,
+      scope: "global",
+      message:
+        `No room for another computer: ${active} of ${maxComputers} slots are in use. ` +
+        `The computer for ${request.botId} was not started.`,
+    };
+  }
+  return { admit: true };
+}
+
+/**
+ * Serialises admission decisions.
+ *
+ * One process, one chain: two concurrent ensures for two new Bots cannot both pass a count that
+ * had room for one. It covers the decision, the creation and the start call, never the health
+ * wait — six cold computers still come up in parallel once each is admitted. A second supervisor
+ * process would not join this chain, which is why a single instance is a deployment requirement
+ * rather than a suggestion.
+ */
+let admissionTail: Promise<void> = Promise.resolve();
+
+async function withAdmission<T>(work: () => Promise<T>): Promise<T> {
+  const previous = admissionTail;
+  let release!: () => void;
+  admissionTail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  try {
+    return await work();
+  } finally {
+    release();
   }
 }
 
@@ -92,11 +200,12 @@ function ours(labels: Record<string, string> | undefined): boolean {
 }
 
 /** The labels every container and volume this supervisor creates carries. */
-function labelsFor(names: ComputerNames): Record<string, string> {
+function labelsFor(names: ComputerNames, sectorId?: string | null): Record<string, string> {
   return {
     [OWNER_LABEL]: "true",
     [BOT_LABEL]: names.botId,
     [NAMESPACE_LABEL]: NAMESPACE,
+    ...(sectorId ? { [SECTOR_LABEL]: sectorId } : {}),
   };
 }
 
@@ -113,6 +222,9 @@ export async function listOwned(): Promise<ComputerState[]> {
       botId: container.Labels?.[BOT_LABEL] ?? "unknown",
       container: (container.Names?.[0] ?? "").replace(/^\//, ""),
       status: container.State,
+      ...(container.Labels?.[SECTOR_LABEL]
+        ? { sectorId: container.Labels[SECTOR_LABEL] }
+        : {}),
       ...(container.Created
         ? { startedAt: new Date(container.Created * 1000).toISOString() }
         : {}),
@@ -130,7 +242,7 @@ export async function listOwned(): Promise<ComputerState[]> {
  */
 async function inspectOwned(
   names: ComputerNames,
-): Promise<{ status: string; port?: number } | null> {
+): Promise<{ status: string; sectorId: string | null; port?: number } | null> {
   try {
     const info = await docker.getContainer(names.container).inspect();
     if (!ours(info.Config?.Labels)) return null;
@@ -138,6 +250,7 @@ async function inspectOwned(
       info.NetworkSettings?.Ports?.[COMPUTER_PORT]?.[0]?.HostPort;
     return {
       status: info.State?.Status ?? "unknown",
+      sectorId: info.Config?.Labels?.[SECTOR_LABEL] ?? null,
       ...(published ? { port: Number.parseInt(published, 10) } : {}),
     };
   } catch (error) {
@@ -200,6 +313,24 @@ export type EnsureOptions = {
   memoryBytes?: number;
   pidsLimit?: number;
   /**
+   * The sector slot this computer is admitted into, decided by the authorised server.
+   *
+   * Never caller-supplied beyond the server: the ensure route takes it from its own lookup, and a
+   * computer whose existing label disagrees is refused rather than moved. Absent, the computer is
+   * created without a sector label and no sector rule applies to it.
+   */
+  sectorId?: string | null;
+  /**
+   * Sector ids this supervisor admits. Set, only these are accepted and a request without a sector
+   * is refused; unset, any request is admitted on capacity alone, which is the laptop shape.
+   */
+  sectorAllowlist?: readonly string[] | null;
+  /**
+   * How many computers may be live at once. Six residents, one per sector, and no seventh browser
+   * on the host. Starts for computers that are already running never count against it.
+   */
+  maxComputers?: number;
+  /**
    * The volume holding the SPIRE agent's Workload API socket, mounted read-only into each computer
    * so it can ask what it is. Unset means no identity, which is a deployment choice rather than a
    * failure.
@@ -241,7 +372,12 @@ function hostConfig(names: ComputerNames, options: EnsureOptions) {
             [COMPUTER_PORT]: [{ HostIp: "127.0.0.1", HostPort: "" }],
           },
         }),
-    RestartPolicy: { Name: "unless-stopped" },
+    /*
+     * Sector computers do not restart themselves: after a Docker restart six self-starting
+     * browsers would stampede the host at once, so the supervisor brings the slots back one by
+     * one instead. Anything outside a sector keeps the old self-healing policy.
+     */
+    RestartPolicy: { Name: options.sectorId ? "no" : "unless-stopped" },
     ...(options.network ? { NetworkMode: options.network } : {}),
     ...(options.runtime ? { Runtime: options.runtime } : {}),
 
@@ -258,68 +394,130 @@ function hostConfig(names: ComputerNames, options: EnsureOptions) {
 }
 
 /**
+ * Statuses that occupy a slot: a computer in one of these exists, whether or not it is currently
+ * scheduled. Paused counts because its browser is frozen, not gone — unpausing beside a full fleet
+ * would be the seventh browser by surprise.
+ */
+const ACTIVE_STATUSES = new Set(["running", "restarting", "created", "paused"]);
+
+/**
  * Make sure this Bot has a computer, and say where to reach it.
  *
  * Idempotent because the caller is a request handler that can run concurrently with itself: two
  * messages to one Bot at the same moment must not race into two containers. An existing owned
  * container is started if stopped, and otherwise left exactly as it is.
+ *
+ * Admission is serialised and bounded: at most `maxComputers` live computers on the host, at most
+ * one live computer per sector. A start that would exceed either is refused with a wait code
+ * rather than queued invisibly, and a computer that exists under another sector is a conflict,
+ * never a computer to adopt. The health wait stays outside the lock, so admitted computers still
+ * come up in parallel.
  */
 export async function ensure(
   names: ComputerNames,
   options: EnsureOptions,
 ): Promise<ComputerState> {
+  const strictSectors = options.sectorAllowlist ?? null;
+  if (strictSectors !== null) {
+    // No default sector: a Bot the server did not place is refused, not absorbed into a slot.
+    if (options.sectorId == null) {
+      throw new SectorConflictError(
+        `The computer for ${names.botId} names no sector, and this deployment only admits registered sectors. It was not created.`,
+      );
+    }
+    if (!strictSectors.includes(options.sectorId)) {
+      throw new SectorConflictError(
+        `Unknown sector ${options.sectorId} for the computer for ${names.botId}. It was not created.`,
+      );
+    }
+  }
+
   for (let attempt = ATTEMPTS; attempt > 0; attempt--) {
     const existing = await inspectOwned(names);
 
-    if (!existing) {
-      for (const volume of [names.profileVolume, names.workspaceVolume]) {
-        try {
-          await docker.createVolume({
-            Name: volume,
-            Labels: labelsFor(names),
-          });
-        } catch (error) {
-          // Already exists is success for a restarted supervisor.
-          if (statusOf(error) !== 409) {
-            throw new DockerUnavailableError(String(error));
-          }
-        }
-      }
-
-      try {
-        await docker.createContainer({
-          name: names.container,
-          Image: options.image,
-          // The Bot id is a label because that is what a SPIRE docker workload attestor selects on:
-          // an identity per Bot then falls out of the same fact that names the container.
-          Labels: labelsFor(names),
-          Env: options.environment,
-          ExposedPorts: { [COMPUTER_PORT]: {} },
-          HostConfig: hostConfig(names, options),
-        });
-      } catch (error) {
-        // The other request creating the same computer got there first, which is what idempotent
-        // means here. Its container is the one this request goes on to start.
-        if (statusOf(error) !== 409) {
-          throw new DockerUnavailableError(String(error));
-        }
-      }
+    // A computer that exists under another sector is a configuration conflict, not a computer to
+    // adopt: remapping it would hand one sector's logins and files to another.
+    if (
+      existing &&
+      options.sectorId != null &&
+      existing.sectorId !== options.sectorId
+    ) {
+      throw new SectorConflictError(
+        `The computer for ${names.botId} belongs to sector ${existing.sectorId ?? "none"}, not ${options.sectorId}. It was left exactly as it is.`,
+      );
     }
 
     if (existing?.status !== "running") {
-      try {
-        await docker.getContainer(names.container).start();
-      } catch (error) {
-        const status = statusOf(error);
-        // Gone between creating it and starting it: a concurrent reset took the container away, or
-        // the create this request lost the race to was itself rolled back. Nothing about the Bot has
-        // changed, so the answer is to build it again rather than to report Docker as unreachable.
-        if (status === 404 && attempt > 1) continue;
-        // 304 is "already running", which is success for an idempotent verb.
-        if (status !== 304) {
-          throw new DockerUnavailableError(String(error));
+      const outcome = await withAdmission(async () => {
+        // Re-checked under the lock: a concurrent request may have started it while this one
+        // queued, and a start that already happened needs no slot.
+        const current = await inspectOwned(names);
+        if (current?.status === "running") return "running" as const;
+
+        const max = options.maxComputers ?? DEFAULT_MAX_COMPUTERS;
+        const owned = await listOwned();
+        const verdict = admissionVerdict(
+          { botId: names.botId, sectorId: options.sectorId ?? null },
+          owned.map((computer) => ({
+            botId: computer.botId,
+            sectorId: computer.sectorId ?? null,
+            active: ACTIVE_STATUSES.has(computer.status),
+          })),
+          max,
+        );
+        if (!verdict.admit) throw new BrowserCapacityError(verdict.message);
+
+        if (!current) {
+          for (const volume of [names.profileVolume, names.workspaceVolume]) {
+            try {
+              await docker.createVolume({
+                Name: volume,
+                Labels: labelsFor(names, options.sectorId ?? null),
+              });
+            } catch (error) {
+              // Already exists is success for a restarted supervisor.
+              if (statusOf(error) !== 409) {
+                throw new DockerUnavailableError(String(error));
+              }
+            }
+          }
+
+          try {
+            await docker.createContainer({
+              name: names.container,
+              Image: options.image,
+              // The Bot id is a label because that is what a SPIRE docker workload attestor selects on:
+              // an identity per Bot then falls out of the same fact that names the container.
+              Labels: labelsFor(names, options.sectorId ?? null),
+              Env: options.environment,
+              ExposedPorts: { [COMPUTER_PORT]: {} },
+              HostConfig: hostConfig(names, options),
+            });
+          } catch (error) {
+            // The other request creating the same computer got there first, which is what idempotent
+            // means here. Its container is the one this request goes on to start.
+            if (statusOf(error) !== 409) {
+              throw new DockerUnavailableError(String(error));
+            }
+          }
         }
-      }
+
+        try {
+          await docker.getContainer(names.container).start();
+        } catch (error) {
+          const status = statusOf(error);
+          // Gone between creating it and starting it: a concurrent reset took the container away, or
+          // the create this request lost the race to was itself rolled back. Nothing about the Bot has
+          // changed, so the answer is to build it again rather than to report Docker as unreachable.
+          if (status === 404 && attempt > 1) return "retry" as const;
+          // 304 is "already running", which is success for an idempotent verb.
+          if (status !== 304) {
+            throw new DockerUnavailableError(String(error));
+          }
+        }
+        return "started" as const;
+      });
+      if (outcome === "retry") continue;
     }
 
     const settled = await inspectOwned(names);

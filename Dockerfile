@@ -212,7 +212,12 @@ EXPOSE 3001
 
 # One port out. The browser's 4100 is deliberately not exposed: it holds real logins and its only
 # caller is the process next to it.
+#
+# Os dois lados contam. O computador responde 503 quando não consegue usar o volume de perfis, e um
+# healthcheck que só perguntasse à API deixaria este container saudável com um navegador que não
+# abre — que foi o incidente: processo vivo, `/health` ok, e todo `launchPersistentContext` falhando
+# com EACCES.
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=5 \
-  CMD bun -e "const r = await fetch('http://127.0.0.1:3001/health'); process.exit(r.ok ? 0 : 1)"
+  CMD bun -e "const check = async (url) => (await fetch(url)).ok; process.exit((await check('http://127.0.0.1:3001/health')) && (await check('http://127.0.0.1:4100/health')) ? 0 : 1)"
 
 ENTRYPOINT ["/init"]

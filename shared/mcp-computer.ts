@@ -55,15 +55,28 @@ async function computer(
 
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    /*
-     * Uma recusa da política volta como resultado, não como exceção. O Codex precisa ler "esta regra
-     * barrou" e decidir outra coisa; um erro de transporte o faria repetir a mesma chamada.
-     */
     const reason =
       (payload as { error?: string } | null)?.error ??
       `O computador respondeu ${response.status}.`;
     const rule = (payload as { rule?: string } | null)?.rule;
-    return { recusado: true, motivo: reason, ...(rule ? { regra: rule } : {}) };
+    /*
+     * 403 é a política dizendo não, e volta como resultado: o Codex precisa ler "esta regra barrou" e
+     * decidir outra coisa.
+     *
+     * Todo o resto é falha operacional — 409 de snapshot velho ou de pessoa no controle, 502/503 de
+     * computador inalcançável, 401 de credencial — e volta como exceção, que o handler converte em
+     * `isError`. Tratá-las como recusa dizia ao modelo que uma política o barrou quando o que houve
+     * foi um navegador que não abriu, e a conclusão natural era procurar outro caminho em vez de
+     * relatar a falha.
+     */
+    if (response.status === 403) {
+      return {
+        recusado: true,
+        motivo: reason,
+        ...(rule ? { regra: rule } : {}),
+      };
+    }
+    throw new Error(reason);
   }
   return payload ?? {};
 }
@@ -72,7 +85,7 @@ const tools: Tool[] = [
   {
     name: "abrir_pagina",
     description:
-      "Abre um endereço no navegador do Bot, que a pessoa vê na tela. Use quando pedirem para olhar, consultar ou preencher algo na web.",
+      "Abre um endereço no navegador do Bot, que a pessoa vê na tela. Use quando pedirem para olhar, consultar ou preencher algo na web. Pedido explícito de browser/navegador, tela em tempo real ou sessão autenticada usa abrir_pagina e as ferramentas da página aberta; não substitua por ler_url_rapido.",
     inputSchema: object({ url: text("O endereço a abrir") }, ["url"]),
     call: (args) =>
       computer("navigate", { method: "POST", body: { url: args.url } }),
@@ -80,7 +93,7 @@ const tools: Tool[] = [
   {
     name: "ler_url_rapido",
     description:
-      "Lê uma página só pelo texto, sem abrir no navegador que a pessoa vê. Devolve o texto e os links. Use quando a resposta for o conteúdo e mais nada — é muito mais rápido. Para algo que exija estar logado, ou que a pessoa precise ver acontecer, use abrir_pagina.",
+      "Lê uma página só pelo texto, sem abrir no navegador que a pessoa vê. Devolve o texto e os links. Use quando a resposta for o conteúdo e mais nada — é muito mais rápido. Para algo que exija estar logado, ou que a pessoa precise ver acontecer, use abrir_pagina. Pedido explícito de browser/navegador, tela em tempo real ou sessão autenticada usa abrir_pagina e as ferramentas da página aberta; não substitua por ler_url_rapido.",
     inputSchema: object({ url: text("O endereço a ler") }, ["url"]),
     call: (args) =>
       computer("fetch", { method: "POST", body: { url: args.url } }),

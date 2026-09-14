@@ -71,7 +71,7 @@ function asActor(
 
 function appFor(actor: AuthenticatedActor) {
   const app = new Hono<{ Variables: AppVariables }>();
-  app.route("/api/agent-runs", createAgentRunRoutes(service, asActor(actor)));
+  app.route("/api/agent-runs", createAgentRunRoutes(service, asActor(actor), async () => true));
   return app;
 }
 
@@ -102,10 +102,7 @@ async function visionFor(
 
 function appWithVision(actor: AuthenticatedActor, vision?: RunVision) {
   const app = new Hono<{ Variables: AppVariables }>();
-  app.route(
-    "/api/agent-runs",
-    createAgentRunRoutes(service, asActor(actor), vision),
-  );
+  app.route("/api/agent-runs", createAgentRunRoutes(service, asActor(actor), async () => true, vision));
   return app;
 }
 

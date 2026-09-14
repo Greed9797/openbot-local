@@ -17,16 +17,13 @@ export type AgentRunWorkerOptions = {
   repository: AgentRunRepository;
   service: AgentRunService;
   execute: RunExecutor;
-  /** Identifies this process as the owner of whatever it claims. */
   owner: string;
   pollMs: number;
   leaseTtlMs: number;
-  /** How many runs this worker drives at once. One on a small VPS. */
   concurrency?: number;
-  /** Trabalho periódico que não pertence a nenhuma tarefa — hoje, apagar artefatos vencidos. */
   housekeeping?: () => Promise<void>;
-  /** De quanto em quanto tempo chamá-lo. Um minuto por padrão. */
   housekeepingEveryMs?: number;
+  isRunnable?: (row: AgentRunRow) => Promise<boolean>;
 };
 
 export interface AgentRunWorker {
@@ -170,12 +167,20 @@ export function createAgentRunWorker(
     let started = 0;
     for (const candidate of waiting) {
       if (inflight.size >= concurrency) break;
-      const claimed = await options.repository.claim(
-        candidate.id,
-        options.owner,
-        options.leaseTtlMs,
-      );
+      const claimed = await options.repository.claim(candidate.id, options.owner, options.leaseTtlMs);
       if (!claimed) continue;
+      if (options.isRunnable) {
+        let ok = false;
+        try {
+          ok = await options.isRunnable(claimed);
+        } catch {
+          ok = false;
+        }
+        if (!ok) {
+          await options.repository.releaseLease(claimed.id, options.owner, Number(claimed.leaseGeneration)).catch(() => undefined);
+          continue;
+        }
+      }
       started += 1;
       const task = drive(claimed).finally(() => {
         inflight.delete(task);
@@ -184,10 +189,7 @@ export function createAgentRunWorker(
     }
     return started;
   }
-
   /**
-   * O trabalho que não é de nenhuma tarefa: apagar o que passou do prazo.
-   *
    * Não a cada tick, porque uma varredura por segundo para achar zero linhas é custo sem resposta, e
    * não em um processo separado, porque o worker já é o processo que está de pé. Uma vez por minuto,
    * e uma falha aqui não derruba o tick: um artefato que ficou um minuto a mais não é motivo para

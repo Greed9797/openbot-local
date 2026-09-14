@@ -20,6 +20,7 @@ import {
   NavigationRefusedError,
   SecretPendingError,
   StaleSnapshotError,
+  ViewportError,
 } from "../computer/gateway";
 import type { SnapshotElement, SnapshotResult } from "../computer/schema";
 import type {
@@ -159,6 +160,47 @@ export function createBrowserTools(options: BrowserToolOptions): ToolCatalog {
         "Pede para olhar a tela. A imagem vem na observação seguinte a esta chamada, com o mesmo snapshotId de lá. Use quando o texto não bastar: conteúdo desenhado em canvas, um estado visual, uma dúvida sobre o que a pessoa está vendo.",
       parameters: object({}),
       acting: false,
+    },
+    {
+      name: "telemetry",
+      description:
+        "Lê o que a página disse enquanto ninguém olhava: mensagens de console, erros da página, requisições que falharam e tempos de carregamento. Sem corpos, sem query strings, texto truncado. Durante entrada de segredo responde SECRET_PENDING em vez de dados: a lacuna é o desenho, não falha.",
+      parameters: object({}),
+      acting: false,
+    },
+    {
+      name: "audit",
+      description:
+        "Auditoria de acessibilidade da página: controles sem nome acessível, imagens sem alt e texto com contraste baixo. Contagens mais amostras; sem valores de campos, sem URLs. Use para o ledger de QA em vez de adivinhar pelo snapshot.",
+      parameters: object({}),
+      acting: false,
+    },
+    {
+      name: "audit_focus",
+      description:
+        "Caminha o foco com Tab e devolve a ordem encontrada (papel e rótulo por parada, sem valores). Tab nunca submete nada. Uma passada por viewport basta; repita após trocar de viewport.",
+      parameters: object(
+        {
+          steps: integer("Quantos Tabs, 1-60 (padrão 30)"),
+        },
+        [],
+      ),
+      acting: false,
+    },
+
+    {
+      name: "set_viewport",
+      description:
+        "Troca o tamanho do navegador: um preset (laptop, desktop, tablet, mobile) ou largura/altura explícitas. Para passes responsivos do QA, um viewport por vez, com snapshot depois de cada troca. Presets mobile/tablet reiniciam o navegador para ligar toque; refs anteriores morrem com ele.",
+      parameters: object(
+        {
+          preset: string("Um preset: laptop, desktop, tablet ou mobile"),
+          width: integer("Largura em px, 320-2560 (alternativa ao preset)"),
+          height: integer("Altura em px, 320-1600 (alternativa ao preset)"),
+        },
+        [],
+      ),
+      acting: true,
     },
     {
       name: "wait_for",
@@ -380,6 +422,48 @@ export function createBrowserTools(options: BrowserToolOptions): ToolCatalog {
             );
           case "screenshot":
             return await requestScreenshot(botId);
+          case "telemetry": {
+            const telemetry = await gateway.telemetry(botId);
+            return ok({
+              console: telemetry.console,
+              pageErrors: telemetry.pageErrors,
+              failedRequests: telemetry.failedRequests,
+              timing: telemetry.timing,
+            });
+          }
+          case "set_viewport": {
+            const args = call.arguments;
+            const input: { preset?: string; width?: number; height?: number } =
+              {};
+            if (typeof args.preset === "string" && args.preset)
+              input.preset = args.preset;
+            if (typeof args.width === "number") input.width = args.width;
+            if (typeof args.height === "number") input.height = args.height;
+            const result = await gateway.setViewport(botId, actor, input);
+            // A restart killed the browser the refs belonged to: say so at the outcome level,
+            // where the loop already knows what stale means, rather than burying it in the result.
+            return {
+              ...ok({ viewport: result.viewport, restarted: result.restarted }),
+              ...(result.restarted ? { stale: true } : {}),
+            };
+          }
+
+          case "audit": {
+            const report = await gateway.audit(botId);
+            return ok({
+              unnamedControls: report.unnamedControls,
+              imagesMissingAlt: report.imagesMissingAlt,
+              contrastFailures: report.contrastFailures,
+            });
+          }
+          case "audit_focus": {
+            const steps =
+              typeof call.arguments.steps === "number"
+                ? call.arguments.steps
+                : 30;
+            const walk = await gateway.auditFocus(botId, steps);
+            return ok({ steps: walk.steps, order: walk.order });
+          }
           case "wait_for":
             return await waitFor(call, context);
           case "read_form": {
@@ -879,6 +963,12 @@ function failure(
     return {
       ok: false,
       error: { code: "SECRET_PENDING", message: error.message },
+    };
+  }
+  if (error instanceof ViewportError) {
+    return {
+      ok: false,
+      error: { code: "VIEWPORT_ERROR", message: error.message },
     };
   }
   if (error instanceof ComputerUnavailableError) {

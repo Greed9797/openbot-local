@@ -9,8 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import {
   providerName,
+  requestPasswordReset,
   signInWith,
   signInWithEmailDomain,
+  signInWithPassword,
+  signUpWithPassword,
 } from "@/lib/auth/client";
 import { appConfig } from "@/lib/generated/application-config";
 import {
@@ -41,13 +44,15 @@ export const Route = createFileRoute("/sign")({
 });
 
 function SignScreen() {
-  // Which provider is being opened, rather than whether one is: with three buttons, a single
-  // boolean would put "Opening…" on all of them.
-  const [opening, setOpening] = useState<AuthProviderId | "sso" | null>(null);
+  const [opening, setOpening] = useState<AuthProviderId | "sso" | "email" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const { data: options } = useQuery(authProvidersQueryOptions());
   const providers = options?.providers ?? [];
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [emailMode, setEmailMode] = useState<"sign-in" | "sign-up" | "forgot">("sign-in");
 
   /**
    * Sign in through whichever identity provider covers this address.
@@ -71,19 +76,36 @@ function SignScreen() {
       setOpening(null);
     }
   }
-
   async function handleSignIn(provider: AuthProviderId) {
     setError(null);
     setOpening(provider);
-
     try {
       await signInWith(provider);
     } catch (caughtError) {
-      setError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : `Could not start ${providerName(provider)} sign-in.`,
-      );
+      setError(caughtError instanceof Error ? caughtError.message : `Could not start ${providerName(provider)} sign-in.`);
+      setOpening(null);
+    }
+  }
+
+  async function handleEmailAuth(submission: React.FormEvent) {
+    submission.preventDefault();
+    setError(null);
+    setNotice(null);
+    setOpening("email");
+    try {
+      if (emailMode === "sign-in") {
+        await signInWithPassword(email, password);
+      } else if (emailMode === "sign-up") {
+        if (password.length < 12) throw new Error("Use at least 12 characters.");
+        await signUpWithPassword(email, password, name.trim() || email);
+        setNotice("Check your email to confirm it before signing in.");
+      } else {
+        await requestPasswordReset(email);
+        setNotice("If that address has access, a reset link is on its way.");
+      }
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not continue.");
+    } finally {
       setOpening(null);
     }
   }
@@ -200,9 +222,41 @@ function SignScreen() {
               </Button>
             </form>
           ) : null}
+          {options?.emailPassword ? (
+            <form className="mt-3 flex flex-col gap-2" onSubmit={handleEmailAuth}>
+              <div className="mb-1 flex items-center gap-3">
+                <Separator className="flex-1" />
+                <span className="text-muted-foreground text-xs">ou com e-mail</span>
+                <Separator className="flex-1" />
+              </div>
+              {emailMode === "sign-up" ? (
+                <Input autoComplete="name" onChange={(event) => setName(event.target.value)} placeholder="Your name" required type="text" value={name} />
+              ) : null}
+              <Input autoComplete="email" onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" required type="email" value={email} />
+              {emailMode === "forgot" ? null : (
+                <Input autoComplete={emailMode === "sign-up" ? "new-password" : "current-password"} minLength={emailMode === "sign-up" ? 12 : undefined} onChange={(event) => setPassword(event.target.value)} placeholder={emailMode === "sign-up" ? "Password (12+ characters)" : "Password"} required type="password" value={password} />
+              )}
+              <Button className="h-10 w-full tracking-tight" disabled={opening !== null || email.trim().length === 0} size="lg" type="submit">
+                {opening === "email" ? "Continuing…" : emailMode === "sign-in" ? "Sign in with email" : emailMode === "sign-up" ? "Define access" : "Send reset link"}
+              </Button>
+              <div className="flex justify-between text-xs">
+                <button className="text-muted-foreground underline" onClick={() => setEmailMode(emailMode === "sign-in" ? "sign-up" : "sign-in")} type="button">
+                  {emailMode === "sign-in" ? "Invited? Define access" : "Have access? Sign in"}
+                </button>
+                <button className="text-muted-foreground underline" onClick={() => setEmailMode("forgot")} type="button">
+                  Esqueceu a senha?
+                </button>
+              </div>
+            </form>
+          ) : null}
           {error ? (
             <p className="mt-3 text-sm text-destructive" role="alert">
               {error}
+            </p>
+          ) : null}
+          {notice ? (
+            <p className="mt-3 text-sm text-muted-foreground" role="status">
+              {notice}
             </p>
           ) : null}
         </motion.div>

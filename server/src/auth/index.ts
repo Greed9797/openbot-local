@@ -15,7 +15,9 @@ import {
   users,
   verifications,
 } from "../db/schema";
+import { acceptEnrollment } from "../people/enrollments";
 import { encryptSsoConfig } from "./encrypt-sso-config";
+import { createMailer } from "./mail";
 import { applyConfiguredAdmin, seedRole } from "./roles";
 
 /**
@@ -209,6 +211,34 @@ export function createAuth(
           }
         : {}),
     },
+    ...(authConfig.emailPassword
+      ? {
+          emailAndPassword: {
+            enabled: true,
+            requireEmailVerification: true,
+            minPasswordLength: 12,
+            maxPasswordLength: 128,
+            revokeSessionsOnPasswordReset: true,
+            sendResetPassword: async ({ user, url }: { user: { email: string }; url: string }) => {
+              await createMailer(authConfig.emailPassword?.smtp ?? ({} as never)).send(
+                user.email,
+                "Define a new password",
+                `Open this link to define a new password. It expires soon and works once:\n\n${url}\n`,
+              );
+            },
+          },
+          emailVerification: {
+            sendOnSignUp: true,
+            sendVerificationEmail: async ({ user, url }: { user: { email: string }; url: string }) => {
+              await createMailer(authConfig.emailPassword?.smtp ?? ({} as never)).send(
+                user.email,
+                "Confirm your email",
+                `Open this link to confirm your email and activate your access:\n\n${url}\n`,
+              );
+            },
+          },
+        }
+      : {}),
     databaseHooks: {
       user: {
         create: {
@@ -295,10 +325,27 @@ export function createAuth(
             );
 
             const [user] = await database
-              .select({ email: users.email })
+              .select({ email: users.email, emailVerified: users.emailVerified })
               .from(users)
               .where(eq(users.id, session.userId))
               .limit(1);
+
+            if (user?.emailVerified) {
+              try {
+                await acceptEnrollment(database, user.email, session.userId);
+              } catch (error) {
+                await record(auditStore, {
+                  eventType: "session.refused",
+                  targetType: "person",
+                  targetId: session.userId,
+                  actorUserId: session.userId,
+                  payload: {
+                    email: user.email,
+                    reason: error instanceof Error ? error.message : "enrollment failed",
+                  },
+                });
+              }
+            }
 
             /*
              * The promotion, on the trail.

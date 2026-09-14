@@ -15,6 +15,7 @@ import {
   recordAuditEvent,
 } from "./audit";
 import { createDevRequireUser } from "./auth/dev-actor";
+import { emailAuthGate } from "./auth/email-gate";
 import {
   type AppVariables,
   type AuthService,
@@ -27,6 +28,7 @@ import type { ChannelEventHub } from "./channels/events";
 import { type ChannelStore, createChannelRoutes } from "./channels/routes";
 import type { ThreadIdentity } from "./channels/thread-identity";
 import { createThreadRoutes } from "./channels/thread-routes";
+import { createThreadHistoryRoutes } from "./channels/thread-history-routes";
 import { createComponentRoutes } from "./components/routes";
 import type { SandboxedStore } from "./components/sandboxed";
 import { createSandboxedRoutes } from "./components/sandboxed-routes";
@@ -39,6 +41,10 @@ import type { ConnectorAdminService } from "./connectors";
 import type { KnowledgeSearch } from "./connectors/knowledge-search";
 import type { CredentialAdminService, CredentialInput } from "./credentials";
 import type { PeopleStore } from "./people/store";
+import { createSectorRoutes } from "./sectors/routes";
+import { createSectorStore } from "./sectors/store";
+import type { Database } from "./db/client";
+import type { DurableAgentRunner } from "./copilot-runner";
 import { createPluginRoutes } from "./plugins/routes";
 import type { PluginStore } from "./plugins/store";
 import { REFUSAL_MARKER } from "./plugins/tools";
@@ -186,6 +192,16 @@ export function createApp(
   modelCatalog?: () => ModelCatalog | undefined,
   /** Pergunta de novo aos serviços e atualiza o catálogo. Ausente desmonta a atualização. */
   refreshModelCatalog?: () => Promise<void>,
+  /** Database for sector registry; absent leaves sector routes unmounted. */
+  database?: Database,
+  /**
+   * The local thread-history runner, when the runtime is local.
+   *
+   * Last because it is the newest parameter: shifting the earlier ones would
+   * silently swap the arguments of a call with dozens of them. Absent leaves
+   * the SDK's own thread routes answering, which is the Intelligence behaviour.
+   */
+  threadHistoryRunner?: DurableAgentRunner,
 ) {
   const app = new Hono<{ Variables: AppVariables }>();
 
@@ -208,13 +224,8 @@ export function createApp(
        * build machine cannot offer a provider that machine had never heard of.
        */
       authProviders: configuredAuthProviders(config.auth),
-      /*
-       * Whether any enterprise identity provider has been registered.
-       *
-       * A count, not a list. The sign-in screen only needs to know whether to offer the email box
-       * that routes by domain; naming the providers would tell anybody who loads the page which
-       * companies use this deployment, which is not theirs to have before they sign in.
-       */
+      emailPassword: config.auth?.emailPassword !== undefined,
+      // A count, not a list: naming providers would tell anybody loading the page which companies use this deployment.
       ssoConfigured: ((await identityProviders?.list()) ?? []).length > 0,
     }),
   );
@@ -234,26 +245,20 @@ export function createApp(
 
   app.on(["GET", "POST"], "/api/auth/*", async (context) => {
     if (!auth) {
-      return context.json(
-        { error: "No identity provider is configured." },
-        503,
-      );
+      return context.json({ error: "No identity provider is configured." }, 503);
     }
-
+    if (database && config.auth?.emailPassword) {
+      const gated = await emailAuthGate(database, context);
+      if (gated) return gated;
+    }
     if (ADMIN_ONLY_AUTH_ROUTES.has(new URL(context.req.url).pathname)) {
       const session = await auth.api.getSession({
         headers: context.req.raw.headers,
-        // Fresh, not the cookie cache: a role changed a moment ago has to apply to this request.
         query: { disableCookieCache: true },
       });
-      const roles = session?.user
-        ? ((await roleRepository?.rolesForUser(session.user.id)) ?? [])
-        : [];
+      const roles = session?.user ? ((await roleRepository?.rolesForUser(session.user.id)) ?? []) : [];
       if (!roles.includes("admin")) {
-        return context.json(
-          { error: "Only an administrator may change identity providers." },
-          403,
-        );
+        return context.json({ error: "Only an administrator may change identity providers." }, 403);
       }
     }
 
@@ -823,7 +828,22 @@ export function createApp(
     },
   );
 
-  // The CopilotKit runtime, behind the same session guard as every other API route. Mounted last so
+  // Durable history for the local runtime, ahead of the SDK wildcard below so
+  // it answers instead of the flattened fallback. Ownership is checked before
+  // anything is read; Intelligence mode never mounts this and keeps the SDK's
+  // route with the client's normalization.
+  if (threadHistoryRunner && database) {
+    app.route(
+      "/",
+      createThreadHistoryRoutes(
+        threadHistoryRunner,
+        database,
+        channelStore,
+        requireUser,
+      ),
+    );
+  }
+
   // its own routing under /api/copilotkit cannot shadow an OpenBot route declared above.
   if (copilotHandler) {
     // Mounted at the ROOT with the handler carrying its own basePath. Mounting it at
@@ -971,7 +991,7 @@ export function createApp(
   if (agentRunService) {
     app.route(
       "/api/agent-runs",
-      createAgentRunRoutes(agentRunService, requireUser, agentVision),
+      createAgentRunRoutes(agentRunService, requireUser, canUseBot, agentVision),
     );
   }
 
@@ -983,19 +1003,21 @@ export function createApp(
   }
 
   if (agentProfileStore) {
-    app.route(
-      "/api/agents",
-      createAgentRoutes(
-        agentProfileStore,
-        requireUser,
-        // The same stance the computer uses: a laptop legitimately talks to its own services, a hosted
-        // deployment must not. Passed from configuration rather than defaulted here, so "hosted and
-        // permissive" cannot happen by forgetting something.
-        config.computer?.allowPrivateHosts ?? false,
-        // A Bot's own refusal goes in the same trail as everything else it does.
-        auditStore,
-      ),
-    );
+    const sectorHooks = database
+      ? (() => {
+          const store = createSectorStore(database);
+          return {
+            isSectorBot: async (botId: string) => (await store.sectorForBot(botId)) !== null,
+            sectorIdForOwner: (ownerId: string) => store.sectorIdForOwner(ownerId),
+            registerSectorBot: (botId: string, sectorId: string) => store.registerBot(botId, sectorId),
+            sectorIdForBot: (botId: string) => store.sectorForBot(botId),
+          };
+        })()
+      : undefined;
+    app.route("/api/agents", createAgentRoutes(agentProfileStore, requireUser, config.computer?.allowPrivateHosts ?? false, auditStore, sectorHooks));
+  }
+  if (database) {
+    app.route("/api", createSectorRoutes(database, requireUser));
   }
 
   if (channelStore) {

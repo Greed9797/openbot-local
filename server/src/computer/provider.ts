@@ -76,6 +76,13 @@ export interface ComputerProvider {
   reset(botId: string): Promise<{ cleared: boolean }>;
   /** List the computers that this provider owns. */
   list(): Promise<ComputerLocation[]>;
+  /**
+   * How many computers may be live at once, when the provider bounds them.
+   *
+   * Optional because a shared computer has no fleet to count; a supervisor reports the limit it
+   * enforces, so a surface can show residents against max without probing Docker itself.
+   */
+  capacity?(): Promise<{ maxComputers: number } | null>;
   /** Prepare provider resources before the first computer request. */
   warm?(): Promise<void>;
 }
@@ -205,15 +212,30 @@ export function createSharedComputerProvider(
   };
 }
 
+/**
+ * Runtime hooks no deployment file can express.
+ *
+ * `sectorForBot` resolves a Bot to its sector slot from this deployment's own store. Where it is
+ * set, every ensure carries the sector and the supervisor admits the computer into it; where it is
+ * absent the supervisor admits on capacity alone.
+ */
+export type ComputerProviderHooks = {
+  sectorForBot?: (
+    botId: string,
+  ) => string | null | Promise<string | null>;
+};
+
 /** Build the one computer provider selected by deployment configuration. */
 export function createComputerProvider(
   config: ComputerConfig,
+  hooks?: ComputerProviderHooks,
 ): ComputerProvider {
   switch (config.provider) {
     case "docker": {
       const options: SupervisorOptions = {
         baseUrl: config.baseUrl,
         ...(config.supervisorToken ? { token: config.supervisorToken } : {}),
+        ...(hooks?.sectorForBot ? { sectorForBot: hooks.sectorForBot } : {}),
       };
       return createDockerSupervisorProvider(options);
     }

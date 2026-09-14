@@ -9,6 +9,8 @@
  * O gateway é um dublê: o que está sendo testado é esta camada, e a política tem a suíte dela.
  */
 import { describe, expect, test } from "bun:test";
+import { createBrowserTools } from "../src/agent-runtime/browser-tools";
+import type { ToolCallContext } from "../src/agent-runtime/contracts";
 import {
   ActionRefusedError,
   type ComputerGateway,
@@ -17,8 +19,6 @@ import {
   HumanHasControlError,
   StaleSnapshotError,
 } from "../src/computer/gateway";
-import { createBrowserTools } from "../src/agent-runtime/browser-tools";
-import type { ToolCallContext } from "../src/agent-runtime/contracts";
 
 const context: ToolCallContext = {
   runId: "run-1",
@@ -47,6 +47,10 @@ describe("browser tools", () => {
       "scroll",
       "select_option",
       "screenshot",
+      "telemetry",
+      "audit",
+      "audit_focus",
+      "set_viewport",
       "wait_for",
       "request_help",
       "read_form",

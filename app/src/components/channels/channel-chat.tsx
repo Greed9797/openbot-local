@@ -20,6 +20,7 @@ import { useActiveBot } from "@/lib/copilot/active-bot";
 import { ConversationProvider } from "@/lib/copilot/conversation";
 import { repairUnansweredToolCalls } from "@/lib/copilot/repair-history";
 import { stoppedReason } from "@/lib/copilot/stopped-turn";
+import { mergeHistoryMessages } from "@/lib/copilot/history-merge";
 import { readThreadMessages } from "@/lib/copilot/thread-messages";
 import { useSkillCommands } from "@/lib/plugins/skill-commands";
 import { newId } from "../../lib/new-id";
@@ -65,39 +66,43 @@ export function ChannelChat({
     return pending ? seedMessage(pending, newId()) : null;
   });
 
-  /** Cleared by the send-on-mount effect without restarting it. */
+  /** Cleared once the seed has been sent after a successful restore. */
   const seedRef = useRef(seed);
-  seedRef.current = seed;
-
-  /** Promise gate for ordering the first message after the thread join when possible. */
-  const openJoinGate = useRef<() => void>(() => {});
-  const joinGate = useRef<Promise<void> | null>(null);
-  if (joinGate.current === null) {
-    joinGate.current = new Promise<void>((resolve) => {
-      openJoinGate.current = resolve;
-    });
+  if (seedRef.current === null && seed !== null) {
+    // A new seed after a channel switch; the ref tracks the unsent one.
+    seedRef.current = seed;
   }
-  const joinGatePromise = joinGate.current;
+
+  /**
+   * History restoration per thread identity. No send runs before `ready`:
+   * a turn sent without history would be answered without it and then saved
+   * over it. `error` never runs nor discards; the draft and queue stay put
+   * until the person retries.
+   */
+  const [historyStatus, setHistoryStatus] = useState<
+    "loading" | "ready" | "error"
+  >("loading");
+  const historyStatusRef = useRef(historyStatus);
+  historyStatusRef.current = historyStatus;
+  const historyGeneration = useRef(0);
+  const historyGate = useRef(Promise.withResolvers<void>());
+  const [historyNonce, setHistoryNonce] = useState(0);
 
   /** Promise gate so messages typed before runtime readiness wait instead of being discarded. */
-  const openReadyGate = useRef<() => void>(() => {});
-  const readyGate = useRef<Promise<void> | null>(null);
-  if (readyGate.current === null) {
-    readyGate.current = new Promise<void>((resolve) => {
-      openReadyGate.current = resolve;
-    });
-  }
-  const readyGatePromise = readyGate.current;
+  const readyGate = useRef(Promise.withResolvers<void>());
   const isReadyRef = useRef(isReady);
   isReadyRef.current = isReady;
   useEffect(() => {
-    if (isReady) openReadyGate.current();
+    if (isReady) readyGate.current.resolve();
   }, [isReady]);
-
-  // Join the gateway socket, restore durable history, then release the first-message gate.
+  // Join the gateway socket and restore durable history for this thread identity.
+  // A late answer for a previous thread never touches the current one.
   useEffect(() => {
     if (!isReady) return;
+    const generation = (historyGeneration.current += 1);
     let current = true;
+    setHistoryStatus("loading");
+    historyGate.current = Promise.withResolvers<void>();
 
     void (async () => {
       try {
@@ -111,20 +116,35 @@ export function ChannelChat({
           channel.threadId,
           runtimeAgentId,
         );
-        // Never overwrite local messages that arrived while history was loading.
-        if (current && stored.length > 0 && agent.messages.length === 0) {
-          agent.setMessages(stored);
+        if (!current || historyGeneration.current !== generation) return;
+        if (stored.length > 0) {
+          const merged = mergeHistoryMessages(stored, [...agent.messages]);
+          agent.setMessages(merged);
         }
+        setHistoryStatus("ready");
+      } catch {
+        if (!current || historyGeneration.current !== generation) return;
+        // Keep everything on screen; retry restores without losing drafts.
+        setHistoryStatus("error");
       } finally {
-        // Release even on join/restore failure; the gate orders messages, not withholds them.
-        openJoinGate.current();
+        if (historyGeneration.current === generation) {
+          historyGate.current.resolve();
+        }
       }
     })();
 
     return () => {
+      // Discard only: a remote run keeps going when the screen goes away.
       current = false;
     };
-  }, [copilotkit, agent, isReady, channel.threadId, runtimeAgentId]);
+  }, [
+    copilotkit,
+    agent,
+    isReady,
+    channel.threadId,
+    runtimeAgentId,
+    historyNonce,
+  ]);
 
   // Tool calls from this conversation act on this coworker's own computer.
   useActiveBot(runtimeAgentId);
@@ -186,15 +206,20 @@ export function ChannelChat({
   const deliver = async (trimmed: string, skillInstructions: string[]) => {
     // Wait briefly for the runtime agent instance before adding the message.
     if (!isReadyRef.current) {
-      await Promise.race([
-        readyGatePromise,
-        new Promise((resolve) =>
-          setTimeout(resolve, SEND_WITHOUT_JOIN_AFTER_MS),
-        ),
-      ]);
+      const { promise, resolve } = Promise.withResolvers<void>();
+      setTimeout(resolve, SEND_WITHOUT_JOIN_AFTER_MS);
+      await Promise.race([readyGate.current.promise, promise]);
+    }
+
+    // History has no backstop: sending without it would answer without it and
+    // then save over it. An error throws so the composer keeps the words.
+    await historyGate.current.promise;
+    if (historyStatusRef.current !== "ready") {
+      throw new Error("History is not ready.");
     }
 
     setRunError(null);
+    const previousTurnOpen = awaitingReply.current;
     awaitingReply.current = true;
 
     /*
@@ -224,10 +249,14 @@ export function ChannelChat({
     });
     report(trimmed, null);
 
-    // Providers reject later turns if prior tool calls have no result; repair before sending.
-    const repaired = repairUnansweredToolCalls(agent.messages);
-    if (repaired !== agent.messages) {
-      agent.setMessages(repaired as typeof agent.messages);
+    // Providers reject later turns if prior tool calls have no result. Repair
+    // only between turns: a call still executing must never gain a fabricated
+    // result stitched over it.
+    if (!previousTurnOpen) {
+      const repaired = repairUnansweredToolCalls(agent.messages);
+      if (repaired !== agent.messages) {
+        agent.setMessages(repaired as typeof agent.messages);
+      }
     }
 
     setRunsInFlight((count) => count + 1);
@@ -296,27 +325,29 @@ export function ChannelChat({
   }, []);
 
   /**
-   * Send the create-channel seed once, after the join gate opens or the backstop expires.
+   * Send the create-channel seed once, after history is ready. No backstop:
+   * sending it without history would truncate the restore it was meant to join.
    */
   useEffect(() => {
+    if (historyStatus !== "ready") return;
     const pending = seedRef.current;
     if (!pending) return;
     seedRef.current = null;
 
     void (async () => {
-      await Promise.race([
-        joinGatePromise,
-        new Promise((resolve) =>
-          setTimeout(resolve, SEND_WITHOUT_JOIN_AFTER_MS),
-        ),
-      ]);
-      await sayRef.current(
-        typeof pending.content === "string" ? pending.content : "",
-      );
+      try {
+        await sayRef.current(
+          typeof pending.content === "string" ? pending.content : "",
+        );
+      } catch {
+        // History flipped mid-send; keep the seed so retry still delivers it.
+        seedRef.current = pending;
+      }
     })();
 
     // Keep `seed` in state; transcriptMessages hides it as soon as agent messages exist.
-  }, [joinGatePromise]);
+  }, [historyStatus]);
+
 
   return (
     <ConversationProvider ask={askFromComponent}>
@@ -325,16 +356,34 @@ export function ChannelChat({
         busy={agent.isRunning}
         // The `/` menu exposes only skills granted to this Bot.
         commands={skillCommands}
-        // Readiness is handled by `say`; deletion is the only disabled-chat state.
-        disabled={!channel.active}
+        // No send runs before the restore: the composer stays shut and the
+        // queue holds rather than draining into a history-less turn.
+        disabled={!channel.active || historyStatus !== "ready"}
         messages={transcriptMessages(agent.messages, seed)}
         notice={
-          channel.active ? null : (
+          !channel.active ? (
             <p className="pb-2 text-sm text-muted-foreground" role="status">
               Este colega foi excluído. A conversa continua legível, mas ele não
               responde mais.
             </p>
-          )
+          ) : historyStatus === "loading" ? (
+            <p className="pb-2 text-sm text-muted-foreground" role="status">
+              Carregando histórico…
+            </p>
+          ) : historyStatus === "error" ? (
+            <div className="flex items-center gap-2 pb-2" role="alert">
+              <p className="text-sm text-muted-foreground">
+                Não foi possível carregar o histórico.
+              </p>
+              <button
+                className="text-sm font-medium underline underline-offset-4"
+                onClick={() => setHistoryNonce((n) => n + 1)}
+                type="button"
+              >
+                Tentar novamente
+              </button>
+            </div>
+          ) : null
         }
         onSubmit={async (draft) => {
           // `draft.agentId` carries the @mentioned coworker, but nothing routes on it yet: this

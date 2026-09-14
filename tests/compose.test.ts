@@ -106,8 +106,11 @@ describe("um Bot sem navegador tem de aparecer", () => {
       join(import.meta.dir, "..", "docker-compose.yml"),
       "utf8",
     );
-    const servico = compose.slice(compose.indexOf("  agent-codex:"));
-    const bloco = servico.slice(0, servico.indexOf("\n  # "));
+    // Âncora na definição do serviço, e não em qualquer menção: o `depends_on` do `openbot` cita
+    // `agent-codex` antes, e fatiar a partir dali testava o bloco errado — passou anos olhando o
+    // healthcheck do `openbot` em vez deste. Serviço vai até o próximo serviço.
+    const servico = compose.slice(compose.indexOf("\n  agent-codex:\n"));
+    const bloco = servico.slice(0, servico.indexOf("\n  agent-cli:"));
 
     expect(bloco).toContain("r.ok");
     expect(bloco).toContain("start_period");

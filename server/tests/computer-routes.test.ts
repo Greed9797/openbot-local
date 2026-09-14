@@ -3,7 +3,8 @@ import type { MiddlewareHandler } from "hono";
 import type { AppVariables, AuthenticatedActor } from "../src/auth/guards";
 import type { ComputerGateway } from "../src/computer/gateway";
 import type { PolicyStore } from "../src/computer/policy-store";
-import { createComputerRoutes } from "../src/computer/routes";
+import { createComputerRoutes, refusalOf } from "../src/computer/routes";
+import { SupervisorError } from "../src/computer/supervisor";
 
 describe("computer routes", () => {
   test("gets a screenshot through the governed computer gateway", async () => {
@@ -47,6 +48,45 @@ describe("computer routes", () => {
  * placeholder run, so every composed fill was recorded under an identity no run ever had. A Bot
  * now arrives with the assertion this deployment signed, and a person arrives with no run at all.
  */
+describe("a refused computer start", () => {
+  test("answers 429 with the supervisor's code and wait, not a 500", async () => {
+    const gateway = {
+      screenshot: async () => {
+        throw new SupervisorError("No room for another computer.", {
+          code: "COMPUTER_BUSY_SLOT",
+          retryAfterMs: 30_000,
+        });
+      },
+    } as unknown as ComputerGateway;
+    const routes = createComputerRoutes(
+      gateway,
+      {} as PolicyStore,
+      (async (_context, next) => next()) as MiddlewareHandler<{
+        Variables: AppVariables;
+      }>,
+      async () => true,
+    );
+    const response = await routes.request(
+      "http://openbot.test/bot-17/screenshot",
+    );
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({
+      error: "No room for another computer.",
+      code: "COMPUTER_BUSY_SLOT",
+      retryAfterMs: 30_000,
+    });
+  });
+
+  test("an ordinary failure carries no refusal fields", () => {
+    expect(refusalOf(new Error("boom"))).toEqual({});
+    expect(
+      refusalOf(
+        new SupervisorError("unreachable", { code: "SOME_OTHER_CODE" }),
+      ),
+    ).toEqual({});
+  });
+});
+
 describe("run identity on composed and read routes", () => {
   const seenActors: unknown[] = [];
   const gateway = {

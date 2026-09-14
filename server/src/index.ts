@@ -1,4 +1,5 @@
 import { serve } from "bun";
+import { deriveComputerToken } from "../../shared/computer-token";
 import { createApprovalGate } from "./agent-runs/approvals";
 import { createAgentRunRepository } from "./agent-runs/repository";
 import { createAgentRunService } from "./agent-runs/service";
@@ -48,6 +49,8 @@ import {
   describeComputerIsolation,
 } from "./computer/provider";
 import { createSnapshotStore } from "./computer/snapshot-store";
+import { createRoutineScheduler } from "./sectors/scheduler";
+import { createSectorStore } from "./sectors/store";
 import { loadConfig } from "./config";
 import { createConnectorAdminService } from "./connectors";
 import { createKnowledgeSearch } from "./connectors/knowledge-search";
@@ -210,7 +213,17 @@ const auth = config.auth
     )
   : undefined;
 const computerProvider = config.computer
-  ? createComputerProvider(config.computer)
+  ? createComputerProvider(
+      config.computer,
+      // Sectors live in Postgres, so only a deployment with a database places computers into
+      // them. Without one the supervisor admits on capacity alone.
+      config.computer.provider === "docker" && database
+        ? {
+            sectorForBot: (botId: string) =>
+              createSectorStore(database).sectorForBot(botId),
+          }
+        : undefined,
+    )
   : undefined;
 
 if (computerProvider?.warm) {
@@ -273,9 +286,20 @@ const computerGateway = computerProvider
         }
       },
       token: config.computer?.token,
+      /*
+       * One credential per computer, derived from the shared master. Only in supervisor mode, where
+       * each computer holds solely its own derived token: sending the master there would hand every
+       * Bot's browser to whoever holds it. In shared mode the single computer holds the master
+       * itself, so the static token above stays the credential and no derivation happens.
+       */
+      ...(config.computer?.provider === "docker" && config.computer?.token
+        ? {
+            tokenForBot: (botId: string) =>
+              deriveComputerToken(config.computer?.token ?? "", botId),
+          }
+        : {}),
     })
   : undefined;
-
 /**
  * The durable task core: persistence, the state machine, and the routes over both.
  *
@@ -744,6 +768,9 @@ const app = createApp(
   // Quais modelos existem. Descreve o mesmo runtime que o serviço acima; com ele desligado, some.
   config.agentRuntime.enabled ? () => modelCatalog : undefined,
   config.agentRuntime.enabled ? atualizarCatalogo : undefined,
+  database,
+  // Durable history for the local runtime; undefined in Intelligence mode.
+  threadHistoryRunner,
 );
 
 /**
@@ -786,6 +813,11 @@ if (agentRunService && computerGateway && config.agentRuntime.workerEnabled) {
     maxRefusals: 2,
     maxProviderRetries: 1,
   });
+  const runDueRoutines = createRoutineScheduler({
+    database,
+    createRun: (actor, input, actorUserId) =>
+      agentRunService.createRun(actor, input, actorUserId),
+  });
   const worker = createAgentRunWorker({
     repository: agentRunRepository,
     service: agentRunService,
@@ -794,7 +826,29 @@ if (agentRunService && computerGateway && config.agentRuntime.workerEnabled) {
     pollMs: config.agentRuntime.pollMs,
     leaseTtlMs: config.agentRuntime.leaseTtlMs,
     concurrency: config.agentRuntime.concurrency,
+    isRunnable: async (row) => {
+      if (!row.userId) return true;
+      try {
+        const person = await peopleStore.find(row.userId);
+        if (!person || person.revoked) return false;
+        const profile = await agentProfileStore.get({ id: person.id, role: person.role }, row.botId);
+        return profile !== null;
+      } catch {
+        return false;
+      }
+    },
     housekeeping: async () => {
+      /*
+       * Sector routines run here, on the worker's minute tick, because the worker is the one
+       * process that is always up where runs are driven. A deployment with several replicas runs
+       * one worker, so one scheduler — and the idempotency key would refuse a double-enqueue even
+       * if two ever ran at once.
+       */
+      try {
+        await runDueRoutines();
+      } catch (error) {
+        console.error("Sector routines were not enqueued.", error);
+      }
       await artifactStore.deleteExpired();
       /*
        * Aprovações vencidas viram `expired` no relógio do worker, e não quando alguém olha. Uma
@@ -1013,11 +1067,21 @@ if (config.singleUser) {
   );
 }
 
-// The activity listener holds a connection of its own for the life of the process. Released on the
-// way out, so a watch-mode restart does not leave one behind on every reload.
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
-    void channelActivityListener.stop().finally(() => process.exit(0));
+    void (async () => {
+      // Pending turns first: a restart must keep what just finished. A
+      // failed flush is reported, not hidden, and never blocks the exit.
+      try {
+        await threadHistoryRunner?.flush();
+      } catch (error) {
+        console.error(
+          "Local thread history could not be flushed on shutdown.",
+          error,
+        );
+      }
+      await channelActivityListener.stop().finally(() => process.exit(0));
+    })();
   });
 }
 
