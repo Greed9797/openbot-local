@@ -49,9 +49,9 @@ export type CodexDelegatedOptions = {
   /**
    * Se o modelo que roda dentro do CLI enxerga a página.
    *
-   * Vem do deployment (`AGENT_CODEX_VISION`, `AGENT_OPENCODE_VISION`, `AGENT_MIMO_VISION`), e não
-   * daqui, porque é a única parte das capacidades que este arquivo não pode saber: o CLI é dado de
-   * configuração, e o modelo dele também. Presumido verdadeiro, que é o caso da maioria.
+   * Vem do deployment (`AGENT_CODEX_VISION`, `AGENT_OPENCODE_VISION`), e não daqui, porque é a
+   * única parte das capacidades que este arquivo não pode saber: o CLI é dado de configuração, e
+   * o modelo dele também. Presumido verdadeiro, que é o caso da maioria.
    *
    * O que fica sendo decisão deste adaptador é o resto: `tools: false` porque o runtime não entrega
    * catálogo de ferramentas a quem conduz o próprio ciclo, e `streaming: true` porque o transporte

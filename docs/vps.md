@@ -117,7 +117,7 @@ docker compose exec agent-codex codex login status
 A deployment meant to stay up needs either something that refreshes it or somebody who notices when
 turns start failing — watch the `agent-codex` logs for a non-zero exit mentioning authentication.
 
-## Um CLI de agente como motor (OpenCode, MiMo Code)
+## Um CLI de agente como motor (OpenCode)
 
 O runtime fala com modelos de duas maneiras: ele conduz o ciclo (observe → decida → aja) com um
 provedor de API, ou entrega a tarefa inteira a um serviço que conduz o próprio ciclo. O `agent-cli` é
@@ -145,7 +145,6 @@ cd /opt/openbot-local
 
 # A conta do CLI, em base64 — o mesmo arquivo que o login escreve.
 #   OpenCode:  base64 -i ~/.local/share/opencode/auth.json | tr -d '\n'
-#   MiMo Code: base64 -i ~/.local/share/mimocode/auth.json | tr -d '\n'
 printf 'AGENT_CLI=opencode\nAGENT_CLI_MODEL=opencode-go/deepseek-v4.1-flash\nAGENT_CLI_AUTH_JSON=%s\n' "$(base64 -i ~/.local/share/opencode/auth.json | tr -d '\n')" >> .env
 printf 'AGENT_OPENCODE_URL=http://agent-cli:4210/ag-ui\nAGENT_OPENCODE_MODEL=opencode-go/deepseek-v4.1-flash\n' >> .env
 
@@ -182,15 +181,6 @@ single-user o `curl` acima já responde; num com login, vale o cookie da sessão
 O que a lista **não** pega é endereço que existe e aponta para o serviço errado: esse provedor aparece,
 porque foi construído, e falha na primeira tarefa. Para esse, o `/health` do serviço acima é a
 conferência.
-
-### Outro CLI, mesma imagem
-
-Um CLI por serviço. Para rodar o MiMo Code ao lado do OpenCode, duplique o bloco `agent-cli` no
-`docker-compose.yml` com `AGENT_CLI=mimo`, outra porta (`CLI_BOT_PORT=4211`) e outros volumes, e
-aponte `AGENT_MIMO_URL=http://<serviço>:4211/ag-ui` no `.env`. O serviço sabe dirigir `opencode` e
-`mimo`; um CLI novo é um adaptador em `agent-cli/src/cli.ts` — binário, arquivo de config e a flag de
-auto-aprovação (o OpenCode diz `--auto`, o MiMo diz `--yolo`), que é onde um adaptador copiado do
-outro trava em silêncio.
 
 ### Gemini, e outros provedores de API
 

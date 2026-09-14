@@ -860,9 +860,9 @@ function agentModels(environment: Environment): AgentModelConfig[] {
   /*
    * Os agentes delegados: serviços próprios que conduzem o ciclo inteiro e falam AG-UI.
    *
-   * Um por CLI, porque cada um tem o seu jeito de ganhar ferramentas e a sua conta — o Codex, o
-   * OpenCode, o MiMo. Do lado do runtime são o mesmo adaptador: o que muda é o endereço, e é por
-   * isso que acrescentar um CLI novo é uma variável de ambiente e não um caminho de código.
+   * Um por CLI, porque cada um tem o seu jeito de ganhar ferramentas e a sua conta — o Codex e o
+   * OpenCode. Do lado do runtime são o mesmo adaptador: o que muda é o endereço, e é por isso que
+   * acrescentar um CLI novo é uma variável de ambiente e não um caminho de código.
    */
   const agentToken = optional(environment, "MANAGED_AGENT_TOKEN");
   const delegated = (
@@ -887,13 +887,8 @@ function agentModels(environment: Environment): AgentModelConfig[] {
     optional(environment, "MANAGED_AGENT_AG_UI_URL");
   if (codexUrl) models.push(delegated("codex", "AGENT_CODEX", codexUrl));
 
-  for (const [id, prefix] of [
-    ["opencode", "AGENT_OPENCODE"],
-    ["mimo", "AGENT_MIMO"],
-  ] as const) {
-    const url = optional(environment, `${prefix}_URL`);
-    if (url) models.push(delegated(id, prefix, url));
-  }
+  const opencodeUrl = optional(environment, "AGENT_OPENCODE_URL");
+  if (opencodeUrl) models.push(delegated("opencode", "AGENT_OPENCODE", opencodeUrl));
 
   return models;
 }

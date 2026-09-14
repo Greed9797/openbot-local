@@ -14,7 +14,7 @@ nenhum modelo pago foi chamado de verdade, o teste de canvas (AT-01) não rodou 
 | `gemini` | `gemini` | `gemini.ts` | `POST {base}/models/{model}:generateContent` (`https://generativelanguage.googleapis.com/v1beta`), com `x-goog-api-key` |
 | `local` | `chat-completions` | `openai-compatible.ts` | `POST {base}/chat/completions` (`AGENT_LOCAL_BASE_URL`, ex. Ollama/vLLM/llama.cpp) |
 | `codex` | `delegated` | `codex-delegated.ts` | AG-UI via `HttpAgent` (`AGENT_CODEX_URL` ou `MANAGED_AGENT_AG_UI_URL`) |
-| `opencode`, `mimo` | `delegated` | `codex-delegated.ts` | AG-UI (`AGENT_OPENCODE_URL`, `AGENT_MIMO_URL`) — serviço `agent-cli`, um processo por CLI; ver `docs/vps.md` |
+| `opencode` | `delegated` | `codex-delegated.ts` | AG-UI (`AGENT_OPENCODE_URL`) — serviço `agent-cli`; ver `docs/vps.md` |
 
 Um CLI de agente é do mesmo adaptador delegado do Codex: do lado do runtime muda o endereço e o id,
 não o código. Quem escolhe o binário, o modelo e a conta é o serviço do outro lado (`AGENT_CLI`),
@@ -38,7 +38,7 @@ adaptador; nunca é persistido (`contracts.ts`, `ObservationImage`).
 | Anthropic | `{ type: "image", source: { type: "base64", media_type, data } }` ao lado de `{ type: "text" }` | `{ name, description, input_schema }`; sistema vai em `system` separado, não em mensagem | Blocos de `content`: `tool_use` decide o passo; sem ele, o texto vira `final`. `max_tokens` padrão 4 096 |
 | chat-completions | `{ type: "image_url", image_url: { url: "data:<mime>;base64,…" } }` | Nativas (`{ type: "function", function: { name, description, parameters } }`) quando `AGENT_LOCAL_TOOLS=on`; senão o catálogo vai em texto (`toolsAsText`) e a resposta é lida por `decisionFromText` (`{tool, arguments, final, help}` + `evidence`) | `tool_calls` na mensagem, ou texto via `readTextResponse` |
 | Gemini | `{ inlineData: { mimeType, data } }` ao lado de `{ text }` em `parts` | `functionDeclarations` dentro de `tools`; a chamada volta em `parts[].functionCall` | `candidates[0].content.parts`: `functionCall` decide o passo; sem ele, o texto vira `final`. `finishReason` de bloqueio vira erro dito, não resposta vazia |
-| Delegado (Codex, OpenCode, MiMo) | Nenhuma: `delegatedObjective` manda só objetivo + `historyBlock` (a observação deste processo seria "fotografia de outro momento") | Nenhuma: o CLI conduz o próprio ciclo com as ferramentas MCP | Resultado `delegated` com mensagem, `toolCalls` e evidência; o `CUSTOM` `openbot.tools` do serviço é o que faz o run saber que o navegador foi usado |
+| Delegado (Codex, OpenCode) | Nenhuma: `delegatedObjective` manda só objetivo + `historyBlock` (a observação deste processo seria "fotografia de outro momento") | Nenhuma: o CLI conduz o próprio ciclo com as ferramentas MCP | Resultado `delegated` com mensagem, `toolCalls` e evidência; o `CUSTOM` `openbot.tools` do serviço é o que faz o run saber que o navegador foi usado |
 
 Cabeçalhos: Responses e chat-completions usam `authorization: Bearer <apiKey>`
 (chat-completions omite quando não há chave — servidor local sem auth);
@@ -52,7 +52,7 @@ Sem credencial configurada o adaptador nem é criado (`createProviderFor` devolv
 `ModelCapabilities = { vision, tools, streaming, mode }` (`contracts.ts`):
 
 - `vision`: do ambiente nos adaptadores de API (presunção pelo nome do modelo, ver o fim) e do
-  `AGENT_CODEX_VISION` / `AGENT_OPENCODE_VISION` / `AGENT_MIMO_VISION` no delegado — que é o único
+  `AGENT_CODEX_VISION` / `AGENT_OPENCODE_VISION` no delegado — que é o único
   que sabe qual modelo roda lá dentro. **O adaptador delegado recebe essa decisão, não a presume**:
   com visão presumida, todo passo pediria captura a um modelo de texto e a análise de tela escolheria
   justamente ele (`analyze-image.ts` pega o primeiro provedor que diz enxergar).
@@ -80,8 +80,7 @@ ou seja, a análise pode usar um modelo diferente do da tarefa. Sem nenhum com v
 1. `agentModels(env)` (`config.ts`) constrói a lista na ordem: `openai-responses`
    (se `AGENT_OPENAI_API_KEY` ou `OPENAI_API_KEY`), `anthropic` (idem), `gemini`
    (`AGENT_GEMINI_API_KEY`, `GEMINI_API_KEY` ou `GOOGLE_API_KEY`), `local` (se
-   `AGENT_LOCAL_BASE_URL`), e os delegados — `codex` (se `AGENT_CODEX_URL` ou
-   `MANAGED_AGENT_AG_UI_URL`), `opencode` (`AGENT_OPENCODE_URL`), `mimo` (`AGENT_MIMO_URL`).
+   `MANAGED_AGENT_AG_UI_URL`), `opencode` (`AGENT_OPENCODE_URL`).
 2. `AGENT_DEFAULT_PROVIDER` ou `providers[0]?.id` ou `"codex"`; `AGENT_DEFAULT_MODEL`
    ou o modelo desse provedor. `AGENT_DEFAULT_PROVIDER` apontando para id não configurado
    recusa o boot com erro explícito.

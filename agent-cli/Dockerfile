@@ -4,8 +4,8 @@
 # Debian, como a imagem do Codex, porque os dois CLIs publicam binários glibc.
 FROM oven/bun:1.3-debian
 
-# Node não roda este serviço: ele existe porque os dois CLIs são distribuídos no npm e o launcher de
-# ambos é um script Node. `unzip` e `curl` são do instalador do OpenCode.
+# Node não roda este serviço: ele existe porque o CLI é distribuído no npm e o launcher dele é um
+# script Node. `unzip` e `curl` são do instalador do OpenCode.
 USER root
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates git nodejs npm curl unzip \
@@ -15,10 +15,8 @@ RUN apt-get update \
 # do --format json* e o nome da flag de auto-aprovação. Uma subida silenciosa de versão quebraria a
 # leitura dos eventos sem quebrar nada visível — o turno terminaria "sem dizer nada".
 ARG OPENCODE_VERSION=1.18.30
-ARG MIMO_VERSION=0.1.14
-RUN npm install -g opencode-ai@${OPENCODE_VERSION} @mimo-ai/cli@${MIMO_VERSION} \
-  && opencode --version \
-  && mimo --version
+RUN npm install -g opencode-ai@${OPENCODE_VERSION} \
+  && opencode --version
 
 WORKDIR /app
 RUN chown bun:bun /app

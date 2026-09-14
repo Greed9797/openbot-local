@@ -404,15 +404,12 @@ services:
       retries: 5
       start_period: 45s
 
-  # The same Bot behavior on a framework, exposed as another AG-UI endpoint and registry row.
-  # Um CLI de agente como Bot: o modelo É o CLI, escolhido por `AGENT_CLI`.
+  # The same Bot behavior on OpenCode, exposed as another AG-UI endpoint and registry row.
+  # Um CLI de agente como Bot: o modelo É o CLI, e a conta dele é a que o deployment configurou.
   #
   # Existe porque um CLI já traz conta, modelo e laço de ferramentas prontos — o "OpenCode Go" de
-  # alguém, um modelo gratuito, o MiMo Code — e o runtime só precisa entregar a tarefa e ler o
-  # resultado. Mesmo desenho do agent-codex; o que muda é que aqui o CLI é dado de configuração.
-  #
-  # Dois CLIs, dois serviços: quem quiser os dois sobe dois blocos iguais a este com `AGENT_CLI`
-  # diferente e portas diferentes.
+  # alguém, um modelo gratuito — e o runtime só precisa entregar a tarefa e ler o resultado. Mesmo
+  # desenho do agent-codex; o que muda é que aqui o CLI é o OpenCode, não código.
   agent-cli:
     restart: unless-stopped
     # Teto anti-100%: mesmo desenho do agent-codex.
@@ -430,9 +427,9 @@ services:
     ports:
       # Loopback, for the same reason as agent-bot above.
       - "127.0.0.1:${CLI_BOT_PORT:-4210}:4210"
-    # O .env inteiro, pela mesma razão do openbot: a conta do CLI e as chaves de provedor que ele
-    # conhece entram por aqui (`OPENCODE_API_KEY`, `MINIMAX_API_KEY`, ...), sem uma lista enumerada
-    # que envelhece. O bloco abaixo só sobrescreve o que muda por se estar dentro de um container.
+    # O .env inteiro, pela mesma razão do openbot: a conta e as chaves de provedor que o CLI conhece
+    # entram por aqui, sem uma lista enumerada que envelhece. O bloco abaixo só sobrescreve o que
+    # muda por se estar dentro de um container.
     env_file:
       - .env
     environment:
@@ -444,7 +441,7 @@ services:
       # sem esta linha o CLI sobe ouvindo na porta do outro serviço e o healthcheck morre onde nada
       # escuta — um container de pé que ninguém alcança.
       PORT: 4210
-      # Qual CLI este processo dirige: opencode | mimo.
+      # O OpenCode; outro valor recusa no boot.
       AGENT_CLI: ${AGENT_CLI:-opencode}
       # O modelo, no formato do CLI (`provider/model`). Vazio deixa o CLI escolher o padrão dele.
       AGENT_CLI_MODEL: ${AGENT_CLI_MODEL:-}

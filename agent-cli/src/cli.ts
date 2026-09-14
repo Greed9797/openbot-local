@@ -1,19 +1,12 @@
 /**
- * Um CLI de agente por trás do mesmo contrato.
+ * O OpenCode como Bot, atrás do mesmo contrato do serviço do Codex.
  *
  * O runtime não sabe dirigir um CLI, e não precisa saber: ele fala AG-UI com este serviço, que
- * escolhe o binário, escreve o config que dá o navegador do Bot ao CLI e lê de volta o que ele disse
- * e fez. É o mesmo desenho do serviço do Codex — o que muda é que aqui o CLI é dado de configuração,
- * não código.
- *
- * Os dois que existem hoje são parentes: o MiMo Code é um fork do OpenCode e herdou o mesmo formato
- * de config, os mesmos eventos de `--format json` e a mesma ideia de servidor MCP local. O que não é
- * igual está explicitado por adaptador — o nome do binário, o nome do arquivo de config e a flag de
- * auto-aprovação (o OpenCode diz `--auto`, o MiMo diz `--yolo`), que é exatamente o tipo de detalhe
- * que faz um turno travado esperar por uma aprovação que ninguém vai dar.
+ * escreve o config que dá o navegador do Bot ao CLI e lê de volta o que ele disse e fez. É o mesmo
+ * desenho do serviço do Codex — o que muda é que aqui o modelo é a conta do CLI, não código.
  *
  * Este arquivo é puro de propósito: sem processo, sem rede, sem relógio. É o que permite testar o
- * que cada CLI recebe no fio sem ter o CLI instalado.
+ * que o CLI recebe no fio sem ter o CLI instalado.
  */
 
 /** O que uma linha de stdout do CLI significa para este serviço. */
@@ -93,7 +86,7 @@ export function cliConfig(options: {
   };
 }
 
-/** O leitor de eventos compartilhado pelos dois CLIs: mesmo formato, é o mesmo tronco. */
+/** O leitor de eventos do `--format json`: mesmo formato do começo ao fim. */
 export function readOpencodeEvent(line: string): CliEvent | undefined {
   let parsed: unknown;
   try {
@@ -160,11 +153,8 @@ export const OPENCODE: CliAdapter = {
     prompt,
   ],
   read: readOpencodeEvent,
-  /*
-   * `opencode models` imprime uma linha por modelo da conta, no formato `provedor/modelo` — medido
-   * contra a assinatura, não deduzido. O MiMo não tem o campo: o comando dele não foi medido, e
-   * inventar um seria pior que dizer que não sei listar.
-   */
+  /* `opencode models` imprime uma linha por modelo da conta, no formato `provedor/modelo` — medido
+   * contra a assinatura, não deduzido. */
   models: {
     args: ["models"],
     parse: (stdout) =>
@@ -175,27 +165,7 @@ export const OPENCODE: CliAdapter = {
   },
 };
 
-export const MIMO: CliAdapter = {
-  id: "mimo",
-  binary: "mimo",
-  // O fork guardou o formato e trocou os nomes: `.mimocode/mimocode.jsonc` é onde ele lê a config
-  // do projeto, e a auto-aprovação se chama `--yolo`.
-  configPath: ".mimocode/mimocode.jsonc",
-  args: ({ prompt, workspace, model, variant }) => [
-    "run",
-    "--format",
-    "json",
-    "--yolo",
-    "--dir",
-    workspace,
-    ...(model ? ["-m", model] : []),
-    ...(variant ? ["--variant", variant] : []),
-    prompt,
-  ],
-  read: readOpencodeEvent,
-};
-
-const ADAPTERS: CliAdapter[] = [OPENCODE, MIMO];
+const ADAPTERS: CliAdapter[] = [OPENCODE];
 
 /**
  * O adaptador pedido, ou uma recusa que diz o que existe.

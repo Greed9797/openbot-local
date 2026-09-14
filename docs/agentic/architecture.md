@@ -23,7 +23,7 @@ modelos pagos ou VPS).
 | Navegador | `agent-computer/src/index.ts` | Chromium/Playwright por Bot, máscaras de screenshot, segredos, controle humano |
 | Leitura barata | `computer_fetch` via gateway → `agent-computer/src/lightpanda.ts` | Texto sem pixels, sem sessão |
 | Codex delegado | `agent-codex/src/index.ts` + `shared/mcp-computer.ts` (`abrir_pagina`, `ler_url_rapido`, `ler_pagina`, `mapear_pagina`, `clicar`, `digitar`, `tecla`, `rolar`, `ver_a_tela`, `pedir_ajuda`, `escolher_opcao`) | O CLI conduz o próprio ciclo; o servidor MCP stdio é o mesmo que os CLIs de agente usam, e as ferramentas de navegador passam pelo gateway |
-| CLI de agente | `agent-cli/src/{index,cli}.ts` | Um serviço por CLI (OpenCode, MiMo Code); entrega a tarefa inteira ao binário e o navegador chega pelo mesmo `shared/mcp-computer.ts` |
+| CLI de agente | `agent-cli/src/{index,cli}.ts` | OpenCode; entrega a tarefa inteira ao binário e o navegador chega pelo mesmo `shared/mcp-computer.ts` |
 | Imagens | `server/src/agent-runtime/{artifact-store,image-input}.ts`, `server/src/agent-runs/capture.ts` (`captureRunScreen`) | Arquivo no disco + linha em `run_artifacts` com classificação e destinos |
 
 ## O caminho de um passo

@@ -4,19 +4,19 @@ import { dirname, join } from "node:path";
 import type { BaseEvent, Message, RunAgentInput } from "@ag-ui/core";
 import { EventEncoder } from "@ag-ui/encoder";
 /**
- * Um CLI de agente como Bot, atrás do mesmo contrato do serviço do Codex.
+ * O OpenCode como Bot, atrás do mesmo contrato do serviço do Codex.
  *
- * O runtime entrega a tarefa inteira por AG-UI e este processo a repassa ao CLI escolhido em
- * `AGENT_CLI` — OpenCode, MiMo Code, ou outro que venha a ter o mesmo tronco. O navegador do Bot
- * chega ao CLI como servidor MCP (`shared/mcp-computer.ts`), então cada página aberta continua
- * passando pelo gateway: política, guarda de destino e linha de auditoria, exatamente como quando
- * quem dirige é o laço do runtime.
+ * O runtime entrega a tarefa inteira por AG-UI e este processo a repassa ao OpenCode — o mesmo que
+ * você já usa no terminal, com a conta que você já paga. O navegador do Bot chega ao CLI como
+ * servidor MCP (`shared/mcp-computer.ts`), então cada página aberta continua passando pelo
+ * gateway: política, guarda de destino e linha de auditoria, exatamente como quando quem dirige é
+ * o laço do runtime.
  *
  * Duas coisas NÃO moram aqui, de propósito:
  *
- * - o modelo. Quem escolhe é o CLI, com a conta dele (`opencode auth`, `mimo providers`), e o
- *   deployment não guarda chave de fornecedor nenhum para este caminho. É o que permite usar um
- *   plano já pago — ou um modelo gratuito — sem passar pelo caixa do fornecedor da vez.
+ * - o modelo. Quem escolhe é o CLI, com a conta dele (`opencode auth`), e o deployment não guarda
+ *   chave de fornecedor nenhum para este caminho. É o que permite usar um plano já pago — ou um
+ *   modelo gratuito — sem passar pelo caixa do fornecedor da vez.
  * - a política. O CLI não decide o que pode: quem decide é o gateway, do outro lado de cada
  *   chamada de ferramenta, e é por isso que as ferramentas dele vêm por MCP em vez de um navegador
  *   próprio.
@@ -29,7 +29,7 @@ import { adapterFor, type CliEvent, cliConfig, knownAdapters } from "./cli";
 const PORT = Number(process.env.PORT ?? 4210);
 const MANAGED_AGENT_TOKEN = process.env.MANAGED_AGENT_TOKEN?.trim() ?? "";
 
-/** Qual CLI este processo dirige. Um por serviço: quem quiser dois sobe dois. */
+/** O CLI que este processo dirige. Só o OpenCode; outro valor recusa no boot. */
 const CLI = (process.env.AGENT_CLI?.trim() || "opencode").toLowerCase();
 const MODEL = process.env.AGENT_CLI_MODEL?.trim() ?? "";
 
@@ -90,8 +90,7 @@ const API = process.env.OPENBOT_API_URL?.trim() || "http://openbot:3001";
 const AUTH_JSON = process.env.AGENT_CLI_AUTH_JSON?.trim() ?? "";
 
 const AUTH_PATH =
-  process.env.AGENT_CLI_AUTH_PATH?.trim() ||
-  (CLI === "mimo" ? "mimocode/auth.json" : "opencode/auth.json");
+  process.env.AGENT_CLI_AUTH_PATH?.trim() || "opencode/auth.json";
 
 async function instalarCredencial(): Promise<void> {
   if (!AUTH_JSON) return;
@@ -431,10 +430,7 @@ async function prepararTurno(
     `${JSON.stringify(
       cliConfig({
         mcpPath: MCP_SERVER_PATH,
-        schema:
-          adapter.id === "mimo"
-            ? "https://mimo.xiaomi.com/config.json"
-            : "https://opencode.ai/config.json",
+        schema: "https://opencode.ai/config.json",
         environment: {
           OPENBOT_AGENT_TOKEN: process.env.OPENBOT_AGENT_TOKEN?.trim() ?? "",
           OPENBOT_API_URL: API,

@@ -1,5 +1,5 @@
 /**
- * O que cada CLI recebe no fio.
+ * O que o CLI recebe no fio.
  *
  * O teste existe pela mesma razão do serviço: o que quebra um turno delegado não é o modelo, é o
  * encanamento — uma flag com outro nome, uma config no lugar errado, um evento lido como silêncio.
@@ -12,7 +12,6 @@ import {
   adapterFor,
   cliConfig,
   knownAdapters,
-  MIMO,
   OPENCODE,
   readOpencodeEvent,
 } from "../src/cli";
@@ -37,21 +36,6 @@ describe("adaptadores", () => {
       "Abra o TikTok",
     ]);
     expect(OPENCODE.configPath).toBe("opencode.json");
-  });
-
-  test("o MiMo tem outro binário, outro arquivo e outra flag de aprovação", () => {
-    // É exatamente aqui que um adaptador copiado do outro falha em silêncio: a flag do fork tem
-    // outro nome, e o turno fica esperando uma aprovação que ninguém vai dar.
-    expect(MIMO.binary).toBe("mimo");
-    expect(MIMO.configPath).toBe(".mimocode/mimocode.jsonc");
-    expect(
-      MIMO.args({
-        prompt: "Abra o TikTok",
-        workspace: "/workspace",
-        model: "",
-        variant: "",
-      }),
-    ).toContain("--yolo");
   });
 
   test("sem modelo escolhido, nenhuma flag de modelo vai", () => {
@@ -87,14 +71,6 @@ describe("adaptadores", () => {
       "high",
       "Leia a tela e me diga o valor",
     ]);
-    expect(
-      MIMO.args({
-        prompt: "oi",
-        workspace: "/w",
-        model: "",
-        variant: "max",
-      }),
-    ).toContain("max");
   });
 
   test("sem degrau escolhido, nenhuma flag de degrau vai", () => {
@@ -110,7 +86,7 @@ describe("adaptadores", () => {
   test("CLI desconhecido é recusado com a lista do que existe", () => {
     expect(() => adapterFor("nao-existe")).toThrow(/nao-existe/);
     expect(() => adapterFor("nao-existe")).toThrow(/opencode/);
-    expect(knownAdapters()).toEqual(["opencode", "mimo"]);
+    expect(knownAdapters()).toEqual(["opencode"]);
   });
 });
 
