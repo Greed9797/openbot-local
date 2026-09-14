@@ -4,6 +4,16 @@ services:
     # meant to stay up.
     restart: unless-stopped
     image: pgvector/pgvector:pg17
+    # Teto anti-100%: o fork nunca sozinho throttla o host. Pico medido em idle ~9% CPU/90M;
+    # 1 CPU + 2G deixa folga ampla sem deixar o banco esmagar nem ser esmagado.
+    cpus: "1.0"
+    mem_limit: 2g
+    mem_reservation: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       POSTGRES_DB: openbot
       POSTGRES_USER: openbot
@@ -218,6 +228,16 @@ services:
     # Long-lived: comes back after a crash and after the host reboots. This deployment is
     # meant to stay up.
     restart: unless-stopped
+    # Teto anti-100%: Chromium em rajada + 4 vCPU no host. Idle ~5% CPU/500M; 3 CPU + 6G
+    # deixa folga ~6x sem OOM em turno normal. Healthcheck com start_period 60s sobrevive.
+    cpus: "3.0"
+    mem_limit: 6g
+    mem_reservation: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     ports:
       # Loopback. Reached over an SSH tunnel, or by a reverse proxy on this host that terminates TLS.
       # Published on any interface it would be an administrator console on the open internet, which
@@ -340,6 +360,16 @@ services:
     # Long-lived: comes back after a crash and after the host reboots. This deployment is
     # meant to stay up.
     restart: unless-stopped
+    # Teto anti-100%: subprocesso Node por turno em voo. Idle ~0.4%/230M; 2 CPU + 4G
+    # nunca OOM em turno normal.
+    cpus: "2.0"
+    mem_limit: 4g
+    mem_reservation: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     build:
       context: .
       dockerfile: agent-codex/Dockerfile
@@ -385,6 +415,15 @@ services:
   # diferente e portas diferentes.
   agent-cli:
     restart: unless-stopped
+    # Teto anti-100%: mesmo desenho do agent-codex.
+    cpus: "2.0"
+    mem_limit: 4g
+    mem_reservation: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     build:
       context: .
       dockerfile: agent-cli/Dockerfile
