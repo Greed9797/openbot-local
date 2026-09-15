@@ -5,82 +5,26 @@ if (typeof document === "undefined") {
   GlobalRegistrator.register();
 }
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
-import * as ActualCopilot from "@copilotkit/react-core/v2";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { Message } from "@ag-ui/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useState } from "react";
-import type { Message } from "@ag-ui/core";
 
 // Bound after the DOM above exists: `screen` queries `document.body` at import.
-const { fireEvent, render, screen, waitFor } = await import(
+const { cleanup, fireEvent, render, screen, waitFor } = await import(
   "@testing-library/react"
 );
-type FakeStore = { messages: Message[] };
 
-const agentStores = new Map<string, FakeStore>();
-const bumps = new Map<string, () => void>();
-const runCalls: { threadId: string; snapshot: Message[] }[] = [];
+import {
+  copilotFake,
+  resetCopilotFake,
+  runCalls,
+  storeFor,
+} from "./copilot-fake";
 
-function storeFor(threadId: string): FakeStore {
-  let store = agentStores.get(threadId);
-  if (!store) {
-    store = { messages: [] };
-    agentStores.set(threadId, store);
-  }
-  return store;
-}
-
-mock.module("@copilotkit/react-core/v2", () => ({
-  ...ActualCopilot,
-  UseAgentUpdate: { OnMessagesChanged: "messages", OnRunStatusChanged: "runs" },
-  useAgent: (opts: { threadId: string }) => {
-    const key = opts.threadId;
-    const [, setVersion] = useState(0);
-    storeFor(key);
-    bumps.set(key, () => setVersion((v) => v + 1));
-    const agent = {
-      get messages(): Message[] {
-        return storeFor(key).messages;
-      },
-      isRunning: false,
-      addMessage(message: Message) {
-        storeFor(key).messages.push(message);
-        bumps.get(key)?.();
-      },
-      setMessages(messages: Message[]) {
-        storeFor(key).messages = [...messages];
-        bumps.get(key)?.();
-      },
-      subscribe() {
-        return { unsubscribe() {} };
-      },
-    };
-    return { agent, isReady: true };
-  },
-  useCopilotKit: () => ({
-    copilotkit: {
-      connectAgent: async () => {},
-      runAgent: async ({ agent }: { agent: { messages: Message[] } }) => {
-        const entry = agentStores
-          .entries()
-          .find(([, s]) => s.messages === agent.messages);
-        const threadId = entry?.[0] ?? "unknown";
-        runCalls.push({ threadId, snapshot: [...agent.messages] });
-        storeFor(threadId).messages.push({
-          id: `reply-${runCalls.length}`,
-          role: "assistant",
-          content: "reply",
-        });
-        bumps.get(threadId)?.();
-      },
-      stopAgent: () => {},
-    },
-  }),
-  useRenderToolCall: () => () => null,
-  useFrontendTool: () => {},
-  useHumanInTheLoop: () => {},
-}));
+// The shared fake runtime, not one of this file's own: see tests/copilot-fake.ts.
+mock.module("@copilotkit/react-core/v2", copilotFake);
 
 /*
  * No `mock.module` for react-query: Bun applies every file's module mocks before running any test,
@@ -127,9 +71,7 @@ function channel(id: string, threadId: string) {
 }
 
 beforeEach(() => {
-  agentStores.clear();
-  bumps.clear();
-  runCalls.length = 0;
+  resetCopilotFake();
   fetchHandlers.clear();
   globalThis.fetch = (async (input: unknown) => {
     const url = String(input);
@@ -139,6 +81,14 @@ beforeEach(() => {
     return handler();
   }) as typeof fetch;
 });
+
+/*
+ * One document is shared by every test and every file, so a tree left mounted keeps answering
+ * queries: after the next `fetchHandlers.clear()` its own restore fails too, and the retry button
+ * this file looks for is then found twice.
+ */
+afterEach(cleanup);
+
 describe("restoring channel history before any send", () => {
   test("a seed waits for the restore and runs once with the full history", async () => {
     const gate = Promise.withResolvers<Response>();

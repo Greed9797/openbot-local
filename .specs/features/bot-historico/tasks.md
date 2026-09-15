@@ -134,12 +134,12 @@ T3 → T4 → T5
 
 **Done when**:
 
-- [ ] Two tabs render; draft survives tab switch
-- [ ] Search filters; scroll pages; item opens read-only with Continue
-- [ ] Continue makes it the active conversation; Nova conversa archives + zeroes
-- [ ] Unknown `?agent=` shows dito missing-bot state
-- [ ] Gate check passes: `cd app && bun test tests/bot-historico.test.tsx`
-- [ ] Test count: new file ≥6 tests pass, full app suite green
+- [x] Two tabs render; draft survives tab switch
+- [x] Search filters; scroll pages; item opens read-only with Continue
+- [x] Continue makes it the active conversation; Nova conversa archives + zeroes
+- [x] Unknown `?agent=` shows dito missing-bot state
+- [x] Gate check passes: `cd app && bun test tests/bot-historico.test.tsx` (10 pass / 0 fail)
+- [x] Test count: new file 10 tests pass; app suite 158 pass / 0 fail (`marketplace.test.ts` reads a repo-root-relative path and only passes from the repo root, where it does)
 
 **Tests**: unit (testing-library, mocked fetch)
 **Gate**: quick (file) then full suite

@@ -1,4 +1,4 @@
-import { queryOptions } from "@tanstack/react-query";
+import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { client } from "@/lib/client";
 
 /**
@@ -39,6 +39,11 @@ export const botKeys = {
     ["bots", "conversas", botId, query?.q?.trim() ?? ""] as const,
 };
 
+export type BotConversasPage = {
+  conversas: ChannelSummary[];
+  nextCursor?: string;
+};
+
 export function channelListQueryOptions() {
   return queryOptions({
     queryKey: channelKeys.list(),
@@ -58,5 +63,39 @@ export function channelQueryOptions(channelId: string) {
         fallback: "Não foi possível carregar este canal",
       });
     },
+  });
+}
+
+/**
+ * One bot's hidden conversations, newest activity first.
+ *
+ * Infinite because History grows without bound and the roster already proved
+ * a flat list does not scale; the cursor is opaque to the screen, which only
+ * passes back what the server returned. Search re-keys rather than filters
+ * locally, so typing queries the server instead of the fetched pages.
+ */
+export function botConversasQueryOptions(botId: string, q: string) {
+  return infiniteQueryOptions({
+    queryKey: botKeys.conversas(botId, { q }),
+    queryFn: async ({
+      pageParam,
+    }: {
+      pageParam?: string;
+    }): Promise<BotConversasPage> => {
+      const params = new URLSearchParams();
+      if (q.trim()) params.set("q", q.trim());
+      if (pageParam) params.set("cursor", pageParam);
+      params.set("limit", "20");
+      const query = params.size > 0 ? `?${params.toString()}` : "";
+      const response = await client(
+        `/api/bots/${encodeURIComponent(botId)}/conversas${query}`,
+        {
+          fallback: "Não foi possível carregar o histórico",
+        },
+      );
+      return (await response.json()) as BotConversasPage;
+    },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
   });
 }

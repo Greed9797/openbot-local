@@ -4,6 +4,7 @@ import {
   IconBox,
   IconListCheck,
   IconLogout,
+  IconMessageChatbot,
   IconPlus,
   IconSearch,
   IconSettings,
@@ -341,6 +342,30 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <IconListCheck />
               </div>
               <span className="text-sm trackint-tight">Tarefas</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            {/*
+             * O Bot de navegador não aparece na lista de conversas: as conversas dele
+             * são escondidas do roster e só existem dentro da própria página.
+             * Sem esta entrada não haveria como chegar até lá.
+             */}
+            <SidebarMenuButton
+              className="hover:bg-foreground/5 h-10"
+              render={(props) => (
+                <Link
+                  {...props}
+                  to="/bot"
+                  activeProps={{
+                    className: "bg-foreground/5",
+                  }}
+                />
+              )}
+            >
+              <div className="size-[28px] flex items-center justify-center">
+                <IconMessageChatbot />
+              </div>
+              <span className="text-sm trackint-tight">Bot</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>

@@ -1,6 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { type ChannelSummary, botKeys, channelKeys } from "./queries";
+import {
+  type BotConversasPage,
+  botKeys,
+  type ChannelSummary,
+  channelKeys,
+} from "./queries";
 
 /**
  * Keep the roster live.
@@ -16,11 +21,6 @@ type ChannelActivityEvent = {
   lastMessageAgentId: string | null;
   /** Absent from old payloads in flight: treated as visible, the previous behavior. */
   visivelNoRoster?: boolean;
-};
-
-type BotConversasPage = {
-  conversas: ChannelSummary[];
-  nextCursor?: string;
 };
 
 const FIRST_RETRY_MS = 500;
