@@ -603,6 +603,31 @@ describe("bot history access", () => {
     expect(denied.body).toEqual(unknown.body);
   });
 
+  test("a soft-deleted bot leaves its conversations inactive", async () => {
+    const owner = await createUser();
+    const agentId = await createAgent(owner);
+    await hiddenChannel(owner, agentId, await databaseNow(), "Disse algo.");
+
+    const before = await store.listBotConversations(owner, agentId);
+    expect(before.items[0]?.agentIds).toEqual([agentId]);
+    expect(before.items[0]?.active).toBe(true);
+
+    await profileStore.softDelete(owner, agentId);
+
+    /*
+     * Asserted at the store, not over HTTP: the route's own guard is
+     * `profileStore.get`, which skips deleted profiles, so the endpoint
+     * answers 404 and never reaches the branch under test. `active` is what
+     * the History row uses to decide whether Continue may reopen the
+     * conversation, and `get` computes it from the same joined rows — the two
+     * must not disagree about the same channel.
+     */
+    const after = await store.listBotConversations(owner, agentId);
+    expect(after.items).toHaveLength(1);
+    expect(after.items[0]?.agentIds).toEqual([agentId]);
+    expect(after.items[0]?.active).toBe(false);
+  });
+
   test("non-member of a public bot reads an empty list, not a 404", async () => {
     const owner = await createUser();
     const agentId = await createAgent(owner, "Public Bot", "public");
