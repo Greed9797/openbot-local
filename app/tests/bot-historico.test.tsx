@@ -337,10 +337,10 @@ describe("lista do histórico", () => {
     expect(aberto?.id).toBe("c1");
   });
 
-  test("nova conversa cria canal oculto", async () => {
+  test("nova conversa cria canal oculto sem mexer no roster", async () => {
     conversas = [];
     let nova: { id: string } | null = null;
-    mount(
+    const { client } = mount(
       <BotHistoryList
         botId="bot-1"
         onAbrir={noop}
@@ -349,24 +349,44 @@ describe("lista do histórico", () => {
         }}
       />,
     );
+    const invalidadas: unknown[][] = [];
+    const original = client.invalidateQueries.bind(client);
+    client.invalidateQueries = (async (filters?: { queryKey?: unknown }) => {
+      invalidadas.push((filters?.queryKey ?? []) as unknown[]);
+      return original(filters as Parameters<typeof original>[0]);
+    }) as typeof client.invalidateQueries;
 
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Nova conversa" }),
-      ).toBeDefined();
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Nova conversa" }));
+    try {
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: "Nova conversa" }),
+        ).toBeDefined();
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Nova conversa" }));
 
-    await waitFor(() => {
-      expect(nova?.id).toBe("channel-nova-1");
-    });
-    const post = pedidos.find(
-      (p) => p.url.endsWith("/api/channels") && p.method === "POST",
-    );
-    expect(post?.body).toEqual({
-      agentIds: ["bot-1"],
-      visivelNoRoster: false,
-    });
+      await waitFor(() => {
+        expect(nova?.id).toBe("channel-nova-1");
+      });
+      const post = pedidos.find(
+        (p) => p.url.endsWith("/api/channels") && p.method === "POST",
+      );
+      expect(post?.body).toEqual({
+        agentIds: ["bot-1"],
+        visivelNoRoster: false,
+      });
+
+      /*
+       * O histórico do bot recarrega; o roster não. O canal nasce invisível para
+       * `GET /api/channels`, então pedir essa lista de novo seria pedir ao servidor algo que não
+       * pode ter mudado — a mesma agitação que o caminho do socket evita.
+       */
+      await waitFor(() => {
+        expect(invalidadas.some((chave) => chave[0] === "bots")).toBe(true);
+      });
+      expect(invalidadas.some((chave) => chave[0] === "channels")).toBe(false);
+    } finally {
+      client.invalidateQueries = original;
+    }
   });
 });
 
