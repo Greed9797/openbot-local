@@ -628,6 +628,41 @@ describe("bot history access", () => {
     expect(after.items[0]?.active).toBe(false);
   });
 
+  test("a soft-deleted companion turns the row inactive over HTTP", async () => {
+    const owner = await createUser();
+    const botId = await createAgent(owner);
+    const colega = await createAgent(owner, "Colega");
+    const channel = await store.create(owner, [botId, colega], {
+      visivelNoRoster: false,
+    });
+    createdChannelIds.push(channel.id);
+    const app = historyApp(store, owner);
+
+    const before = await historyJson(app, botId);
+    expect(before.status).toBe(200);
+    expect(
+      (before.body as { conversas: { active: boolean }[] }).conversas[0]
+        ?.active,
+    ).toBe(true);
+
+    /*
+     * The companion, not the bot on screen: deleting the bot itself makes the
+     * route answer 404 at its own guard, so this is the only way `active`
+     * reaches the UI false. It also exercises the accumulation — the flag is
+     * `&&=` over every agent of the conversation, so one dead companion is
+     * enough even though the bot is alive.
+     */
+    await profileStore.softDelete(owner, colega);
+
+    const after = await historyJson(app, botId);
+    expect(after.status).toBe(200);
+    const row = (
+      after.body as { conversas: { active: boolean; agentIds: string[] }[] }
+    ).conversas[0];
+    expect(row?.agentIds).toEqual([botId, colega].sort());
+    expect(row?.active).toBe(false);
+  });
+
   test("non-member of a public bot reads an empty list, not a 404", async () => {
     const owner = await createUser();
     const agentId = await createAgent(owner, "Public Bot", "public");
