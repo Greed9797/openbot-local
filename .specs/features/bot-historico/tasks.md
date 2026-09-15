@@ -164,7 +164,7 @@ T3 → T4 → T5
 **Done when**:
 
 - [x] Switching conversations never concatenates histories (assert thread scoping, not model output) — `app/tests/bot-historico.test.tsx` "trocar de conversa não junta os históricos" + "Nova conversa nunca recebe o thread da anterior"; proven to bite by forcing the restore to a fixed thread (2 fail), restored after; server side pinned by "one bot's conversations stay out of another bot's history"
-- [x] `bun test` whole repo green (1446 pass / 0 fail / 32 skip, 151 files); `docker compose config` rc=0; biome clean on the touched files
+- [x] `bun test` whole repo green (1449 pass / 0 fail / 32 skip, 1481 tests across 151 files); `docker compose config` rc=0; biome clean on the touched files
 - [x] Gate check passes: full `bun test` + `tsc --noEmit` clean in `app/` and `server/`
 
 **Tests**: integration
