@@ -7,6 +7,8 @@ if (typeof document === "undefined") {
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+// Types are erased, so this one costs no evaluation and may stay static.
+import type { ChannelSummary } from "../src/lib/channels/queries";
 
 /*
  * Deliberately dynamic: a static import is hoisted above the `register` call, and these modules
@@ -18,7 +20,6 @@ const { useChannelEvents } = await import(
   "../src/lib/channels/use-channel-events"
 );
 const { botKeys, channelKeys } = await import("../src/lib/channels/queries");
-import type { ChannelSummary } from "../src/lib/channels/queries";
 
 function summary(overrides: Partial<ChannelSummary> = {}): ChannelSummary {
   return {

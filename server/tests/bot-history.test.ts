@@ -319,6 +319,38 @@ describe("bot history search", () => {
     expect(page.items).toEqual([]);
     expect(page.nextCursor).toBeUndefined();
   });
+
+  test("a term said earlier in the conversation is out of reach", async () => {
+    const owner = await createUser();
+    const agentId = await createAgent(owner);
+    const base = await databaseNow();
+    const channel = await hiddenChannel(
+      owner,
+      agentId,
+      new Date(base.getTime() - 120_000),
+      "Combinamos a feijoada de sábado.",
+    );
+    // Said afterwards, so the preview no longer carries the earlier word.
+    await store.recordActivity(owner, channel.id, {
+      agentId,
+      at: new Date(base.getTime() - 30_000),
+      text: "Fechado então.",
+    });
+
+    /*
+     * The documented phase-1 limit, pinned so a later change to the search cannot quietly widen or
+     * narrow it: search covers the row's own name and preview, not what was said mid-conversation.
+     */
+    expect(
+      (await store.listBotConversations(owner, agentId, { q: "feijoada" }))
+        .items,
+    ).toEqual([]);
+    expect(
+      (
+        await store.listBotConversations(owner, agentId, { q: "fechado" })
+      ).items.map((item) => item.id),
+    ).toEqual([channel.id]);
+  });
 });
 
 describe("bot history cursor", () => {
@@ -434,6 +466,48 @@ describe("bot history cursor", () => {
     const parsed = body as { conversas: unknown[]; nextCursor?: string };
     expect(parsed.conversas).toHaveLength(1);
     expect(typeof parsed.nextCursor).toBe("string");
+  });
+
+  test("the store clamps a limit out of range instead of passing it to SQL", async () => {
+    const owner = await createUser();
+    const agentId = await createAgent(owner);
+    await threeConversations(owner, agentId);
+
+    /*
+     * Asserted on the store rather than over HTTP: the route clamps too, and its clamp would hide a
+     * regression here. This is the clamp that stands between a number and the `limit` in the query.
+     */
+    for (const limit of [0, -5]) {
+      const page = await store.listBotConversations(owner, agentId, { limit });
+      expect(page.items).toHaveLength(1);
+      expect(page.nextCursor).toBeDefined();
+    }
+    const wide = await store.listBotConversations(owner, agentId, {
+      limit: 1000,
+    });
+    expect(wide.items).toHaveLength(3);
+    expect(wide.nextCursor).toBeUndefined();
+  });
+
+  test("a limit the URL cannot express answers 200, never 400 or 500", async () => {
+    const owner = await createUser();
+    const agentId = await createAgent(owner);
+    await threeConversations(owner, agentId);
+    const app = historyApp(store, owner);
+
+    // Out of range and unparseable are answered, not refused: only the cursor is a client error.
+    for (const query of [
+      "?limit=0",
+      "?limit=-5",
+      "?limit=1000",
+      "?limit=abc",
+    ]) {
+      const { status, body } = await historyJson(app, agentId, query);
+      expect(status).toBe(200);
+      expect(
+        (body as { conversas: unknown[] }).conversas.length,
+      ).toBeGreaterThan(0);
+    }
   });
 });
 

@@ -8,7 +8,6 @@ import {
   botConversasQueryOptions,
   botKeys,
   type ChannelSummary,
-  channelKeys,
 } from "@/lib/channels/queries";
 import { client } from "@/lib/client";
 
@@ -59,8 +58,12 @@ export function BotHistoryList({
       ).channel;
     },
     onSuccess: (channel) => {
+      /*
+       * Only this bot's History. The roster is deliberately left alone: the channel was created
+       * with `visivelNoRoster: false`, so `GET /api/channels` excludes it and a refetch would ask
+       * the server for a list that cannot have changed — the same churn the socket path avoids.
+       */
       void queryClient.invalidateQueries({ queryKey: botKeys.all });
-      void queryClient.invalidateQueries({ queryKey: channelKeys.all });
       onNovaConversa(channel);
     },
   });

@@ -1,7 +1,7 @@
 # Bot Histórico Specification
 
 **Source**: `.specs/features/bot-historico/design.md` (approved)
-**Status**: Draft
+**Status**: Implemented — validated, see `validation.md`
 
 ---
 
@@ -11,10 +11,10 @@ Bots are used through loose channels in the sidebar: every conversation becomes 
 
 ## Goals
 
-- [ ] Person opens a fixed bot page with Conversa + Histórico tabs
-- [ ] New conversations stay out of the general roster (server-side, not screen filter)
-- [ ] History search finds by title/preview in phase 1
-- [ ] Old conversations reopen read-only with a working Continue path
+- [x] Person opens a fixed bot page with Conversa + Histórico tabs
+- [x] New conversations stay out of the general roster (server-side, not screen filter)
+- [x] History search finds by title/preview in phase 1
+- [x] Old conversations reopen read-only with a working Continue path
 
 ## Out of Scope
 
@@ -136,13 +136,13 @@ Each requirement gets a unique ID for tracking across design, tasks, and validat
 
 | Requirement ID | Story | Phase | Status | Tasks |
 | -------------- | ----- | ----- | ------ | ----- |
-| BH-01 | P1: Bot page with tabs | Implementation | Implementing | T4 |
-| BH-02 | P1: New conversation stays out of the roster | Implementation | Implementing | T1, T2, T4 |
-| BH-03 | P1: History list with search | Implementation | Implementing | T2, T4 |
-| BH-04 | P1: Reopen old conversation read-only | Implementation | Implementing | T4 |
-| BH-05 | P2: Live history updates without roster churn | Implementation | Implementing | T3 |
-| BH-06 | P2: Context isolation across conversations | Implementation | Implementing | T5 |
-| BH-07 | Edge: mutable-cursor anomaly + error shape | Implementation | Implementing | T2 |
+| BH-01 | P1: Bot page with tabs | Validation | Verified | T4 |
+| BH-02 | P1: New conversation stays out of the roster | Validation | Verified | T1, T2, T4 |
+| BH-03 | P1: History list with search | Validation | Verified | T2, T4 |
+| BH-04 | P1: Reopen old conversation read-only | Validation | Verified | T4 |
+| BH-05 | P2: Live history updates without roster churn | Validation | Verified | T3 |
+| BH-06 | P2: Context isolation across conversations | Validation | Verified | T5 |
+| BH-07 | Edge: mutable-cursor anomaly + error shape | Validation | Verified | T2 |
 
 **ID format:** `[CATEGORY]-[NUMBER]` (e.g., `AUTH-01`, `CART-03`, `NOTIF-02`)
 
@@ -156,6 +156,8 @@ Each requirement gets a unique ID for tracking across design, tasks, and validat
 
 How we know the feature is successful:
 
-- [ ] Person opens bot page, starts 3 conversations, finds one by search, reopens it read-only, continues it
-- [ ] General roster never shows bot conversations during the whole flow
-- [ ] Zero errors in the cursor/search/error-shape matrix
+- [x] Person opens bot page, starts 3 conversations, finds one by search, reopens it read-only, continues it
+- [x] General roster never shows bot conversations during the whole flow
+- [x] Zero errors in the cursor/search/error-shape matrix
+
+Evidence and per-criterion verdicts: `.specs/features/bot-historico/validation.md` (independent verifier, plus the author's post-validation fixes).

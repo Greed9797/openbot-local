@@ -164,7 +164,7 @@ T3 → T4 → T5
 **Done when**:
 
 - [x] Switching conversations never concatenates histories (assert thread scoping, not model output) — `app/tests/bot-historico.test.tsx` "trocar de conversa não junta os históricos"; proven to bite by mutating the hydrate to read a fixed thread (1 fail), restored after
-- [x] `bun test` whole repo green (1439 pass / 0 fail, 151 files); `docker compose config` rc=0; biome clean on touched files
+- [x] `bun test` whole repo green (1442 pass / 0 fail, 151 files, after the verifier's gaps were closed); `docker compose config` rc=0; biome clean on all 13 touched files
 - [x] Gate check passes: full `bun test` + `tsc --noEmit` clean in `app/` and `server/`
 
 **Tests**: integration
