@@ -138,8 +138,8 @@ T3 → T4 → T5
 - [x] Search filters; scroll pages; item opens read-only with Continue
 - [x] Continue makes it the active conversation; Nova conversa archives + zeroes
 - [x] Unknown `?agent=` shows dito missing-bot state
-- [x] Gate check passes: `cd app && bun test tests/bot-historico.test.tsx` (10 pass / 0 fail)
-- [x] Test count: new file 10 tests pass; app suite 158 pass / 0 fail (`marketplace.test.ts` reads a repo-root-relative path and only passes from the repo root, where it does)
+- [x] Gate check passes: `cd app && bun test tests/bot-historico.test.tsx` (12 pass / 0 fail, solo)
+- [x] Test count: new file 12 tests pass; `cd app` full run 158 pass / 1 fail — the single fail is `marketplace.test.ts` ENOENT (repo-root-relative path, pre-existing cwd sensitivity, passes from repo root)
 
 **Tests**: unit (testing-library, mocked fetch)
 **Gate**: quick (file) then full suite
@@ -163,8 +163,8 @@ T3 → T4 → T5
 
 **Done when**:
 
-- [x] Switching conversations never concatenates histories (assert thread scoping, not model output) — `app/tests/bot-historico.test.tsx` "trocar de conversa não junta os históricos"; proven to bite by mutating the hydrate to read a fixed thread (1 fail), restored after
-- [x] `bun test` whole repo green (1442 pass / 0 fail, 151 files, after the verifier's gaps were closed); `docker compose config` rc=0; biome clean on all 13 touched files
+- [x] Switching conversations never concatenates histories (assert thread scoping, not model output) — `app/tests/bot-historico.test.tsx` "trocar de conversa não junta os históricos" + "Nova conversa nunca recebe o thread da anterior"; proven to bite by forcing the restore to a fixed thread (2 fail), restored after; server side pinned by "one bot's conversations stay out of another bot's history"
+- [x] `bun test` whole repo green (1446 pass / 0 fail / 32 skip, 151 files); `docker compose config` rc=0; biome clean on the touched files
 - [x] Gate check passes: full `bun test` + `tsc --noEmit` clean in `app/` and `server/`
 
 **Tests**: integration

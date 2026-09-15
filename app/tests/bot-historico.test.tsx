@@ -491,6 +491,42 @@ describe("página do bot", () => {
     ).toBe(true);
   });
 
+  test("Nova conversa nunca recebe o thread da anterior", async () => {
+    // O hydrate é o que está em julgamento: cada conversa ativa só pode receber a própria thread.
+    mensagensPorThread.set("thread-c1", [
+      { id: "a1", role: "user", content: "O código do cofre é 4242." },
+    ] as Message[]);
+    conversas = [seed({ id: "c1", name: "Conversa do cofre" })];
+    mount(<BotPage agentId="bot-1" />);
+
+    fireEvent.click(await screen.findByRole("tab", { name: "Histórico" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Nova conversa" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen
+          .getByRole("tab", { name: "Conversa" })
+          .getAttribute("aria-selected"),
+      ).toBe("true");
+    });
+
+    const nova = pedidos.find(
+      (p) => p.url.endsWith("/api/channels") && p.method === "POST",
+    );
+    expect(nova).toBeDefined();
+    const pedido = nova?.body as { threadId?: string } | undefined;
+    // O canal novo foi criado com outro thread — o fato do cofre não tem como chegar nele.
+    expect(pedido?.threadId ?? "thread-nova-1").not.toBe("thread-c1");
+    await waitFor(() => {
+      expect(screen.queryByText("O código do cofre é 4242.")).toBeNull();
+    });
+    expect(
+      agentStores.get("thread-nova-1")?.messages.map((m) => m.id),
+    ).not.toContain("a1");
+  });
+
   test("trocar de conversa não junta os históricos", async () => {
     // Um fato plantado em cada conversa: a mistura tem de ter o que mostrar.
     conversas = [

@@ -94,7 +94,7 @@ describe("restoring channel history before any send", () => {
     const gate = Promise.withResolvers<Response>();
     fetchHandlers.set("threadA", () => gate.promise);
     stashFirstMessage("chanA", "hello seed");
-    render(
+    const view = render(
       <ChannelChat
         channel={channel("chanA", "threadA")}
         runtimeAgentId="bot-1"
@@ -116,6 +116,7 @@ describe("restoring channel history before any send", () => {
       ),
     ).toBe(true);
     expect(await screen.findByText("old hi")).toBeDefined();
+    view.unmount();
   });
 
   test("a failed restore keeps the seed and retry delivers it", async () => {
