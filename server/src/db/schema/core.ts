@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { desc, sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -250,6 +250,14 @@ export const channels = pgTable(
         onDelete: "set null",
       },
     ),
+    /**
+     * Whether this channel appears in the general roster.
+     *
+     * A bot's own conversations are channels too, but listing them in the
+     * sidebar would bury real chats: they live on the bot's History tab
+     * instead. True by default, so every existing channel keeps showing.
+     */
+    visivelNoRoster: boolean("visivel_no_roster").notNull().default(true),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -268,6 +276,18 @@ export const channels = pgTable(
     index("channels_recent_activity_idx").on(
       sql`COALESCE(${table.lastMessageAt}, ${table.createdAt}) DESC`,
     ),
+    /**
+     * The History tab lists one bot's hidden conversations, newest activity
+     * first. Partial, because hidden channels are the rare case: indexing
+     * every channel here would pay for rows this query never reads. Tiebreak
+     * `id DESC` matches the endpoint's keyset (`DESC, DESC` + tuple `<`).
+     */
+    index("channels_bot_history_idx")
+      .on(
+        sql`COALESCE(${table.lastMessageAt}, ${table.createdAt}) DESC`,
+        desc(table.id),
+      )
+      .where(sql`${table.visivelNoRoster} = false`),
   ],
 );
 

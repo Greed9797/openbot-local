@@ -1,62 +1,141 @@
-# Bot fixo com aba Histórico — design
+# Bot Histórico Design
 
-Data: 2026-09-15. Status: aprovado pelo usuário; advisors Sol/Spark revisaram cursor, realtime e boot.
+**Spec**: `.specs/features/bot-historico/spec.md`
+**Status**: Approved
 
-## 1. Problema
+---
 
-Bots são usados por canais avulsos na sidebar: cada conversa vira uma linha no roster geral, sem lugar fixo por bot, sem busca atravessando sessões, e sem isolamento — o pedido é um bot fixo com conversa atual + Histórico com busca, onde cada conversa tem contexto próprio.
+## Architecture Overview
 
-## 2. Decisões (com rationale)
+Hidden channels, not a new conversation table. Each bot conversation is a row in `channels` with `visivel_no_roster=false`; the roster excludes them server-side; a new endpoint lists them per bot with keyset pagination; the socket event carries visibility so the client routes instead of refetching.
 
-- **Abordagem A com flag (não B, não C).** Cada "Nova conversa" cria um canal ligado ao bot via `channel_agents` (já existe). B (tabela `bot_conversations`) replicaria autorização/restore que canal já tem; C (client-side) só vê canais carregados e não atravessa sessões.
-- **Invisibilidade server-side, não filtro de tela (Sol).** Coluna `channels.visivel_no_roster` default `true`; conversa de bot nasce `false`; `ChannelStore.list` exclui `false` no SQL. A sidebar nunca recebe essas linhas — nem busca client-side as vê.
-- **Cursor sobre a expressão de ordenação (Sol + Spark).** Ordenação por atividade é mutável, então cursor `{createdAt,id}` do `audit.ts` pula/duplica. Cursor `{activityAt, id}` com `ORDER BY coalesce(last_message_at, created_at) DESC, id DESC` + `WHERE (coalesce(...), id) < ($activityAt, $id)` — tupla `<` casa com `DESC, DESC`. Anomalia documentada: conversa da página 2 que recebe mensagem após a página 1 sobe ao topo já buscado e some da página 2 (mesmo comportamento do roster com socket; EARS-07 prende as duas direções).
-- **Busca faseada.** Fase 1: `ILIKE` em `name` + `lastMessage` (colunas existentes; o que a linha mostra é o que a busca alcança — mesma regra do `matchingChannels`). Fase 2 (texto inteiro, depois, sem mudar tela/endpoint): índice de expressão GIN sobre o `jsonb` de `local_thread_history`.
-- **Realtime roteado, não invalidado (Sol).** Evento `ChannelActivityEvent` ganha `visivelNoRoster`; cliente roteia `true` → remenda roster, `false` → atualiza query do Histórico e nunca toca no roster. Sem isso, cada mensagem em canal oculto causava `invalidateQueries` inútil do roster (id desconhecido = stale) e o Histórico seguia stale.
+```mermaid
+graph TD
+    A[Página /bot abas] --> B[POST /api/channels visivel=false]
+    A --> C[GET /api/bots/:id/conversas q/cursor]
+    C --> D[(channels + mappings)]
+    E[recordActivity] --> F[pg_notify + visivelNoRoster]
+    F --> G[use-channel-events: roster ou Histórico]
+    H[Abrir antiga] --> I[GET threads/:id/messages existente]
+```
 
-## 3. Requisitos (EARS)
+---
 
-- EARS-01: QUANDO a pessoa abre `/bot?agent=<id>`, O SISTEMA mostra a página do bot com abas Conversa e Histórico.
-- EARS-02: QUANDO a pessoa aperta "Nova conversa", O SISTEMA cria um canal com `visivel_no_roster=false` ligado ao bot e o abre vazio na aba Conversa; a conversa anterior continua listada no Histórico.
-- EARS-03: O SISTEMA NUNCA inclui canal com `visivel_no_roster=false` em `GET /api/channels`.
-- EARS-04: QUANDO a pessoa busca no Histórico, O SISTEMA filtra por `name` + `lastMessage` (fase 1); termo presente só no meio da conversa NÃO retorna (limite documentado até a fase 2).
-- EARS-05: QUANDO a pessoa clica num item do Histórico, O SISTEMA abre a conversa travada para leitura, com botão Continuar que a torna a conversa ativa.
-- EARS-06: QUANDO chega atividade de canal oculto pelo socket, O SISTEMA atualiza a query do Histórico e NÃO invalida `channelKeys.list()`.
-- EARS-07: SE uma conversa recebe mensagem entre a página 1 e a página 2, O SISTEMA admite duplicata no topo ou ausência na página 2 (anomalia de ordenação mutável), e NUNCA retorna item já listado na mesma posição duas vezes sem nova atividade.
-- EARS-08: O SISTEMA só entrega conversa ao modelo aberta — trocar de conversa nunca concatena históricos (isolamento de contexto).
+## Code Reuse Analysis
 
-## 4. Mudanças
+### Existing Components to Leverage
 
-**Servidor** (`server/src/`, migração drizzle):
-- `db/schema/core.ts`: `channels.visivel_no_roster boolean not null default true` + índice parcial onde `false`.
-- `channels/routes.ts`: `create` aceita `{ visivel }`; `list` exclui `false`; `recordActivity` inclui `visivelNoRoster` no evento `pg_notify`.
-- Novo `channels/bot-history-routes.ts`: `GET /api/bots/:id/conversas?q=&cursor=&limit=` — membership + `channel_agents.agentId` + `visivel=false`, ordem e cursor da seção 2, clamp de limit 1..100 (padrão `audit.ts`), autorização `isThreadReadableBy`.
-- Reabrir usa `GET /api/copilotkit/threads/:threadId/messages` (existente).
+| Component | Location | How to Use |
+| --------- | -------- | ---------- |
+| `ChannelStore.list/get/create/recordActivity` | `server/src/channels/routes.ts` | Extend: `visivel` on create, filter on list, flag on event |
+| `isThreadReadableBy` | `server/src/channels/thread-history-routes.ts` | Reuse verbatim for the new endpoint's auth |
+| Keyset cursor | `server/src/audit.ts:317-400` | Copy encode/decode shape, new cursor type over activity expression |
+| Query parsing | `server/src/audit.ts:403-427` | Copy limit clamp 1..100, cursor param |
+| `ChannelChat` + restore | `app/src/components/channels/channel-chat.tsx` | Embed for Conversa tab and read-only reopen |
+| `channelKeys.list` + `useChannelEvents` | `app/src/lib/channels/` | Route by `visivelNoRoster`, add `botKeys.conversas` |
+| `useStartChannel` | `app/src/lib/channels/start.ts` | Copy seed-cache + navigate pattern for Nova conversa |
+| Channel tests | `server/tests/channel-routes.test.ts`, `channel-activity.integration.test.ts` | Same DB harness (`TEST_POOL`, per-file pool) |
 
-**App** (`app/src/`):
-- Rota `/bot` ganha abas; aba Histórico = lista (`botKeys.conversas(botId, {q})` via `URLSearchParams`, padrão de `tasks/queries.ts`) + busca com debounce + keyset infinito; item abre canal travado + Continuar.
-- Sidebar ganha entrada para `/bot?agent=`; `use-channel-events.ts` roteia por `visivelNoRoster`.
-- "Nova conversa" = `POST /api/channels` + navega; semeia cache como `useStartChannel` faz hoje.
+### Integration Points
 
-## 5. Testes (o que prende o quê)
+| System | Integration Method |
+| ------ | ------------------ |
+| `GET /api/channels` | Add `WHERE visivel_no_roster` — no shape change |
+| Socket `ChannelActivityEvent` | Add `visivelNoRoster: boolean` — old clients ignore unknown field |
+| Drizzle migrations | `db:generate` in `server/`, new `drizzle/NNNN_*.sql` |
+| `/bot` route | Tabs around existing `CopilotChat` + new History list |
 
-- Flag: conversa de bot NÃO está em `GET /api/channels`, ESTÁ em `GET /api/bots/:id/conversas`.
-- Busca: título acha; termo só-do-meio não acha (fase 1).
-- Cursor: 3 conversas, a do meio atualiza após página 1 — prende as duas direções de EARS-07.
-- Realtime: atividade em canal oculto NÃO invalida `channelKeys.list()`; atualiza Histórico (EARS-06).
-- Navegador: antiga abre travada; Continuar retoma; Nova arquiva e zera.
-- Gates do repo antes do commit: `bun test`, `compose config`, biome.
+---
 
-## 6. Fora do escopo
+## Components
 
-- Fase 2 (FTS no texto inteiro): índice GIN posterior, sem mudar tela.
-- Filtro do socket por conexão (payload oculto continua chegando; só o roteamento muda).
-- Retenção/expurgo de conversas (histórico de chat nunca é apagado por código hoje).
-- Títulos gerados por modelo (título = primeira mensagem / `lastMessage`).
+### Bot history store method
 
-## 7. Self-review
+- **Purpose**: List one bot's hidden conversations with search + keyset page.
+- **Location**: `server/src/channels/routes.ts` (new method on `ChannelStore`)
+- **Interfaces**:
+  - `listBotConversations(actor, agentId, { q?, cursor?, limit? }): Promise<{ items: ChannelSummary[], nextCursor?: string }>`
+- **Dependencies**: `channels`, `channelMemberships`, `channelAgents`, `intelligenceChannelMappings`
+- **Reuses**: `list()` join skeleton; `audit.ts` cursor mechanics
 
-- Placeholder scan: nenhum TBD/TODO; cada EARS tem teste na seção 5.
-- Consistência: cursor casa com ORDER BY (DESC,DESC + tupla `<`); flag default `true` preserva canais existentes; `isThreadReadableBy` reusada, não reinventada.
-- Escopo: um subsistema (página + endpoint + flag + realtime); fase 2 explicitamente adiada.
-- Ambiguidade: "conversa" = canal com `visivel=false` + `threadId` próprio; "travada" = transcript sem composer até Continuar.
+### Bot history routes
+
+- **Purpose**: HTTP surface for the History tab.
+- **Location**: `server/src/channels/bot-history-routes.ts` (new file)
+- **Interfaces**:
+  - `GET /api/bots/:id/conversas?q=&cursor=&limit=` → `{ conversas: ChannelSummary[], nextCursor? }`
+  - `400` invalid cursor ("cursor de paginação inválido"); `404` same-shape for non-member/unknown
+- **Dependencies**: store method + `isThreadReadableBy`
+- **Reuses**: `auditQueryFromUrl` clamp pattern; `channelSummaryDto` shape
+
+### Migration + schema
+
+- **Purpose**: Visibility flag with partial index.
+- **Location**: `server/src/db/schema/core.ts` + `server/drizzle/NNNN_*.sql`
+- **Interfaces**: `channels.visivel_no_roster boolean not null default true`
+- **Dependencies**: drizzle-kit generate
+- **Reuses**: `channels_recent_activity_idx` comment convention
+
+### History tab UI
+
+- **Purpose**: Search + infinite list + read-only reopen + Continue.
+- **Location**: `app/src/` — tabs in `routes/_authed/_app/bot.tsx`, list component near `components/channels/`, queries in `lib/channels/` (or `lib/bots/`)
+- **Interfaces**:
+  - `botKeys.conversas(botId, { q })`, `useBotConversas(botId, q)` (useInfiniteQuery, cursor param)
+  - Item click → read-only `ChannelChat` (composer disabled) + Continue button
+- **Dependencies**: `GET /api/bots/:id/conversas`; existing thread-messages restore
+- **Reuses**: `matchingChannels` rule (search what the row shows); `transcriptMessages` seed pattern
+
+### Realtime routing
+
+- **Purpose**: Hidden activity updates History, never churns the roster.
+- **Location**: `server/src/channels/events.ts` (type), `routes.ts` (emit), `app/src/lib/channels/use-channel-events.ts` (route)
+- **Interfaces**: `ChannelActivityEvent.visivelNoRoster: boolean`
+- **Dependencies**: socket hub + queryClient
+- **Reuses**: existing patch/sort (`byRecency`) for the History list
+
+---
+
+## Data Models (if applicable)
+
+### channels.visivel_no_roster
+
+```typescript
+visivelNoRoster: boolean("visivel_no_roster").notNull().default(true)
+```
+
+**Relationships**: No FK change. Partial index `WHERE visivel_no_roster = false` serves the History query; existing `channels_recent_activity_idx` serves ordering.
+
+### History cursor
+
+```typescript
+interface BotHistoryCursor {
+  activityAt: string // ISO-8601 of coalesce(last_message_at, created_at)
+  id: string         // channel id tiebreak, DESC
+}
+```
+
+Base64url-encoded like `audit.ts`. Keyset predicate on the same tuple as `ORDER BY ... DESC, id DESC`.
+
+---
+
+## Error Handling Strategy
+
+| Error Scenario | Handling | User Impact |
+| -------------- | -------- | ----------- |
+| Invalid cursor | 400 dito error | History shows retry, keeps current page |
+| Non-member / unknown bot | Same-shape 404 | No existence leak |
+| Unknown `?agent=` | Dito missing-bot state | No empty chat |
+| History fetch fails | Error state + retry, draft kept | Same rule as channel restore |
+| Message between pages | Admit dup-top/absent-page-2 (EARS-07) | Documented, tested both directions |
+
+---
+
+## Tech Decisions (only non-obvious ones)
+
+| Decision | Choice | Rationale |
+| -------- | ------ | --------- |
+| Hidden channel, not new table | `visivel_no_roster` flag | Reuses auth/restore/lastMessage; one source of truth |
+| Cursor over activity tuple | `{activityAt, id}` DESC,DESC | Copies audit mechanics but matches mutable recency ordering |
+| Phase-1 ILIKE only | `name` + `lastMessage` | Indexed-readable today; full-text is phase 2 without screen change |
+| Event carries visibility | `visivelNoRoster` on payload | Lets client route; per-connection filtering out of scope |

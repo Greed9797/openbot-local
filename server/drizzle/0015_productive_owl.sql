@@ -1,0 +1,2 @@
+ALTER TABLE "channels" ADD COLUMN "visivel_no_roster" boolean DEFAULT true NOT NULL;--> statement-breakpoint
+CREATE INDEX "channels_bot_history_idx" ON "channels" USING btree (COALESCE("last_message_at", "created_at") DESC,"id" desc) WHERE "channels"."visivel_no_roster" = false;
