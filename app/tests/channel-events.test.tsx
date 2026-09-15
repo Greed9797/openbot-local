@@ -221,6 +221,66 @@ describe("hidden activity routing", () => {
     }
   });
 
+  test("reconnecting refetches History too, not just the roster", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const invalidated: unknown[] = [];
+    const realInvalidate = client.invalidateQueries.bind(client);
+    client.invalidateQueries = ((filters?: { queryKey?: unknown }) => {
+      invalidated.push(filters?.queryKey);
+      return realInvalidate(filters as never);
+    }) as typeof client.invalidateQueries;
+    const view = mount(client);
+    try {
+      await act(async () => {
+        // A drop and a reconnect: whatever arrived meanwhile was never delivered to this client.
+        sockets.at(-1)?.fireOpen();
+      });
+
+      const keys = invalidated.map((key) => JSON.stringify(key));
+      expect(keys).toContain(JSON.stringify(channelKeys.list()));
+      // Hidden conversations are not in the roster, so refetching it alone recovers nothing here.
+      expect(keys).toContain(JSON.stringify(botKeys.all));
+    } finally {
+      view.unmount();
+    }
+  });
+
+  test("a patched row takes only the activity fields from the event", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    seedHistory(client, "bot-1", [
+      summary({ id: "channel-hidden", name: "Nome do canal", active: true }),
+    ]);
+    const view = mount(client);
+    try {
+      await act(async () => {
+        sockets.at(-1)?.receive({
+          channelId: "channel-hidden",
+          lastMessage: "Resposta nova",
+          lastMessageAt: "2026-02-01T00:00:00.000Z",
+          lastMessageAgentId: "bot-1",
+          visivelNoRoster: false,
+          // A field the event has no business defining: same name as the summary's own.
+          name: "Nome vindo do evento",
+          active: false,
+        });
+      });
+
+      const row = historyRows(client, "bot-1")[0];
+      expect(row?.lastMessage).toBe("Resposta nova");
+      // The event named the row and deactivated it; neither may cross into the cache.
+      expect(row?.name).toBe("Nome do canal");
+      expect(row?.active).toBe(true);
+      expect(row).not.toHaveProperty("visivelNoRoster");
+      expect(row).not.toHaveProperty("channelId");
+    } finally {
+      view.unmount();
+    }
+  });
+
   test("botKeys scope History per bot and search", () => {
     expect(botKeys.conversas("bot-1", { q: "fatura" })).toEqual([
       "bots",

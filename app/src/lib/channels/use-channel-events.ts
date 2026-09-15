@@ -73,7 +73,18 @@ export function useChannelEvents() {
           if (index === -1) return page;
           const previous = page.conversas[index];
           if (!previous) return page;
-          const patched = { ...previous, ...activity };
+          /*
+           * Only the three fields the activity actually reports. Spreading the whole event would
+           * copy `channelId` and `visivelNoRoster` into a row that has neither, and — the part
+           * that would bite later — any field the event gains whose name a summary already uses
+           * would silently overwrite it.
+           */
+          const patched = {
+            ...previous,
+            lastMessage: activity.lastMessage,
+            lastMessageAt: activity.lastMessageAt,
+            lastMessageAgentId: activity.lastMessageAgentId,
+          };
           if (
             patched.lastMessage === previous.lastMessage &&
             patched.lastMessageAt === previous.lastMessageAt &&
@@ -110,8 +121,13 @@ export function useChannelEvents() {
 
       socket.onopen = () => {
         retryDelay = FIRST_RETRY_MS;
-        // Recover events missed while the socket was disconnected.
+        /*
+         * Recover events missed while the socket was disconnected — both lists. A bot's hidden
+         * conversations are never in the roster, so refetching only that one would leave the
+         * History tab showing whatever it had before the drop until someone reloaded the page.
+         */
         void queryClient.invalidateQueries({ queryKey: channelKeys.list() });
+        void queryClient.invalidateQueries({ queryKey: botKeys.all });
       };
 
       socket.onmessage = (message) => {
@@ -148,7 +164,14 @@ export function useChannelEvents() {
             const previous = channels[index];
             if (!previous) return channels;
 
-            const patched = { ...previous, ...activity };
+            // Same three fields as the History patch, and for the same reason: the event carries
+            // keys a roster row does not have, and must not get to define the ones it does.
+            const patched = {
+              ...previous,
+              lastMessage: activity.lastMessage,
+              lastMessageAt: activity.lastMessageAt,
+              lastMessageAgentId: activity.lastMessageAgentId,
+            };
             const next = channels.slice();
             next[index] = patched;
             next.sort(byRecency);
