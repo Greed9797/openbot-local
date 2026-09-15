@@ -167,6 +167,24 @@ describe("bot history visibility split", () => {
     expect(page.nextCursor).toBeUndefined();
   });
 
+  test("one bot's conversations stay out of another bot's history", async () => {
+    const owner = await createUser();
+    const um = await createAgent(owner);
+    const outro = await createAgent(owner);
+    const doUm = await hiddenChannel(owner, um);
+    const doOutro = await hiddenChannel(owner, outro);
+
+    // Same person, same visibility: only the bound agent may separate them.
+    expect(
+      (await store.listBotConversations(owner, um, {})).items.map((i) => i.id),
+    ).toEqual([doUm.id]);
+    expect(
+      (await store.listBotConversations(owner, outro, {})).items.map(
+        (i) => i.id,
+      ),
+    ).toEqual([doOutro.id]);
+  });
+
   test("visible channels with the bot stay out of history", async () => {
     const owner = await createUser();
     const agentId = await createAgent(owner);

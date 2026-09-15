@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { Message } from "@ag-ui/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { copilotFake, resetCopilotFake } from "./copilot-fake";
+import { agentStores, copilotFake, resetCopilotFake } from "./copilot-fake";
 
 // The shared fake runtime, not one of this file's own: see tests/copilot-fake.ts.
 mock.module("@copilotkit/react-core/v2", copilotFake);
@@ -469,5 +469,47 @@ describe("página do bot", () => {
         (p) => p.url.endsWith("/api/channels") && p.method === "POST",
       ),
     ).toBe(true);
+  });
+
+  test("trocar de conversa não junta os históricos", async () => {
+    // Um fato plantado em cada conversa: a mistura tem de ter o que mostrar.
+    conversas = [
+      seed({ id: "c1", name: "Conversa do cofre" }),
+      seed({ id: "c2", name: "Conversa do almoço" }),
+    ];
+    mensagensPorThread.set("thread-c1", [
+      { id: "a1", role: "user", content: "O código do cofre é 4242." },
+    ] as Message[]);
+    mensagensPorThread.set("thread-c2", [
+      { id: "b1", role: "user", content: "O almoço foi feijoada." },
+    ] as Message[]);
+    mount(<BotPage agentId="bot-1" />);
+
+    async function continuar(nome: RegExp) {
+      fireEvent.click(await screen.findByRole("tab", { name: "Histórico" }));
+      fireEvent.click(await screen.findByRole("button", { name: nome }));
+      fireEvent.click(await screen.findByRole("button", { name: "Continuar" }));
+    }
+
+    await continuar(/Conversa do cofre/);
+    // Esperar o fato aparecer é o que prova que a hidratação terminou; sem isso a
+    // ausência do outro fato seria só a tela ainda vazia.
+    expect(await screen.findByText("O código do cofre é 4242.")).toBeDefined();
+    expect(screen.queryByText("O almoço foi feijoada.")).toBeNull();
+
+    await continuar(/Conversa do almoço/);
+    expect(await screen.findByText("O almoço foi feijoada.")).toBeDefined();
+    expect(screen.queryByText("O código do cofre é 4242.")).toBeNull();
+
+    /*
+     * O que se afirma é o escopo da hidratação, não a resposta do modelo: cada conversa só recebeu
+     * a própria thread, então o fato de uma nunca entra no que seria enviado pela outra.
+     */
+    expect(agentStores.get("thread-c1")?.messages.map((m) => m.id)).toEqual([
+      "a1",
+    ]);
+    expect(agentStores.get("thread-c2")?.messages.map((m) => m.id)).toEqual([
+      "b1",
+    ]);
   });
 });

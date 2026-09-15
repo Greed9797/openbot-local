@@ -134,21 +134,21 @@ Explicitly excluded. Documented to prevent scope creep.
 
 Each requirement gets a unique ID for tracking across design, tasks, and validation.
 
-| Requirement ID | Story | Phase | Status |
-| -------------- | ----- | ----- | ------ |
-| BH-01 | P1: Bot page with tabs | Design | Pending |
-| BH-02 | P1: New conversation stays out of the roster | Design | Pending |
-| BH-03 | P1: History list with search | Design | Pending |
-| BH-04 | P1: Reopen old conversation read-only | Design | Pending |
-| BH-05 | P2: Live history updates without roster churn | Design | Pending |
-| BH-06 | P2: Context isolation across conversations | Design | Pending |
-| BH-07 | Edge: mutable-cursor anomaly + error shape | Design | Pending |
+| Requirement ID | Story | Phase | Status | Tasks |
+| -------------- | ----- | ----- | ------ | ----- |
+| BH-01 | P1: Bot page with tabs | Implementation | Implementing | T4 |
+| BH-02 | P1: New conversation stays out of the roster | Implementation | Implementing | T1, T2, T4 |
+| BH-03 | P1: History list with search | Implementation | Implementing | T2, T4 |
+| BH-04 | P1: Reopen old conversation read-only | Implementation | Implementing | T4 |
+| BH-05 | P2: Live history updates without roster churn | Implementation | Implementing | T3 |
+| BH-06 | P2: Context isolation across conversations | Implementation | Implementing | T5 |
+| BH-07 | Edge: mutable-cursor anomaly + error shape | Implementation | Implementing | T2 |
 
 **ID format:** `[CATEGORY]-[NUMBER]` (e.g., `AUTH-01`, `CART-03`, `NOTIF-02`)
 
 **Status values:** Pending → In Design → In Tasks → Implementing → Verified
 
-**Coverage:** 7 total, 0 mapped to tasks, 7 unmapped ⚠️
+**Coverage:** 7 total, 7 mapped to tasks, 0 unmapped
 
 ---
 
