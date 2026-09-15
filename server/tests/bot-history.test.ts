@@ -534,6 +534,35 @@ describe("bot history cursor", () => {
     expect(wide.nextCursor).toBeUndefined();
   });
 
+  test("the ceiling holds with more conversations than the page fits", async () => {
+    const owner = await createUser();
+    const agentId = await createAgent(owner);
+    const base = await databaseNow();
+    // One more than the page fits: the 101st proves the ceiling cuts, not the data running out.
+    for (let i = 0; i < 101; i += 1) {
+      await hiddenChannel(
+        owner,
+        agentId,
+        new Date(base.getTime() - i * 1000),
+        `Assunto ${i}.`,
+      );
+    }
+
+    const page = await store.listBotConversations(owner, agentId, {
+      limit: 1000,
+    });
+    expect(page.items).toHaveLength(100);
+    expect(page.nextCursor).toBeDefined();
+
+    // The tail stays reachable: the 101st conversation arrives on page two.
+    const second = await store.listBotConversations(owner, agentId, {
+      limit: 1000,
+      cursor: page.nextCursor,
+    });
+    expect(second.items).toHaveLength(1);
+    expect(second.nextCursor).toBeUndefined();
+  });
+
   test("a limit the URL cannot express answers 200, never 400 or 500", async () => {
     const owner = await createUser();
     const agentId = await createAgent(owner);
