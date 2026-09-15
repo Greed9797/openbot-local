@@ -32,6 +32,13 @@ export const channelKeys = {
   detail: (channelId: string) => ["channels", "detail", channelId] as const,
 };
 
+/** History of one bot's hidden conversations. Search is part of the key. */
+export const botKeys = {
+  all: ["bots"] as const,
+  conversas: (botId: string, query?: { q?: string }) =>
+    ["bots", "conversas", botId, query?.q?.trim() ?? ""] as const,
+};
+
 export function channelListQueryOptions() {
   return queryOptions({
     queryKey: channelKeys.list(),

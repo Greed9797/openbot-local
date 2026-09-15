@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { type ChannelSummary, channelKeys } from "./queries";
+import { type ChannelSummary, botKeys, channelKeys } from "./queries";
 
 /**
  * Keep the roster live.
@@ -14,6 +14,13 @@ type ChannelActivityEvent = {
   lastMessage: string | null;
   lastMessageAt: string | null;
   lastMessageAgentId: string | null;
+  /** Absent from old payloads in flight: treated as visible, the previous behavior. */
+  visivelNoRoster?: boolean;
+};
+
+type BotConversasPage = {
+  conversas: ChannelSummary[];
+  nextCursor?: string;
 };
 
 const FIRST_RETRY_MS = 500;
@@ -34,6 +41,69 @@ export function useChannelEvents() {
     let retryDelay = FIRST_RETRY_MS;
     let stopped = false;
 
+    /**
+     * Patch a hidden conversation wherever it sits in the History cache.
+     *
+     * Infinite pages, not one list: the row may live on any page of any
+     * search, so every `bots/conversas` cache entry is walked. Unknown ids
+     * invalidate rather than insert — the row might belong to a page not yet
+     * fetched or a search that excludes it, and guessing the position would
+     * corrupt the cursor order.
+     */
+    const patchBotConversas = (activity: ChannelActivityEvent) => {
+      const entries = queryClient.getQueriesData<BotConversasPage>({
+        queryKey: botKeys.all,
+      });
+      let patchedAny = false;
+      for (const [key, pages] of entries) {
+        const data = pages as
+          | { pages: BotConversasPage[] }
+          | BotConversasPage
+          | undefined;
+        const pageList = Array.isArray((data as { pages?: unknown })?.pages)
+          ? (data as { pages: BotConversasPage[] }).pages
+          : data
+            ? [data as BotConversasPage]
+            : [];
+        let touched = false;
+        const nextPages = pageList.map((page) => {
+          const index = page.conversas.findIndex(
+            (channel) => channel.id === activity.channelId,
+          );
+          if (index === -1) return page;
+          const previous = page.conversas[index];
+          if (!previous) return page;
+          const patched = { ...previous, ...activity };
+          if (
+            patched.lastMessage === previous.lastMessage &&
+            patched.lastMessageAt === previous.lastMessageAt &&
+            patched.lastMessageAgentId === previous.lastMessageAgentId
+          ) {
+            return page;
+          }
+          touched = true;
+          const conversas = page.conversas.slice();
+          conversas[index] = patched;
+          conversas.sort(byRecency);
+          return { ...page, conversas };
+        });
+        if (!touched) continue;
+        patchedAny = true;
+        queryClient.setQueryData(key, (old: unknown) => {
+          if (
+            old &&
+            typeof old === "object" &&
+            Array.isArray((old as { pages?: unknown }).pages)
+          ) {
+            return { ...(old as object), pages: nextPages };
+          }
+          return nextPages[0];
+        });
+      }
+      if (!patchedAny) {
+        void queryClient.invalidateQueries({ queryKey: botKeys.all });
+      }
+    };
     const connect = () => {
       if (stopped) return;
       socket = new WebSocket(socketUrl());
@@ -49,6 +119,14 @@ export function useChannelEvents() {
         try {
           activity = JSON.parse(message.data as string);
         } catch {
+          return;
+        }
+
+        // A bot's own conversations never render in the roster, so their events must not touch it:
+        // patching here would either invalidate a list that excludes the row or, worse, insert it.
+        // They land in the History cache instead; the roster query stays untouched.
+        if (activity.visivelNoRoster === false) {
+          patchBotConversas(activity);
           return;
         }
 

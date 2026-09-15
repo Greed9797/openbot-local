@@ -27,6 +27,7 @@ function event(overrides: Partial<ChannelActivityEvent> = {}) {
     lastMessage: "Said something.",
     lastMessageAt: "2026-08-15T10:00:00.000Z",
     lastMessageAgentId: null,
+    visivelNoRoster: true,
     ...overrides,
   } satisfies ChannelActivityEvent;
 }
@@ -184,6 +185,65 @@ describe("channel activity delivery", () => {
       lastMessage: "Categorized three expenses.",
       lastMessageAgentId: profile.id,
       memberIds: [owner.id],
+      // Visible channel: the roster owns this event, History ignores it.
+      visivelNoRoster: true,
+    });
+  });
+});
+
+describe("hidden channel activity delivery", () => {
+  test("a hidden channel announces visivelNoRoster:false", async () => {
+    const id = `${testPrefix}-hidden-${randomUUID()}`;
+    await database.insert(users).values({
+      id,
+      email: `${id}@example.test`,
+      name: "Hidden Events Test User",
+    });
+    createdUserIds.push(id);
+    const owner: AgentActor = { id, role: "user" };
+
+    const profile = await profileStore.create(owner, {
+      name: "Hidden Bot",
+      title: "History Only",
+      roleDescription: "Lives in History.",
+      visibility: "private",
+    });
+    createdAgentIds.push(profile.id);
+    const channel = await store.create(owner, [profile.id], {
+      visivelNoRoster: false,
+    });
+    createdChannelIds.push(channel.id);
+
+    const hub = createChannelEventHub();
+    const delivered: ChannelActivityEvent[] = [];
+    const arrived = new Promise<void>((resolve) => {
+      hub.register(owner.id, (payload) => {
+        delivered.push(JSON.parse(payload));
+        resolve();
+      });
+    });
+    const listener = await startChannelActivityListener(databaseUrl, hub);
+
+    try {
+      await store.recordActivity(owner, channel.id, {
+        agentId: profile.id,
+        at: new Date(),
+        text: "Hidden reply.",
+      });
+      await Promise.race([
+        arrived,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("no event within 5s")), 5000),
+        ),
+      ]);
+    } finally {
+      await listener.stop();
+    }
+
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0]).toMatchObject({
+      channelId: channel.id,
+      visivelNoRoster: false,
     });
   });
 });

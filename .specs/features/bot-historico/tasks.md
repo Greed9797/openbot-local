@@ -106,11 +106,11 @@ T3 → T4 → T5
 
 **Done when**:
 
-- [ ] Hidden-channel activity does NOT invalidate `channelKeys.list()`
-- [ ] Hidden-channel activity updates the History query data
-- [ ] Visible-channel behavior unchanged (existing tests green)
-- [ ] Gate check passes: server channel tests + `cd app && bun test tests/channel-history.test.tsx`
-- [ ] Test count: no deletions; new assertions pass
+- [x] Hidden-channel activity does NOT invalidate `channelKeys.list()`
+- [x] Hidden-channel activity updates the History query data
+- [x] Visible-channel behavior unchanged (existing tests green)
+- [x] Gate check passes: server channel tests + `cd app && bun test tests/channel-history.test.tsx`
+- [x] Test count: no deletions; new assertions pass
 
 **Tests**: integration (server) + unit (app hook)
 **Gate**: full

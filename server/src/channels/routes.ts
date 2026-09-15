@@ -471,6 +471,11 @@ export function createChannelStore(
           // Nothing changed, so there is nothing to announce: a stale report is not news.
           if (applied.length === 0) return;
 
+          const [channelRow] = await transaction
+            .select({ visivelNoRoster: channels.visivelNoRoster })
+            .from(channels)
+            .where(eq(channels.id, channelId));
+
           const members = await transaction
             .select({ userId: channelMemberships.userId })
             .from(channelMemberships)
@@ -485,6 +490,9 @@ export function createChannelStore(
             lastMessage,
             lastMessageAt: activity.at.toISOString(),
             lastMessageAgentId: activity.agentId,
+            // Read at emit time, not trusted from the reporter: whoever ran the agent could claim
+            // either value, and the router must follow the row, not the claim.
+            visivelNoRoster: channelRow?.visivelNoRoster ?? true,
           };
           await transaction.execute(
             sql`select pg_notify(${CHANNEL_ACTIVITY_TOPIC}, ${JSON.stringify(event)})`,

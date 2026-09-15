@@ -22,6 +22,8 @@ export type ChannelActivityEvent = {
   lastMessage: string | null;
   lastMessageAt: string | null;
   lastMessageAgentId: string | null;
+  /** Hidden channels update History, never churn the roster. Old clients ignore it. */
+  visivelNoRoster: boolean;
 };
 
 type Send = (payload: string) => void;
