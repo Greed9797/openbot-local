@@ -311,13 +311,18 @@ export function createChannelStore(
       const term = options.q?.trim() ? `%${options.q.trim()}%` : undefined;
       const activity = sql`coalesce(${channels.lastMessageAt}, ${channels.createdAt})`;
 
-      const rows = await database
+      /*
+       * Two queries on purpose. `limit` counts conversations, and a conversation has one row per
+       * agent, so paging the joined rows would let a conversation with two agents fill both slots
+       * of `limit + 1`: the page would look complete, the cursor would be dropped, and every older
+       * conversation would become unreachable without anything failing. So the page is decided over
+       * channels alone, and the agents of the chosen ids are fetched afterwards.
+       */
+      const pageRows = await database
         .select({
           id: channels.id,
           name: channels.name,
-          agentId: channelAgents.agentId,
           threadId: intelligenceChannelMappings.threadId,
-          deletedAt: agentProfiles.deletedAt,
           lastMessage: channels.lastMessage,
           lastMessageAt: channels.lastMessageAt,
           lastMessageAgentId: channels.lastMessageAgentId,
@@ -337,11 +342,6 @@ export function createChannelStore(
             eq(intelligenceChannelMappings.channelId, channels.id),
             eq(intelligenceChannelMappings.userId, actor.id),
           ),
-        )
-        .innerJoin(channelAgents, eq(channelAgents.channelId, channels.id))
-        .innerJoin(
-          agentProfiles,
-          eq(agentProfiles.agentId, channelAgents.agentId),
         )
         .where(
           and(
@@ -372,37 +372,67 @@ export function createChannelStore(
               : undefined,
           ),
         )
-        .orderBy(desc(activity), desc(channels.id), asc(channelAgents.agentId))
+        .orderBy(desc(activity), desc(channels.id))
         .limit(limit + 1);
 
-      // One row per channel-agent pair; the ordering above keeps each channel's rows together and
-      // its agents in the same lexicographic order `get` returns.
-      const items: ChannelSummary[] = [];
-      const seen = new Map<string, ChannelSummary>();
-      for (const row of rows) {
-        const summary = seen.get(row.id);
-        if (summary) {
-          summary.agentIds.push(row.agentId);
-          summary.active &&= row.deletedAt === null;
+      const hasNextPage = pageRows.length > limit;
+      const chosen = hasNextPage ? pageRows.slice(0, limit) : pageRows;
+
+      // Agents of the chosen conversations only: the extra probe row above is never assembled.
+      const agentRows = chosen.length
+        ? await database
+            .select({
+              channelId: channelAgents.channelId,
+              agentId: channelAgents.agentId,
+              deletedAt: agentProfiles.deletedAt,
+            })
+            .from(channelAgents)
+            .innerJoin(
+              agentProfiles,
+              eq(agentProfiles.agentId, channelAgents.agentId),
+            )
+            .where(
+              inArray(
+                channelAgents.channelId,
+                chosen.map((row) => row.id),
+              ),
+            )
+            // Same lexicographic order `get` returns, so a conversation's agents read alike here.
+            .orderBy(asc(channelAgents.agentId))
+        : [];
+
+      const agentsByChannel = new Map<
+        string,
+        { agentIds: string[]; active: boolean }
+      >();
+      for (const row of agentRows) {
+        const entry = agentsByChannel.get(row.channelId);
+        if (entry) {
+          entry.agentIds.push(row.agentId);
+          entry.active &&= row.deletedAt === null;
           continue;
         }
-        const next: ChannelSummary = {
+        agentsByChannel.set(row.channelId, {
+          agentIds: [row.agentId],
+          active: row.deletedAt === null,
+        });
+      }
+
+      const page: ChannelSummary[] = chosen.map((row) => {
+        const agents = agentsByChannel.get(row.id);
+        return {
           id: row.id,
           name: row.name,
-          agentIds: [row.agentId],
+          agentIds: agents?.agentIds ?? [],
           threadId: row.threadId,
-          active: row.deletedAt === null,
+          active: agents?.active ?? false,
           lastMessage: row.lastMessage,
           lastMessageAt: row.lastMessageAt,
           lastMessageAgentId: row.lastMessageAgentId,
           createdAt: row.createdAt,
         };
-        seen.set(row.id, next);
-        items.push(next);
-      }
+      });
 
-      const hasNextPage = items.length > limit;
-      const page = hasNextPage ? items.slice(0, limit) : items;
       const last = page.at(-1);
       return {
         items: page,

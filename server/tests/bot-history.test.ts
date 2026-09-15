@@ -377,6 +377,51 @@ describe("bot history cursor", () => {
     return { oldest, middle, newest };
   }
 
+  test("a conversation with two agents does not eat another's page slot", async () => {
+    const owner = await createUser();
+    const agentId = await createAgent(owner);
+    const colega = await createAgent(owner);
+    const base = await databaseNow();
+
+    // Two agents on one conversation: legal through `POST /api/channels`, and one row per pair.
+    const dupla = await store.create(owner, [agentId, colega], {
+      visivelNoRoster: false,
+    });
+    createdChannelIds.push(dupla.id);
+    await store.recordActivity(owner, dupla.id, {
+      agentId,
+      at: new Date(base.getTime() - 60_000),
+      text: "A mais nova, com dois colegas.",
+    });
+    const sozinha = await hiddenChannel(
+      owner,
+      agentId,
+      new Date(base.getTime() - 120_000),
+      "A mais antiga.",
+    );
+
+    /*
+     * `limit` conta conversas, não linhas do join. Se contasse linhas, a conversa de dois agentes
+     * ocuparia as duas vagas de `limit + 1` e o cursor desapareceria — a outra conversa ficaria
+     * inalcançável, sem erro nenhum para explicar.
+     */
+    const first = await store.listBotConversations(owner, agentId, {
+      limit: 1,
+    });
+    expect(first.items.map((item) => item.id)).toEqual([dupla.id]);
+    expect(first.items[0]?.agentIds.toSorted()).toEqual(
+      [agentId, colega].toSorted(),
+    );
+    expect(first.nextCursor).toBeDefined();
+
+    const second = await store.listBotConversations(owner, agentId, {
+      limit: 1,
+      cursor: first.nextCursor,
+    });
+    expect(second.items.map((item) => item.id)).toEqual([sozinha.id]);
+    expect(second.nextCursor).toBeUndefined();
+  });
+
   test("pages three conversations exactly once when nothing moves", async () => {
     const owner = await createUser();
     const agentId = await createAgent(owner);
