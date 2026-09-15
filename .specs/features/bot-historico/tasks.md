@@ -1,7 +1,7 @@
 # Bot Histórico Tasks
 
 **Design**: `.specs/features/bot-historico/design.md`
-**Status**: Approved
+**Status**: Complete — T1–T5 shipped and validated (`validation.md`)
 
 ---
 
@@ -123,7 +123,7 @@ T3 → T4 → T5
 
 **What**: `/bot` tabs (Conversa/Histórico), searchable infinite list, read-only reopen + Continue, sidebar entry, Nova conversa.
 **Where**: `app/src/routes/_authed/_app/bot.tsx` (modify), new list component + `useBotConversas`, `app/tests/bot-historico.test.tsx` (new)
-**Depends on**: T3 (query keys + routing; endpoint T2 via transitividade T2 → T3)
+**Depends on**: T2 (the endpoint this UI calls), T3 (query keys + realtime routing)
 **Reuses**: `ChannelChat`, `useStartChannel` seed pattern, `tasks/queries.ts` URLSearchParams pattern
 **Requirement**: BH-01, BH-03, BH-04
 
@@ -185,6 +185,7 @@ Phase 2 (Sequential):
 
 Phase 3 (Sequential):
   T3 ──→ T4 ──→ T5
+  T2 ──────┘          (T4 calls the endpoint T2 created)
 ```
 
 **Parallelism constraint:** No `[P]` flags — every task touches the channel data path; shared migration/store/event/UI state. Sequential by design, not by caution.
@@ -210,7 +211,7 @@ Phase 3 (Sequential):
 | T1 | None | root | ✅ Match |
 | T2 | T1 | T1 → T2 | ✅ Match |
 | T3 | T2 | T2 → T3 | ✅ Match |
-| T4 | T3 | T3 → T4 | ✅ Match |
+| T4 | T2, T3 | T2 → T4, T3 → T4 | ✅ Match |
 | T5 | T4 | T4 → T5 | ✅ Match |
 
 ---
