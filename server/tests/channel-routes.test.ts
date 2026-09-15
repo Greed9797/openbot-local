@@ -65,6 +65,14 @@ function fakeStore(
       calls.push(["get", receivedActor, id]);
       return channel({ id });
     },
+    async list(receivedActor) {
+      calls.push(["list", receivedActor]);
+      return [];
+    },
+    async listBotConversations(receivedActor, agentId, options) {
+      calls.push(["listBotConversations", receivedActor, agentId, options]);
+      return { items: [] };
+    },
   };
 
   return Object.assign(base, overrides, { calls });

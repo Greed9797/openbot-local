@@ -24,6 +24,7 @@ import {
   requireAdmin,
 } from "./auth/guards";
 import type { IdentityProviderStore } from "./auth/identity-provider-store";
+import { createBotHistoryRoutes } from "./channels/bot-history-routes";
 import type { ChannelEventHub } from "./channels/events";
 import { type ChannelStore, createChannelRoutes } from "./channels/routes";
 import type { ThreadIdentity } from "./channels/thread-identity";
@@ -1025,6 +1026,15 @@ export function createApp(
       "/api/channels",
       createChannelRoutes(channelStore, requireUser, channelEvents),
     );
+    // After `/api/agents`, so a bot id never collides with an agent route; the path starts with
+    // `/bots` (not `/channels/:id`) so the channel reader cannot swallow it. Needs both stores:
+    // without a profile store there is no bot to scope to.
+    if (agentProfileStore) {
+      app.route(
+        "/api/bots",
+        createBotHistoryRoutes(channelStore, agentProfileStore, requireUser),
+      );
+    }
   }
 
   if (componentStore) {

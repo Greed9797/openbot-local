@@ -50,10 +50,10 @@ T3 → T4 → T5
 
 **Done when**:
 
-- [ ] `channels.visivel_no_roster boolean not null default true` in schema + partial index where false
-- [ ] Migration generated via `db:generate`, applies cleanly to test DB
-- [ ] Gate check passes: `cd server && DATABASE_URL=... bun test tests/channel-routes.test.ts`
-- [ ] Test count: 42 pass (no silent deletions; no new tests — column-only, default preserves rows)
+- [x] `channels.visivel_no_roster boolean not null default true` in schema + partial index where false
+- [x] Migration generated via `db:generate`, applies cleanly to test DB
+- [x] Gate check passes: `cd server && DATABASE_URL=... bun test tests/channel-routes.test.ts`
+- [x] Test count: 42 pass (no silent deletions; no new tests — column-only, default preserves rows)
 
 **Tests**: none (schema-only; covered by T2's store tests)
 **Gate**: quick
@@ -77,12 +77,12 @@ T3 → T4 → T5
 
 **Done when**:
 
-- [ ] Hidden conversation absent from `GET /api/channels`, present in `GET /api/bots/:id/conversas`
-- [ ] Search filters `name` + `lastMessage`; mid-body-only term returns nothing
-- [ ] 3-conversation cursor test pins both EARS-07 directions
-- [ ] Invalid cursor → 400 dito; non-member → same-shape 404
-- [ ] Gate check passes: `cd server && DATABASE_URL=... bun test tests/bot-history.test.ts tests/channel-routes.test.ts tests/channel-activity.integration.test.ts`
-- [ ] Test count: new file ≥8 tests pass + 42 existing pass
+- [x] Hidden conversation absent from `GET /api/channels`, present in `GET /api/bots/:id/conversas`
+- [x] Search filters `name` + `lastMessage`; mid-body-only term returns nothing
+- [x] 3-conversation cursor test pins both EARS-07 directions
+- [x] Invalid cursor → 400 dito; non-member → same-shape 404
+- [x] Gate check passes: `cd server && DATABASE_URL=... bun test tests/bot-history.test.ts tests/channel-routes.test.ts tests/channel-activity.integration.test.ts`
+- [x] Test count: new file ≥8 tests pass + 42 existing pass
 
 **Tests**: integration
 **Gate**: full
@@ -123,7 +123,7 @@ T3 → T4 → T5
 
 **What**: `/bot` tabs (Conversa/Histórico), searchable infinite list, read-only reopen + Continue, sidebar entry, Nova conversa.
 **Where**: `app/src/routes/_authed/_app/bot.tsx` (modify), new list component + `useBotConversas`, `app/tests/bot-historico.test.tsx` (new)
-**Depends on**: T2 (endpoint), T3 (query keys + routing)
+**Depends on**: T3 (query keys + routing; endpoint T2 via transitividade T2 → T3)
 **Reuses**: `ChannelChat`, `useStartChannel` seed pattern, `tasks/queries.ts` URLSearchParams pattern
 **Requirement**: BH-01, BH-03, BH-04
 
@@ -210,7 +210,7 @@ Phase 3 (Sequential):
 | T1 | None | root | ✅ Match |
 | T2 | T1 | T1 → T2 | ✅ Match |
 | T3 | T2 | T2 → T3 | ✅ Match |
-| T4 | T2, T3 | T3 → T4 | ✅ Match |
+| T4 | T3 | T3 → T4 | ✅ Match |
 | T5 | T4 | T4 → T5 | ✅ Match |
 
 ---

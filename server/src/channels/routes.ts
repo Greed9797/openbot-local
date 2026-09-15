@@ -1,4 +1,15 @@
-import { and, asc, eq, isNull, lt, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNull,
+  lt,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { Context, MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import {
@@ -48,14 +59,29 @@ export type ChannelActivity = {
 };
 
 export type ChannelStore = {
-  create(actor: AgentActor, agentIds: string[]): Promise<AgentChannel>;
+  create(
+    actor: AgentActor,
+    agentIds: string[],
+    options?: { visivelNoRoster?: boolean },
+  ): Promise<AgentChannel>;
   get(actor: AgentActor, channelId: string): Promise<AgentChannel | null>;
   list(actor: AgentActor): Promise<ChannelSummary[]>;
+  listBotConversations(
+    actor: AgentActor,
+    agentId: string,
+    options?: { q?: string; cursor?: string; limit?: number },
+  ): Promise<{ items: ChannelSummary[]; nextCursor?: string }>;
   recordActivity(
     actor: AgentActor,
     channelId: string,
     activity: ChannelActivity,
   ): Promise<void>;
+};
+
+/** Keyset position over the History ordering (activity DESC, id DESC). */
+export type BotHistoryCursor = {
+  activityAt: string;
+  id: string;
 };
 
 const PRIVATE_AGENT_CHANNEL_DESCRIPTION = "Private agent channel.";
@@ -91,7 +117,7 @@ export function createChannelStore(
   threadIdentity: ThreadIdentity,
 ): ChannelStore {
   return {
-    create(actor, agentIds) {
+    create(actor, agentIds, options) {
       return database.transaction(
         async (transaction) => {
           // Validated on this transaction, not through `profileStore.get`: the read has to share
@@ -128,6 +154,7 @@ export function createChannelStore(
             id,
             name,
             description: PRIVATE_AGENT_CHANNEL_DESCRIPTION,
+            visivelNoRoster: options?.visivelNoRoster ?? true,
           });
           await transaction.insert(channelMemberships).values({
             channelId: id,
@@ -225,8 +252,12 @@ export function createChannelStore(
           agentProfiles,
           eq(agentProfiles.agentId, channelAgents.agentId),
         )
+        // The roster never shows a bot's own conversations: they live on the bot's History tab.
+        // Server-side, because a screen filter would still ship them to a client that asks.
+        .where(eq(channels.visivelNoRoster, true))
         // Most recent first, where starting a conversation counts as activity. A channel somebody
-        // just created has nothing said in it yet, and is also the one they are about to type in, // ordering on the message alone would bury it under every channel that has one.
+        // just created has nothing said in it yet, and is also the one they are about to type in,
+        // ordering on the message alone would bury it under every channel that has one.
         //
         // The browser repeats this when the socket patches a row. Both must agree, or the list
         // reorders itself on the next event; see `byRecency` in use-channel-events.ts.
@@ -259,6 +290,132 @@ export function createChannelStore(
         });
       }
       return [...summaries.values()];
+    },
+
+    /**
+     * One bot's hidden conversations, newest activity first, keyset-paged.
+     *
+     * Hidden means the roster never lists them, so this is the only way to
+     * reach them short of knowing the channel id. Membership stays enforced
+     * per row; the bot link is read from `channelAgents`, which `create`
+     * writes for the same row. Search covers what the History row shows
+     * (`name` + preview) and nothing deeper — mid-body matches stay out.
+     */
+    async listBotConversations(actor, agentId, options = {}) {
+      const limit = Number.isFinite(options.limit)
+        ? Math.min(Math.max(Math.trunc(options.limit as number), 1), 100)
+        : 50;
+      const cursor = options.cursor
+        ? decodeBotHistoryCursor(options.cursor)
+        : undefined;
+      const term = options.q?.trim() ? `%${options.q.trim()}%` : undefined;
+      const activity = sql`coalesce(${channels.lastMessageAt}, ${channels.createdAt})`;
+
+      const rows = await database
+        .select({
+          id: channels.id,
+          name: channels.name,
+          agentId: channelAgents.agentId,
+          threadId: intelligenceChannelMappings.threadId,
+          deletedAt: agentProfiles.deletedAt,
+          lastMessage: channels.lastMessage,
+          lastMessageAt: channels.lastMessageAt,
+          lastMessageAgentId: channels.lastMessageAgentId,
+          createdAt: channels.createdAt,
+        })
+        .from(channels)
+        .innerJoin(
+          channelMemberships,
+          and(
+            eq(channelMemberships.channelId, channels.id),
+            eq(channelMemberships.userId, actor.id),
+          ),
+        )
+        .innerJoin(
+          intelligenceChannelMappings,
+          and(
+            eq(intelligenceChannelMappings.channelId, channels.id),
+            eq(intelligenceChannelMappings.userId, actor.id),
+          ),
+        )
+        .innerJoin(channelAgents, eq(channelAgents.channelId, channels.id))
+        .innerJoin(
+          agentProfiles,
+          eq(agentProfiles.agentId, channelAgents.agentId),
+        )
+        .where(
+          and(
+            eq(channels.visivelNoRoster, false),
+            // One bot per query: the History tab belongs to the bot open on screen, and scoping
+            // here (not after fetching) keeps both the page and the cursor to that bot alone.
+            inArray(
+              channels.id,
+              database
+                .select({ channelId: channelAgents.channelId })
+                .from(channelAgents)
+                .where(eq(channelAgents.agentId, agentId)),
+            ),
+            term
+              ? or(
+                  ilike(channels.name, term),
+                  ilike(channels.lastMessage, term),
+                )
+              : undefined,
+            cursor
+              ? or(
+                  lt(activity, new Date(cursor.activityAt)),
+                  and(
+                    eq(activity, new Date(cursor.activityAt)),
+                    lt(channels.id, cursor.id),
+                  ),
+                )
+              : undefined,
+          ),
+        )
+        .orderBy(desc(activity), desc(channels.id), asc(channelAgents.agentId))
+        .limit(limit + 1);
+
+      // One row per channel-agent pair; the ordering above keeps each channel's rows together and
+      // its agents in the same lexicographic order `get` returns.
+      const items: ChannelSummary[] = [];
+      const seen = new Map<string, ChannelSummary>();
+      for (const row of rows) {
+        const summary = seen.get(row.id);
+        if (summary) {
+          summary.agentIds.push(row.agentId);
+          summary.active &&= row.deletedAt === null;
+          continue;
+        }
+        const next: ChannelSummary = {
+          id: row.id,
+          name: row.name,
+          agentIds: [row.agentId],
+          threadId: row.threadId,
+          active: row.deletedAt === null,
+          lastMessage: row.lastMessage,
+          lastMessageAt: row.lastMessageAt,
+          lastMessageAgentId: row.lastMessageAgentId,
+          createdAt: row.createdAt,
+        };
+        seen.set(row.id, next);
+        items.push(next);
+      }
+
+      const hasNextPage = items.length > limit;
+      const page = hasNextPage ? items.slice(0, limit) : items;
+      const last = page.at(-1);
+      return {
+        items: page,
+        nextCursor:
+          hasNextPage && last
+            ? encodeBotHistoryCursor({
+                activityAt: (
+                  last.lastMessageAt ?? last.createdAt
+                ).toISOString(),
+                id: last.id,
+              })
+            : undefined,
+      };
     },
 
     recordActivity(actor, channelId, activity) {
@@ -346,11 +503,41 @@ export class ChannelNotFoundError extends Error {
   }
 }
 
+/** Thrown for a cursor that does not decode; the route answers 400, never 500. */
+export class BotHistoryCursorError extends Error {
+  constructor() {
+    super("cursor de paginação inválido");
+    this.name = "BotHistoryCursorError";
+  }
+}
+
+function encodeBotHistoryCursor(cursor: BotHistoryCursor): string {
+  return Buffer.from(JSON.stringify(cursor)).toString("base64url");
+}
+
+function decodeBotHistoryCursor(cursor: string): BotHistoryCursor {
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(cursor, "base64url").toString("utf8"),
+    ) as BotHistoryCursor;
+    if (
+      typeof parsed.id !== "string" ||
+      parsed.id.length === 0 ||
+      Number.isNaN(Date.parse(parsed.activityAt))
+    ) {
+      throw new Error("invalid cursor");
+    }
+    return parsed;
+  } catch {
+    throw new BotHistoryCursorError();
+  }
+}
+
 type ChannelInputParseResult =
-  | { ok: true; value: { agentIds: string[] } }
+  | { ok: true; value: { agentIds: string[]; visivelNoRoster?: boolean } }
   | { ok: false; error: string };
 
-type ChannelInputObject = { agentIds?: unknown };
+type ChannelInputObject = { agentIds?: unknown; visivelNoRoster?: unknown };
 
 export function parseChannelInput(input: unknown): ChannelInputParseResult {
   if (!isChannelInputObject(input)) {
@@ -373,7 +560,24 @@ export function parseChannelInput(input: unknown): ChannelInputParseResult {
     return { ok: false, error: "Agent IDs must be unique." };
   }
 
-  return { ok: true, value: { agentIds: agentIds.sort() } };
+  // Optional so every existing caller keeps meaning "visible". Absent is not
+  // the same as false: the History tab passes false on purpose.
+  if (
+    input.visivelNoRoster !== undefined &&
+    typeof input.visivelNoRoster !== "boolean"
+  ) {
+    return { ok: false, error: "Visibility must be a boolean." };
+  }
+
+  return {
+    ok: true,
+    value: {
+      agentIds: agentIds.sort(),
+      ...(input.visivelNoRoster === undefined
+        ? {}
+        : { visivelNoRoster: input.visivelNoRoster }),
+    },
+  };
 }
 
 function isChannelInputObject(input: unknown): input is ChannelInputObject {
@@ -460,6 +664,9 @@ export function createChannelRoutes(
       const channel = await store.create(
         context.var.actor,
         parsed.value.agentIds,
+        parsed.value.visivelNoRoster === undefined
+          ? undefined
+          : { visivelNoRoster: parsed.value.visivelNoRoster },
       );
       return context.json({ channel: channelDto(channel) }, 201);
     } catch (error) {
