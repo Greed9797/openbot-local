@@ -194,8 +194,18 @@ await synchronizeTenantPackage(database, tenantPackage);
  * enrollment flow assigns owners to them, so an empty table is a broken screen rather than a
  * fresh start. Seeded here (idempotent) instead of only on enrollment acceptance, because a
  * deployment whose first admin arrived via SSO or single-user mode never passes through that path.
+ *
+ * Guarded, not fatal: if the database predates migration 0011 the table does not exist and this
+ * insert throws. Killing the whole boot for six convenience rows would turn a behind-database
+ * into a total outage; the route answers 503 in that state, and the release's migrate step is
+ * what heals both. Concurrent boots are safe either way — the insert is `onConflictDoNothing`
+ * on the primary key, so the losers are no-ops, not errors.
  */
-await seedSectors(database);
+try {
+  await seedSectors(database);
+} catch (error) {
+  console.error("Setores não semeados: o banco precisa migrar.", error);
+}
 /*
  * Built before `auth`, because the deny list is consulted during sign-in and the store is what
  * holds it. It needs the administrator list too, so it can tell the screen which people the

@@ -4,14 +4,15 @@ import type { Database } from "../db/client";
 import { requireAdmin, type AppVariables } from "../auth/guards";
 import { checkNavigationTarget } from "../computer/target";
 import { inviteEnrollment, resendEnrollment } from "../people/enrollments";
-import { createSectorStore } from "./store";
+import { createSectorStore, type SectorStore } from "./store";
 
 export function createSectorRoutes(
   database: Database,
   requireUser: MiddlewareHandler<{ Variables: AppVariables }>,
+  sectorsOverride?: SectorStore,
 ) {
   const routes = new Hono<{ Variables: AppVariables }>();
-  const sectors = createSectorStore(database);
+  const sectors = sectorsOverride ?? createSectorStore(database);
 
   routes.get("/admin/sectors", requireUser, async (context) => {
     const denied = requireAdmin(context);
