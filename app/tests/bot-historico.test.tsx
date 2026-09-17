@@ -581,8 +581,23 @@ describe("página do bot", () => {
 
     fireEvent.click(await screen.findByRole("tab", { name: "Histórico" }));
     await screen.findByRole("button", { name: /Fatura mensal/ });
+    const getsAposAbrir = pedidos.filter((p) =>
+      p.url.startsWith("/api/bots/bot-1/conversas"),
+    ).length;
+    expect(getsAposAbrir).toBeGreaterThan(0);
+
+    /*
+     * Latch, não toggle: voltar à Conversa e reabrir o Histórico não pode
+     * refazer o GET — a query fica inscrita e o dado vive no cache. Sem
+     * staleTime, cada re-enable refetcharia e a economia de 1 request na
+     * abertura viraria N ao alternar abas.
+     */
+    fireEvent.click(await screen.findByRole("tab", { name: "Conversa" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Histórico" }));
+    await screen.findByRole("button", { name: /Fatura mensal/ });
     expect(
-      pedidos.some((p) => p.url.startsWith("/api/bots/bot-1/conversas")),
-    ).toBe(true);
+      pedidos.filter((p) => p.url.startsWith("/api/bots/bot-1/conversas"))
+        .length,
+    ).toBe(getsAposAbrir);
   });
 });

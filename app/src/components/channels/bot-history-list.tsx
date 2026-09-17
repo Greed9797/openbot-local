@@ -3,7 +3,7 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   botConversasQueryOptions,
   botKeys,
@@ -38,15 +38,29 @@ export function BotHistoryList({
   /**
    * False while another tab is showing: both panels stay mounted so the
    * Conversa draft survives, but the History request only fires when its
-   * tab opens instead of on every page visit.
+   * tab opens instead of on every page visit. Latched after the first
+   * fetch — the data is cached by query key, and toggling back to Conversa
+   * must not drop it into a refetch loop on every tab switch (the query
+   * has no staleTime, so each re-enable would refetch).
    */
   enabled?: boolean;
 }) {
   const queryClient = useQueryClient();
   const [busca, setBusca] = useState("");
+  /*
+   * Latch, not a toggle: once the tab opens, the query stays subscribed.
+   * The data lives in the cache under its key, so going back to Conversa
+   * must not unsubscribe it — with no staleTime, every re-enable would
+   * refetch and the 1 request saved on page open would become N on tab
+   * switches.
+   */
+  const [visitado, setVisitado] = useState(enabled);
+  useEffect(() => {
+    if (enabled) setVisitado(true);
+  }, [enabled]);
   const historico = useInfiniteQuery({
     ...botConversasQueryOptions(botId, busca),
-    enabled,
+    enabled: visitado,
   });
   const nova = useMutation({
     mutationFn: async () => {
