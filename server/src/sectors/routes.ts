@@ -16,7 +16,23 @@ export function createSectorRoutes(
   routes.get("/admin/sectors", requireUser, async (context) => {
     const denied = requireAdmin(context);
     if (denied) return denied;
-    return context.json({ sectors: await sectors.list() });
+    try {
+      return context.json({ sectors: await sectors.list() });
+    } catch (error) {
+      /*
+       * The table is created by migration 0011, but a deployment whose database predates it (or
+       * whose migrate step never ran) throws here. 503, not 500: the server is up, its database
+       * is behind — retry the release's migrate step instead of reporting a bug.
+       */
+      console.error(
+        "Setores indisponíveis: a tabela sectors não responde.",
+        error,
+      );
+      return context.json(
+        { error: "Setores indisponíveis: o banco precisa migrar." },
+        503,
+      );
+    }
   });
 
   routes.post("/admin/sectors/:sectorId/enrollment", requireUser, async (context) => {
