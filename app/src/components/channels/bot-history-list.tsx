@@ -24,6 +24,7 @@ export function BotHistoryList({
   botId,
   onAbrir,
   onNovaConversa,
+  enabled = true,
 }: {
   botId: string;
   onAbrir: (channel: ChannelSummary) => void;
@@ -34,10 +35,19 @@ export function BotHistoryList({
     threadId: string;
     active: boolean;
   }) => void;
+  /**
+   * False while another tab is showing: both panels stay mounted so the
+   * Conversa draft survives, but the History request only fires when its
+   * tab opens instead of on every page visit.
+   */
+  enabled?: boolean;
 }) {
   const queryClient = useQueryClient();
   const [busca, setBusca] = useState("");
-  const historico = useInfiniteQuery(botConversasQueryOptions(botId, busca));
+  const historico = useInfiniteQuery({
+    ...botConversasQueryOptions(botId, busca),
+    enabled,
+  });
   const nova = useMutation({
     mutationFn: async () => {
       const response = await client("/api/channels", {

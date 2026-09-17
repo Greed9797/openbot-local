@@ -97,6 +97,7 @@ function BotChat({ agentId }: { agentId: string }) {
   ) : (
     <BotHistoryList
       botId={agentId}
+      enabled={aba === "historico"}
       onAbrir={(canal) => setAberto(canal)}
       onNovaConversa={abrirNaConversa}
     />

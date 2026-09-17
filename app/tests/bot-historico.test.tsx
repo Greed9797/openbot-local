@@ -568,4 +568,21 @@ describe("página do bot", () => {
       "b1",
     ]);
   });
+
+  test("Histórico só busca no servidor ao abrir a aba", async () => {
+    conversas = [seed({ id: "c1", name: "Fatura mensal" })];
+    mount(<BotPage agentId="bot-1" />);
+    // A aba Conversa abre primeiro e ambos os painéis ficam montados — mas
+    // o GET do Histórico só pode partir depois do clique na aba.
+    await screen.findByRole("tab", { name: "Histórico" });
+    expect(
+      pedidos.some((p) => p.url.startsWith("/api/bots/bot-1/conversas")),
+    ).toBe(false);
+
+    fireEvent.click(await screen.findByRole("tab", { name: "Histórico" }));
+    await screen.findByRole("button", { name: /Fatura mensal/ });
+    expect(
+      pedidos.some((p) => p.url.startsWith("/api/bots/bot-1/conversas")),
+    ).toBe(true);
+  });
 });

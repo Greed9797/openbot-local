@@ -283,7 +283,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <div className="size-[28px] flex items-center justify-center">
                 <IconBox />
               </div>
-              <span className="text-sm trackint-tight">Habilidades</span>
+              <span className="text-sm tracking-tight">Habilidades</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -302,7 +302,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <div className="size-[28px] flex items-center justify-center">
                 <IconApps />
               </div>
-              <span className="text-sm trackint-tight">Marketplace</span>
+              <span className="text-sm tracking-tight">Marketplace</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -321,7 +321,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <div className="size-[28px] flex items-center justify-center">
                 <IconBolt />
               </div>
-              <span className="text-sm trackint-tight">Agentes</span>
+              <span className="text-sm tracking-tight">Agentes</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -341,7 +341,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <div className="size-[28px] flex items-center justify-center">
                 <IconListCheck />
               </div>
-              <span className="text-sm trackint-tight">Tarefas</span>
+              <span className="text-sm tracking-tight">Tarefas</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -365,7 +365,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <div className="size-[28px] flex items-center justify-center">
                 <IconMessageChatbot />
               </div>
-              <span className="text-sm trackint-tight">Bot</span>
+              <span className="text-sm tracking-tight">Bot</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -376,7 +376,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 }
               >
                 <UserAvatar />
-                <span className="text-sm trackint-tight">
+                <span className="text-sm tracking-tight">
                   {currentUser?.name || currentUser?.email}
                 </span>
               </DropdownMenuTrigger>
