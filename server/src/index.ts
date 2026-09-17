@@ -50,7 +50,7 @@ import {
 } from "./computer/provider";
 import { createSnapshotStore } from "./computer/snapshot-store";
 import { createRoutineScheduler } from "./sectors/scheduler";
-import { createSectorStore } from "./sectors/store";
+import { createSectorStore, seedSectors } from "./sectors/store";
 import { loadConfig } from "./config";
 import { createConnectorAdminService } from "./connectors";
 import { createKnowledgeSearch } from "./connectors/knowledge-search";
@@ -189,6 +189,13 @@ const loadAgentsForActor = createRuntimeAgentLoader(database, agentVault, {
   token: config.managedAgentToken,
 });
 await synchronizeTenantPackage(database, tenantPackage);
+/*
+ * The six sector rows are deployment facts, not user data: the admin screen lists them and the
+ * enrollment flow assigns owners to them, so an empty table is a broken screen rather than a
+ * fresh start. Seeded here (idempotent) instead of only on enrollment acceptance, because a
+ * deployment whose first admin arrived via SSO or single-user mode never passes through that path.
+ */
+await seedSectors(database);
 /*
  * Built before `auth`, because the deny list is consulted during sign-in and the store is what
  * holds it. It needs the administrator list too, so it can tell the screen which people the
