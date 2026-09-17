@@ -11,6 +11,13 @@ const ADMIN = {
   image: null,
 };
 
+/*
+ * The seam isolates `list` only: the other two sector paths (`botsOf`,
+ * `sectorForBot`, `updateBot`) keep the real store. A stub here is `{ list }`
+ * cast to the full type because the factory signature takes the whole store;
+ * calling the other paths against this stub would TypeError, so only
+ * `GET /admin/sectors` is exercised through it.
+ */
 function appWith(
   sectors: { list: () => Promise<unknown[]> },
   role: "admin" | "user" = "admin",
